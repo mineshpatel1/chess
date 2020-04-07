@@ -1,17 +1,17 @@
 import unittest
 
-from board import Position
+import position
 
 
 class TestBoard(unittest.TestCase):
     def _verify_pos(self, index, file, rank, coord):
-        f, r = Position._index_to_rankfile(index)
+        f, r = position.index_to_rankfile(index)
         self.assertEqual((f, r), (file, rank))
 
-        i = Position._rankfile_to_index(f, r)
+        i = position.rankfile_to_index(f, r)
         self.assertEqual(i, index)
 
-        p = Position(index=index)
+        p = position.from_index(index)
         self.assertEqual((p.file, p.rank, str(p)), (file, rank, coord))
 
     def test_positions(self):

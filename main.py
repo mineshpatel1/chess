@@ -1,15 +1,12 @@
 import log
-from board import Position
+from pieces import Pawn
+from position import Position
 
 
 def main():
-    x = 38
-    file, rank = Position._index_to_rankfile(x)
-    log.info((file, rank))
-
-    i = Position._rankfile_to_index(file, rank)
-    log.info(i)
-
+    p = Pawn(False, Position(0, 6))
+    log.info(p.pos)
+    log.info(p.valid_moves)
 
 
 if __name__ == '__main__':
