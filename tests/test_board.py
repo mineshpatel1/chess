@@ -1,5 +1,6 @@
 import unittest
 
+import log
 import board
 import position
 from board import Board
@@ -32,25 +33,35 @@ class TestBoard(unittest.TestCase):
     def test_start_layout(self):
         _board = Board(state=board.STARTING_STATE)
         _pieces = {
-            0: 'r', 1: 'n', 2: 'b', 3: 'q', 4: 'k', 5: 'b', 6: 'n', 7: 'r', 8: 'p', 9: 'p', 10: 'p', 11: 'p', 12: 'p',
-            13: 'p', 14: 'p', 15: 'p', 48: 'P', 49: 'P', 50: 'P', 51: 'P', 52: 'P', 53: 'P', 54: 'P', 55: 'P', 56: 'R',
-            57: 'N', 58: 'B', 59: 'Q', 60: 'K', 61: 'B', 62: 'N', 63: 'R',
+            0: 'R', 1: 'N', 2: 'B', 3: 'Q', 4: 'K', 5: 'B', 6: 'N', 7: 'R', 8: 'P', 9: 'P', 10: 'P', 11: 'P', 12: 'P',
+            13: 'P', 14: 'P', 15: 'P', 48: 'p', 49: 'p', 50: 'p', 51: 'p', 52: 'p', 53: 'p', 54: 'p', 55: 'p', 56: 'r',
+            57: 'n', 58: 'b', 59: 'q', 60: 'k', 61: 'b', 62: 'n', 63: 'r',
         }
 
         for piece in sorted(_board.pieces):
             self.assertEqual(_pieces[piece.pos.index], piece.code)
 
+    def test_fen(self):
+        for fen in [
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
+            'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR',
+            'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR',
+            'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R',
+        ]:
+            _board = board.Board(fen)
+            self.assertEqual(_board.fen, fen)
+
     def test_print(self):
         _board = Board(state=board.STARTING_STATE)
         match = ("""
 8 [♜][♞][♝][♛][♚][♝][♞][♜]
-7 [♟][♟][ ][♟][♟][♟][♟][♟]
+7 [♟][♟][♟][♟][♟][♟][♟][♟]
 6 [ ][ ][ ][ ][ ][ ][ ][ ]
-5 [ ][ ][♟][ ][ ][ ][ ][ ]
-4 [ ][ ][ ][ ][♙][ ][ ][ ]
-3 [ ][ ][ ][ ][ ][♘][ ][ ]
-2 [♙][♙][♙][♙][ ][♙][♙][♙]
-1 [♖][♘][♗][♕][♔][♗][ ][♖]
+5 [ ][ ][ ][ ][ ][ ][ ][ ]
+4 [ ][ ][ ][ ][ ][ ][ ][ ]
+3 [ ][ ][ ][ ][ ][ ][ ][ ]
+2 [♙][♙][♙][♙][♙][♙][♙][♙]
+1 [♖][♘][♗][♕][♔][♗][♘][♖]
    A  B  C  D  E  F  G  H """)
         self.assertEqual(str(_board), match)
 
