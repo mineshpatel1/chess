@@ -1,12 +1,13 @@
 import log
+import board
+import position
+
 from pieces import Pawn
 from position import Position
 
 
 def main():
-    p = Pawn(False, Position(0, 6))
-    log.info(p.pos)
-    log.info(p.valid_moves)
+    pass
 
 
 if __name__ == '__main__':

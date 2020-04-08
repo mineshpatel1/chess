@@ -15,6 +15,10 @@ class Position:
         self.rank = rank
 
     @property
+    def index(self) -> int:
+        return rankfile_to_index(self.file, self.rank)
+
+    @property
     def valid(self):
         return 0 <= self.file < 8 and 0 <= self.rank < 8
 
@@ -29,6 +33,18 @@ class Position:
 
     def __hash__(self) -> int:
         return hash((self.file, self.rank))
+
+    def __lt__(self, other) -> bool:
+        return self.index < other.index
+
+    def __le__(self, other) -> bool:
+        return self.index <= other.index
+
+    def __gt__(self, other) -> bool:
+        return self.index > other.index
+
+    def __ge__(self, other) -> bool:
+        return self.index >= other.index
 
 
 def index_to_rankfile(idx: int) -> Tuple[int, int]:
