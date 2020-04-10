@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Set, TYPE_CHECKING
+from typing import Iterable, List, Tuple, Set, TYPE_CHECKING
 
 import log
 from position import Position
@@ -32,6 +32,9 @@ PIECE_ICONS = {
     'k': '♚',
 }
 
+CARDINALS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+DIAGONALS = [(1, 1), (-1, -1), (-1, 1), (1, -1)]
+
 
 class Piece:
     TYPE = None
@@ -42,6 +45,23 @@ class Piece:
 
     def _moves(self, board: Board) -> Iterable[Position]:
         return []
+
+    def _repeat_move(self, board: Board, move_patterns: List[Tuple[int, int]]) -> List[Position]:
+        moves = []
+
+        for x, y in move_patterns:
+            _pos = Position(self.pos.file + x, self.pos.rank + y)
+            while _pos.in_board:
+                square = board.squares[_pos.index]
+
+                if square.is_occupied:
+                    if square.piece.is_white != self.is_white:
+                        moves.append(_pos)
+                    break
+
+                moves.append(_pos)
+                _pos = Position(_pos.file + x, _pos.rank + y)
+        return moves
 
     def _occupied_same_team(self, pos: Position, board: Board) -> bool:
         square = board.squares[pos.index]
@@ -65,6 +85,11 @@ class Piece:
             lambda pos: pos.in_board,
             self._moves(board),
         ))
+
+    @property
+    def name(self) -> str:
+        colour = 'White' if self.is_white else 'Black'
+        return f'{colour} {PIECE_NAMES[self.TYPE]}'
 
     @property
     def code(self) -> str:
@@ -150,6 +175,10 @@ class Pawn(Piece):
 class Rook(Piece):
     TYPE = 'r'
 
+    def _moves(self, board: Board) -> Iterable[Position]:
+        moves = self._repeat_move(board, CARDINALS)
+        return moves
+
 
 class Knight(Piece):
     TYPE = 'n'
@@ -165,3 +194,5 @@ class Queen(Piece):
 
 class King(Piece):
     TYPE = 'k'
+
+
