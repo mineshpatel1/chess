@@ -45,13 +45,26 @@ class Board:
         start_square = squares[start_pos.index]
         assert start_square.is_occupied, f"No piece at {start_pos}"
 
+        start_piece = squares[start_pos.index].piece
+
         if not end_pos in start_square.piece.legal_moves(self):
             raise IllegalMove(f"{start_pos} to {end_pos} is an illegal move.")
 
         end_square = squares[end_pos.index]
-        if end_square.is_occupied:
+        if end_square.is_occupied:  # Take piece if it exists
+            piece_to_take = end_square.piece
             self.pieces.remove(end_square.piece)
-        start_square.piece.pos = end_pos  # Move piece
+        else:
+            piece_to_take = None
+        start_piece.pos = end_pos  # Move piece
+
+        # If the move would put the player in check, reverse it and declare it illegal
+        if self.is_in_check(start_piece.colour):
+            start_piece.pos = start_pos
+            if piece_to_take:
+                self.pieces.add(piece_to_take)
+            raise IllegalMove(f"{start_pos} to {end_pos} would put {start_piece.colour} in check.")
+
 
     def attacked_by(self, pos: Position, colour: str = WHITE) -> bool:
         """Returns whether or not a given square is being attacked by the opposite side."""
@@ -98,6 +111,11 @@ class Board:
                 i += 1
             all_squares.append(Square(pos=position.from_index(i), piece=piece))
             i += 1
+
+        # If the last piece on the board does not complete the board, fill it in.
+        for j in range(i, 64):
+            all_squares.append(Square(pos=position.from_index(j)))
+
         return all_squares
 
     @property
