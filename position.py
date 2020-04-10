@@ -19,7 +19,7 @@ class Position:
         return rankfile_to_index(self.file, self.rank)
 
     @property
-    def valid(self):
+    def in_board(self):
         return 0 <= self.file < 8 and 0 <= self.rank < 8
 
     def __str__(self) -> str:

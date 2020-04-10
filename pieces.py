@@ -1,7 +1,12 @@
-from typing import Iterable, Set
+from __future__ import annotations
+
+from typing import Iterable, Set, TYPE_CHECKING
 
 import log
 from position import Position
+
+if TYPE_CHECKING:
+    from board import Board
 
 PIECE_NAMES = {
     'p': 'Pawn',
@@ -35,6 +40,32 @@ class Piece:
         self.is_white = is_white
         self.pos = pos
 
+    def _moves(self, board: Board) -> Iterable[Position]:
+        return []
+
+    def _occupied_same_team(self, pos: Position, board: Board) -> bool:
+        square = board.squares[pos.index]
+        if square.is_occupied:
+            return square.piece.is_white == self.is_white
+        else:
+            return False
+
+    def _occupied_opposite_team(self, pos: Position, board: Board) -> bool:
+        square = board.squares[pos.index]
+        if square.is_occupied:
+            return square.piece.is_white != self.is_white
+        else:
+            return False
+
+    def same_team(self, other) -> bool:
+        return self.is_white == other.is_white
+
+    def legal_moves(self, board: Board) -> Set[Position]:
+        return set(filter(
+            lambda pos: pos.in_board,
+            self._moves(board),
+        ))
+
     @property
     def code(self) -> str:
         return self.TYPE.upper() if self.is_white else self.TYPE.lower()
@@ -42,14 +73,6 @@ class Piece:
     @property
     def icon(self) -> str:
         return PIECE_ICONS[self.code]
-
-    @property
-    def _moves(self) -> Iterable[Position]:
-        return []
-
-    @property
-    def legal_moves(self) -> Set[Position]:
-        return set(filter(lambda x: x.valid, self._moves))
 
     def __str__(self) -> str:
         return f'{self.icon}: {self.pos}'
@@ -84,25 +107,44 @@ class Piece:
 class Pawn(Piece):
     TYPE = 'p'
 
-    @property
-    def _moves(self) -> Iterable[Position]:
+    def _moves(self, board: Board) -> Iterable[Position]:
         direction = 1 if self.is_white else -1
 
-        moves = [
+        forwards = [
             Position(self.pos.file, self.pos.rank + direction),  # Move one square forward
         ]
 
         # Move 2 squares if at original rank
         if self.is_white and self.pos.rank == 1:
-            moves.append(
+            forwards.append(
                 Position(self.pos.file, self.pos.rank + 2)
             )
         elif not self.is_white and self.pos.rank == 6:
-            moves.append(
+            forwards.append(
                 Position(self.pos.file, self.pos.rank - 2)
             )
 
-        return moves
+        forwards = filter(
+            lambda pos: (
+                pos.in_board and
+                not board.squares[pos.index].is_occupied
+            ),
+            forwards,
+        )
+
+        # If the forward-diagonal pieces are of the opposite colour, these are legal attack moves.
+        attacks = filter(
+            lambda pos: (
+                pos.in_board and
+                self._occupied_opposite_team(pos, board)
+            ),
+            [
+                Position(self.pos.file + 1, self.pos.rank + direction),
+                Position(self.pos.file - 1, self.pos.rank + direction),
+            ]
+        )
+
+        return list(forwards) + list(attacks)
 
 
 class Rook(Piece):

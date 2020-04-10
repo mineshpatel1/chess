@@ -4,7 +4,7 @@ import log
 import position
 from position import Position
 from pieces import Piece, Rook, Knight, Bishop, Queen, King, Pawn
-
+from exceptions import IllegalMove
 
 FEN_PIECES = {
     'r': Rook,
@@ -40,7 +40,12 @@ class Board:
         squares = self.squares
         start_square = squares[start_pos.index]
         assert start_square.is_occupied, f"No piece at {start_pos}"
-        assert end_pos in start_square.piece.legal_moves, f"{start_pos} to {end_pos} is an illegal move."
+
+        for move in start_square.piece.legal_moves(self):
+            log.warning(move)
+
+        if not end_pos in start_square.piece.legal_moves(self):
+            raise IllegalMove(f"{start_pos} to {end_pos} is an illegal move.")
         start_square.piece.pos = end_pos  # Move piece
 
     @property
