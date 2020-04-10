@@ -36,6 +36,13 @@ class Board:
     def __init__(self, state: str = STARTING_STATE):
         self.pieces = from_fen(state)
 
+    def move(self, start_pos: Position, end_pos: Position):
+        squares = self.squares
+        start_square = squares[start_pos.index]
+        assert start_square.is_occupied, f"No piece at {start_pos}"
+        assert end_pos in start_square.piece.legal_moves, f"{start_pos} to {end_pos} is an illegal move."
+        start_square.piece.pos = end_pos  # Move piece
+
     @property
     def _squares_by_rank(self) -> Dict[int, List[Square]]:
         """All squares of the board, organised by rank."""

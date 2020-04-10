@@ -8,19 +8,10 @@ from position import Position
 
 def main():
     b = board.Board()
-    # for p in sorted(b.pieces):
-    #     log.info(p)
+    log.info(b)
 
-    # for sq in b.squares2:
-    #     log.info(sq)
-
-    # for rank, squares in b._squares_by_rank2.items():
-    #     log.warning(rank)
-    #     for sq in squares:
-    #         log.info(sq)
-
-    log.info(b.fen)
-
+    b.move(Position(0, 1), Position(0, 4))
+    log.info(b)
 
 if __name__ == '__main__':
     main()
