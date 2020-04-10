@@ -4,43 +4,18 @@ from typing import Iterable, List, Tuple, Set, TYPE_CHECKING
 
 import log
 from position import Position
+from constants import WHITE, BLACK, PIECE_ICONS, PIECE_NAMES, CARDINALS, DIAGONALS
 
 if TYPE_CHECKING:
     from board import Board
-
-PIECE_NAMES = {
-    'p': 'Pawn',
-    'r': 'Rook',
-    'n': 'Knight',
-    'b': 'Bishop',
-    'q': 'Queen',
-    'k': 'King',
-}
-
-PIECE_ICONS = {
-    'P': '♙',
-    'R': '♖',
-    'N': '♘',
-    'B': '♗',
-    'Q': '♕',
-    'K': '♔',
-    'p': '♟',
-    'r': '♜',
-    'n': '♞',
-    'b': '♝',
-    'q': '♛',
-    'k': '♚',
-}
-
-CARDINALS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-DIAGONALS = [(1, 1), (-1, -1), (-1, 1), (1, -1)]
 
 
 class Piece:
     TYPE = None
 
-    def __init__(self, is_white: bool, pos: Position):
-        self.is_white = is_white
+    def __init__(self, pos: Position, colour: str = WHITE):
+        assert colour in [WHITE, BLACK], "Only white and black pieces allowed."
+        self.colour = colour
         self.pos = pos
 
     def _moves(self, board: Board) -> Iterable[Position]:
@@ -55,7 +30,7 @@ class Piece:
                 square = board.squares[_pos.index]
 
                 if square.is_occupied:
-                    if square.piece.is_white != self.is_white:
+                    if square.piece.colour != self.colour:
                         moves.append(_pos)
                     break
 
@@ -66,19 +41,19 @@ class Piece:
     def _occupied_same_team(self, pos: Position, board: Board) -> bool:
         square = board.squares[pos.index]
         if square.is_occupied:
-            return square.piece.is_white == self.is_white
+            return square.piece.colour == self.colour
         else:
             return False
 
     def _occupied_opposite_team(self, pos: Position, board: Board) -> bool:
         square = board.squares[pos.index]
         if square.is_occupied:
-            return square.piece.is_white != self.is_white
+            return square.piece.colour != self.colour
         else:
             return False
 
     def same_team(self, other) -> bool:
-        return self.is_white == other.is_white
+        return self.colour == other.colour
 
     def legal_moves(self, board: Board) -> Set[Position]:
         return set(filter(
@@ -88,12 +63,11 @@ class Piece:
 
     @property
     def name(self) -> str:
-        colour = 'White' if self.is_white else 'Black'
-        return f'{colour} {PIECE_NAMES[self.TYPE]}'
+        return f'{self.colour.title()} {PIECE_NAMES[self.TYPE]}'
 
     @property
     def code(self) -> str:
-        return self.TYPE.upper() if self.is_white else self.TYPE.lower()
+        return self.TYPE.upper() if self.colour == WHITE else self.TYPE.lower()
 
     @property
     def icon(self) -> str:
@@ -106,15 +80,14 @@ class Piece:
         return str(self)
 
     def __eq__(self, other) -> bool:
-        log.info((self.TYPE, other.TYPE))
         return (
             self.TYPE == other.TYPE and
-            self.is_white == other.is_white and
+            self.colour == other.colour and
             self.pos == other.pos
         )
 
     def __hash__(self):
-        return hash((self.TYPE, self.is_white, self.pos))
+        return hash((self.TYPE, self.pos, self.colour))
 
     def __lt__(self, other) -> bool:
         return self.pos < other.pos
@@ -133,18 +106,18 @@ class Pawn(Piece):
     TYPE = 'p'
 
     def _moves(self, board: Board) -> Iterable[Position]:
-        direction = 1 if self.is_white else -1
+        direction = 1 if self.colour == WHITE else -1
 
         forwards = [
             Position(self.pos.file, self.pos.rank + direction),  # Move one square forward
         ]
 
         # Move 2 squares if at original rank
-        if self.is_white and self.pos.rank == 1:
+        if self.colour == WHITE and self.pos.rank == 1:
             forwards.append(
                 Position(self.pos.file, self.pos.rank + 2)
             )
-        elif not self.is_white and self.pos.rank == 6:
+        elif self.colour == BLACK and self.pos.rank == 6:
             forwards.append(
                 Position(self.pos.file, self.pos.rank - 2)
             )

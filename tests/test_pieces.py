@@ -7,6 +7,7 @@ import position
 from position import Position
 from board import Board
 from exceptions import IllegalMove
+from constants import WHITE, BLACK
 
 
 class TestBoard(unittest.TestCase):
@@ -41,11 +42,11 @@ class TestBoard(unittest.TestCase):
     def test_pawn_take(self):
         self.board = Board(state='rnbqkbnr/pppppppp/P7/8/8/8/1PPPPPPP/RNBQKBNR')
         pawn1 = self.board.squares[Position(0, 5).index].piece
-        self.assertTrue(pawn1.is_white)
+        self.assertEqual(pawn1.colour, WHITE)
         self.assertEqual({Position(1, 6)}, pawn1.legal_moves(self.board))
 
         pawn2 = self.board.squares[Position(1, 6).index].piece
-        self.assertFalse(pawn2.is_white)
+        self.assertEqual(pawn2.colour, BLACK)
 
         self.board.move(Position(0, 5), Position(1, 6))
         self.assertFalse(pawn2 in self.board.pieces)

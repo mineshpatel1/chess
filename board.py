@@ -4,6 +4,7 @@ import log
 import position
 from position import Position
 from pieces import Piece, Rook, Knight, Bishop, Queen, King, Pawn
+from constants import WHITE, BLACK, STARTING_STATE
 from exceptions import IllegalMove
 
 FEN_PIECES = {
@@ -14,7 +15,6 @@ FEN_PIECES = {
     'k': King,
     'p': Pawn,
 }
-STARTING_STATE = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
 
 class Square:
@@ -53,17 +53,17 @@ class Board:
             self.pieces.remove(end_square.piece)
         start_square.piece.pos = end_pos  # Move piece
 
-    def is_in_check(self, is_white: bool = True) -> bool:
+    def is_in_check(self, colour: str = WHITE) -> bool:
         """Checks if the associated King is in check on the board."""
         king = filter(
-            lambda p: p.TYPE == 'k' and p.is_white == is_white,
+            lambda p: p.TYPE == 'k' and p.colour == colour,
             self.pieces
         )
         king = list(king)[0]
 
         # Loop through legal moves of opposing side and return true if they contain the King
         for piece in filter(
-            lambda p: p.is_white != is_white,
+            lambda p: p.colour != colour,
             self.pieces
         ):
             if king.pos in piece.legal_moves(self):
@@ -149,8 +149,8 @@ def from_fen(fen: str = STARTING_STATE) -> Set[Piece]:
         else:
             assert char.lower() in list(FEN_PIECES.keys()), f'{char} is not a valid piece in FEN notation.'
             piece = FEN_PIECES[char.lower()](
-                is_white=char.isupper(),
                 pos=Position(file, rank),
+                colour=WHITE if char.isupper() else BLACK,
             )
             pieces.add(piece)
             file += 1
