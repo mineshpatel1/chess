@@ -8,11 +8,7 @@ from position import Position
 
 
 def main():
-    b = Board(state="rnbqkbnr/pppppp1p/8/8/P1R1p3/8/1PPP1PPP/1NBQKBNR")
-
-    rook = b.squares[Position(2, 3).index].piece
-    for x in sorted(rook._moves(b)):
-        log.info(x)
+    pass
 
 if __name__ == '__main__':
     main()

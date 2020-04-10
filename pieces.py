@@ -187,9 +187,17 @@ class Knight(Piece):
 class Bishop(Piece):
     TYPE = 'b'
 
+    def _moves(self, board: Board) -> Iterable[Position]:
+        moves = self._repeat_move(board, DIAGONALS)
+        return moves
+
 
 class Queen(Piece):
     TYPE = 'q'
+
+    def _moves(self, board: Board) -> Iterable[Position]:
+        moves = self._repeat_move(board, CARDINALS + DIAGONALS)
+        return moves
 
 
 class King(Piece):

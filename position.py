@@ -62,6 +62,25 @@ def file_to_char(file: int) -> str:
     return ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'][file]
 
 
+def char_to_file(char: str) -> int:
+    return {
+        'A': 0,
+        'B': 1,
+        'C': 2,
+        'D': 3,
+        'E': 4,
+        'F': 5,
+        'G': 6,
+        'H': 7,
+    }[char.upper()]
+
 def from_index(index: int) -> Position:
     file, rank = index_to_rankfile(index)
+    return Position(file, rank)
+
+
+def from_coord(coord: str) -> Position:
+    assert len(coord) == 2, "Coordinates must be specified as a letter and integer, e.g. A5."
+    file = char_to_file(coord[0])
+    rank = int(coord[1]) - 1
     return Position(file, rank)

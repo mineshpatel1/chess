@@ -3,7 +3,9 @@ import unittest
 import log
 import board
 import position
+
 from board import Board
+from position import Position
 
 
 class TestBoard(unittest.TestCase):
@@ -29,6 +31,15 @@ class TestBoard(unittest.TestCase):
             (53, 5, 6, 'F7'),
         ]:
             self._verify_pos(index, file, rank, coord)
+
+    def test_coord_to_position(self):
+        for coord, pos in [
+            ('A1', Position(0, 0)),
+            ('E7', Position(4, 6)),
+            ('D5', Position(3, 4)),
+            ('H8', Position(7, 7)),
+        ]:
+            self.assertEqual(position.from_coord(coord), pos)
 
     def test_start_layout(self):
         _board = Board(state=board.STARTING_STATE)
