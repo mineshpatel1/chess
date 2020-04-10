@@ -140,6 +140,34 @@ class TestBoard(unittest.TestCase):
         self.assertFalse(piece in self.board.pieces)
         self.assertEqual(Position(7, 7), queen.pos)
 
+    def test_knight(self):
+        self.board = Board(state='r1bqkbnr/pppp1p1p/B3p3/8/3Q1Np1/1Pn1P3/1PPP1PPP/RNB1K2R')
+        knight = self.board.squares[Position(5, 3).index].piece
+
+        self.assertEqual(
+            knight.legal_moves(self.board),
+            {position.from_coord(c) for c in {'E2', 'D3', 'H3', 'D5', 'H5', 'E6', 'G6'}}
+        )
+
+        with self.assertRaises(IllegalMove):  # Cannot move cardinally
+            self.board.move(Position(5, 3), Position(5, 4))
+
+        with self.assertRaises(IllegalMove):  # Cannot move diagonally
+            self.board.move(Position(5, 3), Position(6, 4))
+
+        with self.assertRaises(IllegalMove):  # Cannot move to occupied square (of same colour)
+            self.board.move(Position(5, 3), Position(6, 1))
+
+        self.board.move(Position(5, 3), Position(4, 1))  # Move L-shape
+
+        # Take a piece of opposite colour
+        piece = self.board.squares[Position(2, 2).index].piece
+        self.assertEqual('n', piece.code)
+        self.board.move(Position(4, 1), Position(2, 2))
+        self.assertFalse(piece in self.board.pieces)
+        self.assertEqual(Position(2, 2), knight.pos)
+
+
 def main():
     unittest.main()
 

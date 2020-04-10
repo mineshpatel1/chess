@@ -183,6 +183,19 @@ class Rook(Piece):
 class Knight(Piece):
     TYPE = 'n'
 
+    def _moves(self, board: Board) -> Iterable[Position]:
+        moves = []
+        for i in [1, -1, 2, -2]:
+            for j in [1, -1, 2, -2]:
+                if (abs(i) + abs(j)) == 3:
+                    pos = Position(self.pos.file + i, self.pos.rank + j)
+                    if (
+                        pos.in_board and
+                        not self._occupied_same_team(pos, board)
+                    ):
+                        moves.append(pos)
+        return moves
+
 
 class Bishop(Piece):
     TYPE = 'b'
