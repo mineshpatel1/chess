@@ -6,6 +6,7 @@ import position
 
 from board import Board
 from position import Position
+from constants import WHITE, BLACK
 
 
 class TestBoard(unittest.TestCase):
@@ -51,6 +52,16 @@ class TestBoard(unittest.TestCase):
 
         for piece in sorted(_board.pieces):
             self.assertEqual(_pieces[piece.pos.index], piece.code)
+
+    def test_check(self):
+        for test in [
+            ('rnbqkb2/ppppp1p1/5p2/2n1r2p/3KP3/3P4/PPP2PPP/RNBQ1BNR', WHITE, False),
+            ('rnb1kbnr/pppp1ppp/4p3/8/7q/5P2/PPPPP1PP/RNBQKBNR', WHITE, True),
+            ('rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR', BLACK, False),
+            ('rnb2bnr/ppppkppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR', BLACK, True),
+        ]:
+            board = Board(state=test[0])
+            self.assertEqual(board.is_in_check(test[1]), test[2])
 
     def test_fen(self):
         for fen in [

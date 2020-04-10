@@ -53,22 +53,27 @@ class Board:
             self.pieces.remove(end_square.piece)
         start_square.piece.pos = end_pos  # Move piece
 
-    def is_in_check(self, colour: str = WHITE) -> bool:
-        """Checks if the associated King is in check on the board."""
-        king = filter(
-            lambda p: p.TYPE == 'k' and p.colour == colour,
-            self.pieces
-        )
-        king = list(king)[0]
-
-        # Loop through legal moves of opposing side and return true if they contain the King
+    def attacked_by(self, pos: Position, colour: str = WHITE) -> bool:
+        """Returns whether or not a given square is being attacked by the opposite side."""
         for piece in filter(
-            lambda p: p.colour != colour,
-            self.pieces
+                lambda p: p.colour != colour,
+                self.pieces
         ):
-            if king.pos in piece.legal_moves(self):
+            if pos in piece.legal_moves(self):
                 return True
         return False
+
+    def is_in_check(self, colour: str = WHITE) -> bool:
+        """Checks if the associated King is in check on the board."""
+        assert colour in [WHITE, BLACK]
+
+        king = list(filter(
+            lambda p: p.TYPE == 'k' and p.colour == colour,
+            self.pieces
+        ))[0]
+
+        # Loop through legal moves of opposing side and return true if they contain the King
+        return self.attacked_by(king.pos, colour)
 
     @property
     def _squares_by_rank(self) -> Dict[int, List[Square]]:
