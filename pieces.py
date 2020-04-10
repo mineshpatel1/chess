@@ -216,4 +216,11 @@ class Queen(Piece):
 class King(Piece):
     TYPE = 'k'
 
+    def _moves(self, board: Board) -> Iterable[Position]:
+        moves = []
+        for x, y in CARDINALS + DIAGONALS:
+            pos = Position(self.pos.file + x, self.pos.rank + y)
+            if pos.in_board and not self._occupied_same_team(pos, board):
+                moves.append(pos)
+        return moves
 

@@ -37,6 +37,7 @@ class Board:
         self.pieces = from_fen(state)
 
     def move(self, start_pos: Position, end_pos: Position):
+        """Moves a piece from the start position to the end position if legal."""
         if start_pos == end_pos or not start_pos.in_board or not end_pos.in_board:
             raise IllegalMove(f"{start_pos} to {end_pos} is an illegal move.")
 
@@ -51,6 +52,23 @@ class Board:
         if end_square.is_occupied:
             self.pieces.remove(end_square.piece)
         start_square.piece.pos = end_pos  # Move piece
+
+    def is_in_check(self, is_white: bool = True) -> bool:
+        """Checks if the associated King is in check on the board."""
+        king = filter(
+            lambda p: p.TYPE == 'k' and p.is_white == is_white,
+            self.pieces
+        )
+        king = list(king)[0]
+
+        # Loop through legal moves of opposing side and return true if they contain the King
+        for piece in filter(
+            lambda p: p.is_white != is_white,
+            self.pieces
+        ):
+            if king.pos in piece.legal_moves(self):
+                return True
+        return False
 
     @property
     def _squares_by_rank(self) -> Dict[int, List[Square]]:
