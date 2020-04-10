@@ -17,29 +17,47 @@ FEN_PIECES = {
 STARTING_STATE = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
 
+class Square:
+    def __init__(self, pos: Position, piece: Piece = None):
+        self.pos = pos
+        self.piece = piece
+
+    @property
+    def is_occupied(self):
+        return self.piece is not None
+
+    def __str__(self):
+        if self.is_occupied:
+            return str(self.piece)
+        else:
+            return str(self.pos)
+
 class Board:
     def __init__(self, state: str = STARTING_STATE):
         self.pieces = from_fen(state)
 
-    def _squares_by_rank(self) -> Dict[int, List[Piece]]:
+    @property
+    def _squares_by_rank(self) -> Dict[int, List[Square]]:
         """All squares of the board, organised by rank."""
         by_rank = {}
-        for piece in self.squares:
-            rank = piece.rank if isinstance(piece, Position) else piece.pos.rank
+        for square in self.squares:
+            rank = square.pos.rank
             by_rank[rank] = by_rank.get(rank, [])
-            by_rank[rank].append(piece)
+            by_rank[rank].append(square)
         return by_rank
 
     @property
-    def squares(self) -> List[Union[Piece, Position]]:
+    def squares(self) -> List[Square]:
         """All squares of the board, in order from A1, B1... G8, H8."""
         all_squares = []
         i = 0
         for piece in sorted(self.pieces):
             while i < piece.pos.index:
-                all_squares.append(Position(*position.index_to_rankfile(i)))
+                all_squares.append(
+                    Square(pos=position.from_index(i))
+                )
                 i += 1
-            all_squares.append(piece)
+            all_squares.append(Square(pos=position.from_index(i), piece=piece))
             i += 1
         return all_squares
 
@@ -50,15 +68,15 @@ class Board:
         (https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation)
         """
         fen_str = ''
-        by_rank = self._squares_by_rank()
+        by_rank = self._squares_by_rank
         for rank in sorted(by_rank.keys(), reverse=True):
             blank_counter = 0
             for square in by_rank[rank]:
-                if isinstance(square, Piece):
+                if square.is_occupied:
                     if blank_counter > 0:
                         fen_str += str(blank_counter)
                         blank_counter = 0
-                    fen_str += square.code
+                    fen_str += square.piece.code
                 else:
                     blank_counter += 1
 
@@ -70,15 +88,15 @@ class Board:
         return fen_str
 
     def __str__(self) -> str:
-        by_rank = self._squares_by_rank()
+        by_rank = self._squares_by_rank
         board_str = ''
         for rank in sorted(by_rank.keys(), reverse=True):
             board_str += f'\n{rank + 1} '
             for square in by_rank[rank]:
-                if isinstance(square, Position):
-                    board_str += '[ ]'
+                if square.is_occupied:
+                    board_str += f'[{square.piece.icon}]'
                 else:
-                    board_str += f'[{square.icon}]'
+                    board_str += '[ ]'
         board_str += '\n   A  B  C  D  E  F  G  H '
         return board_str
 
