@@ -15,3 +15,6 @@ class FiftyMoveDraw(Draw):
 
 class InsufficientMaterial(Draw):
     pass
+
+class ThreefoldRepetition(Draw):
+    pass

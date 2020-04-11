@@ -5,11 +5,12 @@ import position
 from position import Position
 from pieces import Piece, Rook, Knight, Bishop, Queen, King, Pawn
 from exceptions import (
-    Stalemate,
-    Checkmate,
     InsufficientMaterial,
+    ThreefoldRepetition,
     FiftyMoveDraw,
     IllegalMove,
+    Stalemate,
+    Checkmate,
 )
 
 from constants import (
@@ -61,6 +62,9 @@ class Board:
             self.fullmoves,
         ) = from_fen(state)
 
+        # FEN isn't sufficient to describe this, so assume unique
+        self.repetitions = {}  # type: Dict[str, int]
+
     @property
     def has_insufficient_material(self) -> bool:
         if len(self.pieces) > 4:  # Any game with more than 4 pieces can be won
@@ -84,6 +88,18 @@ class Board:
             if len(bishop_squares) > 1:
                 return False
             return True
+
+    @property
+    def has_threefold_repetition(self):
+        for fen, repetitions in self.repetitions.items():
+            if repetitions >= 3:
+                return True
+        return False
+
+    def _add_repetition(self):
+        fen = self._short_fen
+        self.repetitions[fen] = self.repetitions.get(fen, 0)
+        self.repetitions[fen] += 1
 
     def _move(self, start_pos: Position, end_pos: Position, simulate: bool = False):
         """Moves a piece from the start position to the end position if legal."""
@@ -140,7 +156,7 @@ class Board:
                 move_rook = Position(rook.pos.file + (-num_squares * direction), rook.pos.rank)
                 rook.pos = move_rook
                 rook.move_history.append((rook.pos, move_rook))
-                self.halfmove_clock += 1
+                self.halfmove_clock += 1  # Note that we don't add a repetition here
                 return
             else:
                 raise IllegalMove("Cannot castle, intermediate squares are being attacked.")
@@ -180,8 +196,10 @@ class Board:
             # Reset or increment the half move clock
             if start_piece.type == PAWN or taken_piece is not None:
                 self.halfmove_clock = 0
+                self.repetitions = {}
             else:
                 self.halfmove_clock += 1
+                self._add_repetition()
 
     def _can_castle(self, colour: str, castle_type: str) -> bool:
         assert colour in (BLACK, WHITE), f"Invalid colour, {colour}, specified."
@@ -203,8 +221,10 @@ class Board:
         """Raises an exception if the board is in an end state."""
         if self.halfmove_clock >= 50:
             raise FiftyMoveDraw
-        elif self.has_insufficient_material:  # This draw can be achieved on either player's turn
+        elif self.has_insufficient_material:
             raise InsufficientMaterial
+        elif self.has_threefold_repetition:
+            raise ThreefoldRepetition
         elif self.is_checkmate(self.turn):
             raise Checkmate
         elif self.is_stalemate(self.turn):
@@ -328,6 +348,11 @@ class Board:
             all_squares.append(Square(pos=position.from_index(j)))
 
         return all_squares
+
+    @property
+    def _short_fen(self) -> str:
+        """Short version of the FEN without move numbers for repitition."""
+        return ' '.join(self.fen.split(' ')[:4])
 
     @property
     def fen(self) -> str:
