@@ -1,13 +1,12 @@
 import unittest
 
-import log
-import board
-import position
+from engine import position
+from engine.exceptions import FiftyMoveDraw, ThreefoldRepetition
+from engine.position import Position
 
-from board import Board
-from position import Position
-from constants import WHITE, BLACK
-from exceptions import FiftyMoveDraw, ThreefoldRepetition
+from engine import board
+from engine.board import Board
+from engine.constants import WHITE, BLACK
 
 
 class TestBoard(unittest.TestCase):

@@ -1,13 +1,12 @@
 import unittest
 
-import log
-import board
-import position
+from engine import position
+from engine.exceptions import IllegalMove
+from engine.position import Position
 
-from position import Position
-from board import Board
-from exceptions import IllegalMove
-from constants import WHITE, BLACK, ROOK, KING
+from engine import board
+from engine.board import Board
+from engine.constants import WHITE, BLACK, ROOK, KING
 
 
 class TestPieces(unittest.TestCase):

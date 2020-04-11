@@ -1,10 +1,7 @@
 from typing import Iterable, Optional, Dict, List, Tuple, Set
 
-import log
-import position
-from position import Position
-from pieces import Piece, Rook, Knight, Bishop, Queen, King, Pawn
-from exceptions import (
+from engine import position
+from engine.exceptions import (
     InsufficientMaterial,
     ThreefoldRepetition,
     FiftyMoveDraw,
@@ -12,8 +9,10 @@ from exceptions import (
     Stalemate,
     Checkmate,
 )
+from engine.pieces import Piece, Rook, Knight, Bishop, Queen, King, Pawn
+from engine.position import Position
 
-from constants import (
+from engine.constants import (
     WHITE,
     BLACK,
     PAWN,

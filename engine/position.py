@@ -1,6 +1,6 @@
 from typing import Tuple
 
-from constants import WHITE, BLACK
+from engine.constants import WHITE, BLACK
 
 
 class Position:

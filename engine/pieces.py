@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Optional, Iterable, List, Tuple, Set, TYPE_CHECKING
 
-import log
-from position import Position
-from constants import (
+from engine.position import Position
+
+from engine.constants import (
     WHITE,
     BLACK,
     PIECE_ICONS,
@@ -22,7 +22,7 @@ from constants import (
 )
 
 if TYPE_CHECKING:
-    from board import Board
+    from engine.board import Board
 
 
 class Piece:
