@@ -170,16 +170,18 @@ class Pawn(Piece):
         )
 
         # If the forward-diagonal pieces are of the opposite colour, these are legal attack moves.
-        attacks = filter(
-            lambda pos: (
-                pos.in_board and
-                self._occupied_opposite_team(pos, board)
-            ),
-            [
-                Position(self.pos.file + 1, self.pos.rank + direction),
-                Position(self.pos.file - 1, self.pos.rank + direction),
-            ]
+        potential_attacks = (
+            Position(self.pos.file + 1, self.pos.rank + direction),
+            Position(self.pos.file - 1, self.pos.rank + direction),
         )
+
+        attacks = []
+        for pos in potential_attacks:
+            if pos.in_board and self._occupied_opposite_team(pos, board):
+                attacks.append(pos)
+            elif board.en_passant is not None:
+                if pos == board.en_passant:
+                    attacks.append(pos)
 
         return list(forwards) + list(attacks)
 
@@ -261,6 +263,7 @@ class King(Piece):
             if pos.in_board and not self._occupied_same_team(pos, board):
                 moves.append(pos)
 
+        # Add moves for castling if possible
         if self.can_castle:
             for rook in filter(
                 lambda p: p.colour == self.colour and p.type == ROOK and p.can_castle,

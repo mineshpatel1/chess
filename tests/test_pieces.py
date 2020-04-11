@@ -52,6 +52,35 @@ class TestBoard(unittest.TestCase):
         self.assertFalse(pawn2 in self.board.pieces)
         self.assertEqual(Position(1, 6), pawn1.pos)
 
+    def test_pawn_en_passant(self):
+        # White En Passant
+        self.board = Board(state='rnbqkbnr/pppppp1p/8/5Pp1/8/8/PPPPP1PP/RNBQKBNR w KQkq g6')
+        self.assertEqual(self.board.en_passant, position.from_coord('G6'))
+        pawn1 = self.board.squares[position.from_coord('F5').index].piece
+        pawn2 = self.board.squares[position.from_coord('G5').index].piece
+        self.assertEqual(
+            pawn1.legal_moves(self.board),
+            {position.from_coord(c) for c in {'F6', 'G6'}}
+        )
+        self.board.move(position.from_coord('F5'), position.from_coord('G6'))
+        self.assertEqual(self.board.squares[position.from_coord('G6').index].piece, pawn1)
+        self.assertFalse(pawn2 in self.board.pieces)
+        self.assertEqual(self.board.en_passant, None)
+
+        # Black En Passant
+        self.board = Board(state='rnbqkbnr/pppppp1p/8/8/5Pp1/8/PPPPP1PP/RNBQKBNR b KQkq f3 0 1')
+        self.assertEqual(self.board.en_passant, position.from_coord('F3'))
+        pawn1 = self.board.squares[position.from_coord('G4').index].piece
+        pawn2 = self.board.squares[position.from_coord('F4').index].piece
+        self.assertEqual(
+            pawn1.legal_moves(self.board),
+            {position.from_coord(c) for c in {'G3', 'F3'}}
+        )
+        self.board.move(position.from_coord('G4'), position.from_coord('F3'))
+        self.assertEqual(self.board.squares[position.from_coord('F3').index].piece, pawn1)
+        self.assertFalse(pawn2 in self.board.pieces)
+        self.assertEqual(self.board.en_passant, None)
+
     def test_rook(self):
         self.board = Board(state='rnbqkbnr/pppppp1p/8/8/P1R1p3/8/1PPP1PPP/1NBQKBNR')
         rook = self.board.squares[Position(2, 3).index].piece

@@ -95,13 +95,26 @@ class TestBoard(unittest.TestCase):
             'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR',
             'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR',
             'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R',
-            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq',
-            'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq',
-            'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq',
-            'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq',
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -',
+            'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -',
+            'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -',
+            'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -',
+            'rnbqkbnr/pppppp1p/8/8/5Pp1/8/PPPPP1PP/RNBQKBNR b KQkq f3',
         ):
             _board = board.Board(fen)
             self.assertEqual(_board.fen, fen)
+
+    def test_en_passant(self):
+        _board = Board(state=board.STARTING_STATE)
+        self.assertEqual(_board.en_passant, None)
+
+        _board.move(position.from_coord('B2'), position.from_coord('B4'))
+        self.assertEqual(_board.en_passant, position.from_coord('B4'))
+        self.assertEqual(_board.fen, 'rnbqkbnr/pppppppp/8/8/1P6/8/P1PPPPPP/RNBQKBNR w KQkq b4')
+
+        _board.move(position.from_coord('G8'), position.from_coord('F6'))
+        self.assertEqual(_board.en_passant, None)
+        self.assertEqual(_board.fen, 'rnbqkb1r/pppppppp/5n2/8/1P6/8/P1PPPPPP/RNBQKBNR w KQkq -')
 
     def test_print(self):
         _board = Board(state=board.STARTING_STATE)

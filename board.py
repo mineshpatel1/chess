@@ -4,8 +4,18 @@ import log
 import position
 from position import Position
 from pieces import Piece, Rook, Knight, Bishop, Queen, King, Pawn
-from constants import WHITE, BLACK, ROOK, KING, KINGSIDE, QUEENSIDE, STARTING_STATE
 from exceptions import IllegalMove
+
+from constants import (
+    WHITE,
+    BLACK,
+    PAWN,
+    ROOK,
+    KING,
+    KINGSIDE,
+    QUEENSIDE,
+    STARTING_STATE,
+)
 
 FEN_PIECES = {
     'r': Rook,
@@ -34,7 +44,11 @@ class Square:
 
 class Board:
     def __init__(self, state: str = STARTING_STATE):
-        self.pieces, self.turn = from_fen(state)
+        (
+            self.pieces,
+            self.turn,
+            self.en_passant
+        ) = from_fen(state)
 
     def _can_castle(self, colour: str, castle_type: str) -> bool:
         assert colour in (BLACK, WHITE), f"Invalid colour, {colour}, specified."
@@ -109,13 +123,23 @@ class Board:
                 move_rook = Position(rook.pos.file + (-num_squares * direction), rook.pos.rank)
                 rook.pos = move_rook
                 rook.move_history.append((rook.pos, move_rook))
+                return
             else:
                 raise IllegalMove("Cannot castle, intermediate squares are being attacked.")
 
+        # Regular move
         end_square = squares[end_pos.index]
-        if end_square.is_occupied:  # Take piece if it exists
+        if (  # Take pawn by En Passant
+            start_piece.type == PAWN and
+            self.en_passant is not None and
+            end_pos == self.en_passant
+        ):
+            direction = 1 if start_piece.colour == WHITE else -1
+            taken_piece = squares[Position(end_pos.file, end_pos.rank - direction).index].piece
+            self.pieces.remove(taken_piece)
+        elif end_square.is_occupied:  # Take piece if it exists
             taken_piece = end_square.piece
-            self.pieces.remove(end_square.piece)
+            self.pieces.remove(taken_piece)
         else:
             taken_piece = None
         start_piece.pos = end_pos  # Move piece
@@ -128,6 +152,11 @@ class Board:
         if simulate:
             _reverse_move(self, start_piece, start_pos, taken_piece)
         else:
+            # Mark en passant square if a pawn moves two squares, otherwise clear
+            if start_piece.TYPE == PAWN and abs(end_pos.rank - start_pos.rank) == 2:
+                self.en_passant = end_pos
+            else:
+                self.en_passant = None
             start_piece.move_history.append((start_pos, end_pos))
 
     def possible_moves(self, colour: str = WHITE) -> Iterable[Tuple[Position, Position]]:
@@ -242,7 +271,8 @@ class Board:
 
         if self.turn:
             _turn = 'w' if self.turn == WHITE else 'b'
-            fen_str += f' {_turn} {self.castle_flags}'
+            _en_passant = '-' if self.en_passant is None else str(self.en_passant).lower()
+            fen_str += f' {_turn} {self.castle_flags} {_en_passant}'
         return fen_str
 
     def __str__(self) -> str:
@@ -259,11 +289,12 @@ class Board:
         return board_str
 
 
-def from_fen(fen: str = STARTING_STATE) -> Tuple[Set[Piece], str]:
+def from_fen(fen: str = STARTING_STATE) -> Tuple[Set[Piece], str, Position]:
     rank = 7
     file = 0
     pieces = set()
     turn = None
+    en_passant = None
 
     components = fen.split(' ')
     for char in components[0]:
@@ -284,4 +315,8 @@ def from_fen(fen: str = STARTING_STATE) -> Tuple[Set[Piece], str]:
     if len(components) > 1:
         turn = WHITE if components[1].lower() == 'w' else BLACK
 
-    return pieces, turn
+    if len(components) > 3:
+        _en_passant_coord = components[3].upper()
+        en_passant = None if _en_passant_coord == '-' else position.from_coord(_en_passant_coord)
+
+    return pieces, turn, en_passant
