@@ -9,6 +9,12 @@ from constants import (
     BLACK,
     PIECE_ICONS,
     PIECE_NAMES,
+    PAWN,
+    ROOK,
+    KNIGHT,
+    BISHOP,
+    QUEEN,
+    KING,
     CARDINALS,
     DIAGONALS,
     QUEENSIDE,
@@ -86,7 +92,7 @@ class Piece:
 
     @property
     def can_castle(self) -> bool:
-        if self.TYPE in ('r', 'k'):  # Only Rooks and Kings can castle
+        if self.TYPE in (ROOK, KING):  # Only Rooks and Kings can castle
             return (
                 self.pos == self.original_pos
                 and len(self.move_history) == 0
@@ -128,7 +134,7 @@ class Piece:
 
 
 class Pawn(Piece):
-    TYPE = 'p'
+    TYPE = PAWN
 
     def _moves(self, board: Board) -> Iterable[Position]:
         direction = 1 if self.colour == WHITE else -1
@@ -171,7 +177,7 @@ class Pawn(Piece):
 
 
 class Rook(Piece):
-    TYPE = 'r'
+    TYPE = ROOK
     CASTLE_POSITIONS = {
         Position(0, 0): QUEENSIDE,
         Position(0, 7): QUEENSIDE,
@@ -189,7 +195,7 @@ class Rook(Piece):
 
 
 class Knight(Piece):
-    TYPE = 'n'
+    TYPE = KNIGHT
 
     def _moves(self, board: Board) -> Iterable[Position]:
         moves = []
@@ -206,7 +212,7 @@ class Knight(Piece):
 
 
 class Bishop(Piece):
-    TYPE = 'b'
+    TYPE = BISHOP
 
     def _moves(self, board: Board) -> Iterable[Position]:
         moves = self._repeat_move(board, DIAGONALS)
@@ -214,7 +220,7 @@ class Bishop(Piece):
 
 
 class Queen(Piece):
-    TYPE = 'q'
+    TYPE = QUEEN
 
     def _moves(self, board: Board) -> Iterable[Position]:
         moves = self._repeat_move(board, CARDINALS + DIAGONALS)
@@ -222,7 +228,7 @@ class Queen(Piece):
 
 
 class King(Piece):
-    TYPE = 'k'
+    TYPE = KING
 
     def _moves(self, board: Board) -> Iterable[Position]:
         moves = []

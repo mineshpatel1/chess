@@ -34,7 +34,7 @@ class Square:
 
 class Board:
     def __init__(self, state: str = STARTING_STATE):
-        self.pieces = from_fen(state)
+        self.pieces, self.turn = from_fen(state)
 
     def move(self, start_pos: Position, end_pos: Position, simulate: bool = False):
         """Moves a piece from the start position to the end position if legal."""
@@ -169,6 +169,10 @@ class Board:
 
             if rank > 0:
                 fen_str += '/'
+
+        if self.turn:
+            _turn = 'w' if self.turn == WHITE else 'b'
+            fen_str += f' {_turn}'
         return fen_str
 
     def __str__(self) -> str:
@@ -185,12 +189,14 @@ class Board:
         return board_str
 
 
-def from_fen(fen: str = STARTING_STATE) -> Set[Piece]:
+def from_fen(fen: str = STARTING_STATE) -> Tuple[Set[Piece], str]:
     rank = 7
     file = 0
     pieces = set()
+    turn = None
 
-    for char in fen.split(' ')[0]:
+    components = fen.split(' ')
+    for char in components[0]:
         if char.isdigit():
             file += int(char)
         elif char == '/':
@@ -204,4 +210,8 @@ def from_fen(fen: str = STARTING_STATE) -> Set[Piece]:
             )
             pieces.add(piece)
             file += 1
-    return pieces
+
+    if len(components) > 1:
+        turn = WHITE if components[1].lower() == 'w' else BLACK
+
+    return pieces, turn

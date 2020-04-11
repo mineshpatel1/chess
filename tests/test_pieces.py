@@ -7,7 +7,7 @@ import position
 from position import Position
 from board import Board
 from exceptions import IllegalMove
-from constants import WHITE, BLACK
+from constants import WHITE, BLACK, ROOK, KING
 
 
 class TestBoard(unittest.TestCase):
@@ -185,7 +185,7 @@ class TestBoard(unittest.TestCase):
 
     def test_castle_flags(self):
         b = Board(state=board.STARTING_STATE)
-        for piece in filter(lambda p: p.TYPE in ('r', 'k'), b.pieces):
+        for piece in filter(lambda p: p.TYPE in (ROOK, KING), b.pieces):
             self.assertTrue(piece.can_castle)
 
         b.move(Position(0, 6), Position(0, 5))
@@ -193,7 +193,7 @@ class TestBoard(unittest.TestCase):
         b.move(Position(4, 6), Position(4, 5))
         b.move(Position(4, 7), Position(4, 6))
 
-        for piece in filter(lambda p: p.TYPE in ('r', 'k'), b.pieces):
+        for piece in filter(lambda p: p.TYPE in (ROOK, KING), b.pieces):
             if str(piece.original_pos) in ('A8', 'E8'):
                 self.assertFalse(piece.can_castle)
             else:
