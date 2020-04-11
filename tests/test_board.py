@@ -21,7 +21,7 @@ class TestBoard(unittest.TestCase):
         self.assertEqual((p.file, p.rank, str(p)), (file, rank, coord))
 
     def test_positions(self):
-        for index, file, rank, coord in [
+        for index, file, rank, coord in (
             (0, 0, 0, 'A1'),   # Bottom-Left
             (7, 7, 0, 'H1'),   # Bottom-Right
             (56, 0, 7, 'A8'),  # Top-Left
@@ -30,16 +30,16 @@ class TestBoard(unittest.TestCase):
             (12, 4, 1, 'E2'),  # Misc positions
             (38, 6, 4, 'G5'),
             (53, 5, 6, 'F7'),
-        ]:
+        ):
             self._verify_pos(index, file, rank, coord)
 
     def test_coord_to_position(self):
-        for coord, pos in [
+        for coord, pos in (
             ('A1', Position(0, 0)),
             ('E7', Position(4, 6)),
             ('D5', Position(3, 4)),
             ('H8', Position(7, 7)),
-        ]:
+        ):
             self.assertEqual(position.from_coord(coord), pos)
 
     def test_start_layout(self):
@@ -54,38 +54,52 @@ class TestBoard(unittest.TestCase):
             self.assertEqual(_pieces[piece.pos.index], piece.code)
 
     def test_check(self):
-        for test in [
+        for test in (
             ('rnbqkb2/ppppp1p1/5p2/2n1r2p/3KP3/3P4/PPP2PPP/RNBQ1BNR', WHITE, False),
             ('rnb1kbnr/pppp1ppp/4p3/8/7q/5P2/PPPPP1PP/RNBQKBNR', WHITE, True),
             ('rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR', BLACK, False),
             ('rnb2bnr/ppppkppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR', BLACK, True),
-        ]:
+        ):
             _board = Board(state=test[0])
             self.assertEqual(_board.is_in_check(test[1]), test[2])
 
     def test_checkmate(self):
-        for test in [
+        for test in (
             ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', WHITE, False),
             ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', BLACK, False),
             ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR', WHITE, True),
             ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR', BLACK, False),
             ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1', WHITE, False),
             ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1', BLACK, True),
-        ]:
+        ):
             _board = Board(state=test[0])
             self.assertEqual(_board.is_checkmate(test[1]), test[2])
 
+    def test_castle_flags(self):
+        for test in (
+            (board.STARTING_STATE, 'KQkq'),
+            ('rnbqkbnr/pppppppp/8/8/8/7P/PPPPPPPR/RNBQKBN1', 'Qkq'),
+            ('rnbqkbnr/pppppppp/8/8/8/P3P3/RPPP1PPP/1NBQKBNR', 'Kkq'),
+            ('rnbqkbnr/pppppppp/8/8/8/4P3/PPPPKPPP/RNBQ1BNR', 'kq'),
+            ('rnbqkbn1/pppppppr/7p/8/8/8/PPPPPPPP/RNBQKBNR', 'KQq'),
+            ('1nbqkbnr/rpppppp1/p6p/8/8/8/PPPPPPPP/RNBQKBNR', 'KQk'),
+            ('rnbq1bnr/ppppkpp1/7p/4p3/8/8/PPPPPPPP/RNBQKBNR', 'KQ'),
+            ('rnbq1bnr/ppppkpp1/7p/4p3/8/4P3/PPPPKPPP/RNBQ1BNR', '-'),
+        ):
+            _board = Board(state=test[0])
+            self.assertEqual(_board.castle_flags, test[1])
+
     def test_fen(self):
-        for fen in [
+        for fen in (
             'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
             'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR',
             'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR',
             'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R',
-            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w',
-            'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b',
-            'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w',
-            'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b',
-        ]:
+            'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq',
+            'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq',
+            'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq',
+            'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq',
+        ):
             _board = board.Board(fen)
             self.assertEqual(_board.fen, fen)
 

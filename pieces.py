@@ -84,11 +84,15 @@ class Piece:
 
     @property
     def name(self) -> str:
-        return f'{self.colour.title()} {PIECE_NAMES[self.TYPE]}'
+        return f'{self.colour.title()} {PIECE_NAMES[self.type]}'
+
+    @property
+    def type(self):
+        return self.TYPE
 
     @property
     def code(self) -> str:
-        return self.TYPE.upper() if self.colour == WHITE else self.TYPE.lower()
+        return self.type.upper() if self.colour == WHITE else self.type.lower()
 
     @property
     def icon(self) -> str:
@@ -96,7 +100,7 @@ class Piece:
 
     @property
     def can_castle(self) -> bool:
-        if self.TYPE in (ROOK, KING):  # Only Rooks and Kings can castle
+        if self.type in (ROOK, KING):  # Only Rooks and Kings can castle
             if len(self.move_history) > 0:
                 return False
 
@@ -116,13 +120,13 @@ class Piece:
 
     def __eq__(self, other) -> bool:
         return (
-            self.TYPE == other.TYPE and
+            self.type == other.type and
             self.colour == other.colour and
             self.original_pos == other.original_pos
         )
 
     def __hash__(self):
-        return hash((self.TYPE, self.pos, self.colour))
+        return hash((self.type, self.pos, self.colour))
 
     def __lt__(self, other) -> bool:
         return self.pos < other.pos
@@ -259,7 +263,7 @@ class King(Piece):
 
         if self.can_castle:
             for rook in filter(
-                lambda p: p.colour == self.colour and p.TYPE == ROOK and p.can_castle,
+                lambda p: p.colour == self.colour and p.type == ROOK and p.can_castle,
                 board.pieces,
             ):
 

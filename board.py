@@ -36,6 +36,22 @@ class Board:
     def __init__(self, state: str = STARTING_STATE):
         self.pieces, self.turn = from_fen(state)
 
+    def _can_castle(self, colour: str, castle_type: str) -> bool:
+        assert colour in (BLACK, WHITE), f"Invalid colour, {colour}, specified."
+        assert castle_type in (QUEENSIDE, KINGSIDE), f"Invalid castle type, {castle_type}, specified."
+
+        king = list(filter(lambda p: p.colour == colour and p.type == KING and p.can_castle, self.pieces))
+        if len(king) == 0:
+            return False
+
+        rook = list(filter(
+            lambda p: p.colour == colour and p.type in ROOK and p.can_castle and p.rook_type == castle_type,
+            self.pieces)
+        )
+        if len(rook) == 0:
+            return False
+        return True
+
     def move(self, start_pos: Position, end_pos: Position, simulate: bool = False):
         """Moves a piece from the start position to the end position if legal."""
 
@@ -59,7 +75,7 @@ class Board:
             raise IllegalMove(f"{start_pos} to {end_pos} is an illegal move.")
 
         # Castling attempt, only way to move a King two spaces cardinally
-        if start_piece.TYPE == KING and abs(end_pos.file - start_pos.file) == 2:
+        if start_piece.type == KING and abs(end_pos.file - start_pos.file) == 2:
             can_castle = True
             if end_pos.file > start_pos.file:
                 direction = 1
@@ -87,7 +103,7 @@ class Board:
 
                 # Move Rook
                 rook = list(filter(
-                    lambda p: p.TYPE == ROOK and p.colour == start_piece.colour and p.rook_type == castle_type,
+                    lambda p: p.type == ROOK and p.colour == start_piece.colour and p.rook_type == castle_type,
                     self.pieces
                 ))[0]
                 move_rook = Position(rook.pos.file + (-num_squares * direction), rook.pos.rank)
@@ -133,25 +149,41 @@ class Board:
                 return True
         return False
 
-    def is_in_check(self, colour: str = WHITE) -> bool:
+    def is_in_check(self, colour: str) -> bool:
         """Checks if the associated King is in check on the board."""
         assert colour in [WHITE, BLACK]
 
         king = list(filter(
-            lambda p: p.TYPE == 'k' and p.colour == colour,
+            lambda p: p.type == 'k' and p.colour == colour,
             self.pieces
         ))[0]
 
         # Loop through legal moves of opposing side and return true if they contain the King
         return self.attacked_by(king.pos, colour)
 
-    def is_checkmate(self, colour: str = WHITE) -> bool:
+    def is_checkmate(self, colour: str) -> bool:
         """Checks if a given player has been checkmated."""
 
         if self.is_in_check(colour) and len(list(self.possible_moves(colour))) == 0:
             return True
         else:
             return False
+
+    @property
+    def castle_flags(self) -> str:
+        flags = ''
+
+        for opt in (
+            (WHITE, KINGSIDE, 'K'),
+            (WHITE, QUEENSIDE, 'Q'),
+            (BLACK, KINGSIDE, 'k'),
+            (BLACK, QUEENSIDE, 'q'),
+        ):
+            if self._can_castle(opt[0], opt[1]):
+                flags += opt[2]
+
+        return flags if flags != '' else '-'
+
 
     @property
     def _squares_by_rank(self) -> Dict[int, List[Square]]:
@@ -210,7 +242,7 @@ class Board:
 
         if self.turn:
             _turn = 'w' if self.turn == WHITE else 'b'
-            fen_str += f' {_turn}'
+            fen_str += f' {_turn} {self.castle_flags}'
         return fen_str
 
     def __str__(self) -> str:

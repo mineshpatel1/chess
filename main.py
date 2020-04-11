@@ -9,7 +9,7 @@ from board import Board
 from pieces import Pawn
 from position import Position
 from exceptions import IllegalMove
-from constants import ROOK, BLACK, WHITE
+from constants import ROOK, BLACK, WHITE, QUEENSIDE, KINGSIDE
 
 
 def main():
