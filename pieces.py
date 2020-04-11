@@ -86,7 +86,13 @@ class Piece:
 
     @property
     def can_castle(self) -> bool:
-        return False
+        if self.TYPE in ('r', 'k'):  # Only Rooks and Kings can castle
+            return (
+                self.pos == self.original_pos
+                and len(self.move_history) == 0
+            )
+        else:
+            return False
 
     @property
     def rook_type(self) -> Optional[str]:
@@ -173,24 +179,13 @@ class Rook(Piece):
         Position(7, 7): KINGSIDE,
     }
 
-    def __init__(self, pos: Position, colour: str = WHITE):
-        super(Rook, self).__init__(pos, colour)
+    def _moves(self, board: Board) -> Iterable[Position]:
+        moves = self._repeat_move(board, CARDINALS)
+        return moves
 
     @property
     def rook_type(self) -> str:
         return self.CASTLE_POSITIONS[self.original_pos]
-
-    @property
-    def can_castle(self) -> bool:
-        """Returns True if the rook has not moved in the game."""
-        return (
-            self.pos == self.original_pos
-            and len(self.move_history) == 0
-        )
-
-    def _moves(self, board: Board) -> Iterable[Position]:
-        moves = self._repeat_move(board, CARDINALS)
-        return moves
 
 
 class Knight(Piece):
@@ -236,4 +231,3 @@ class King(Piece):
             if pos.in_board and not self._occupied_same_team(pos, board):
                 moves.append(pos)
         return moves
-

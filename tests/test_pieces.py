@@ -183,19 +183,21 @@ class TestBoard(unittest.TestCase):
         self.board.move(Position(4, 7), Position(3, 7))
         self.assertEqual(Position(3, 7), king.pos)
 
-    def test_rook_castle_flags(self):
+    def test_castle_flags(self):
         b = Board(state=board.STARTING_STATE)
-        for rook in filter(lambda p: p.TYPE == 'r', b.pieces):
-            self.assertTrue(rook.can_castle)
+        for piece in filter(lambda p: p.TYPE in ('r', 'k'), b.pieces):
+            self.assertTrue(piece.can_castle)
 
         b.move(Position(0, 6), Position(0, 5))
         b.move(Position(0, 7), Position(0, 6))
+        b.move(Position(4, 6), Position(4, 5))
+        b.move(Position(4, 7), Position(4, 6))
 
-        for rook in filter(lambda p: p.TYPE == 'r', b.pieces):
-            if rook.colour == BLACK and rook.original_pos == position.from_coord('A8'):
-                self.assertFalse(rook.can_castle)
+        for piece in filter(lambda p: p.TYPE in ('r', 'k'), b.pieces):
+            if str(piece.original_pos) in ('A8', 'E8'):
+                self.assertFalse(piece.can_castle)
             else:
-                self.assertTrue(rook.can_castle)
+                self.assertTrue(piece.can_castle)
 
 
 def main():
