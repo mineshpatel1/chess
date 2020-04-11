@@ -188,6 +188,7 @@ class TestBoard(unittest.TestCase):
         for piece in filter(lambda p: p.TYPE in (ROOK, KING), b.pieces):
             self.assertTrue(piece.can_castle)
 
+        # Show castling is unavailable after moving pieces
         b.move(Position(0, 6), Position(0, 5))
         b.move(Position(0, 7), Position(0, 6))
         b.move(Position(4, 6), Position(4, 5))
@@ -199,6 +200,51 @@ class TestBoard(unittest.TestCase):
             else:
                 self.assertTrue(piece.can_castle)
 
+    def test_castling(self):
+        # Black Queenside castling
+        self.board = Board(state='r3kbnr/pp2pppp/5q2/2pp4/1n4b1/2K5/PPPPPPPP/RNBQ1BNR')
+        king = self.board.squares[position.from_coord('E8').index].piece
+        rook = self.board.squares[position.from_coord('A8').index].piece
+        self.assertTrue(king.can_castle)
+        self.assertEqual(
+            king.legal_moves(self.board),
+            {position.from_coord(c) for c in {'C8', 'D8', 'D7'}}
+        )
+        self.board.move(position.from_coord('E8'), position.from_coord('C8'))
+        self.assertEqual(self.board.squares[position.from_coord('C8').index].piece, king)
+        self.assertEqual(self.board.squares[position.from_coord('D8').index].piece, rook)
+
+        self.board = Board(state='r3kbnr/pp2pppp/5q2/2pp4/1n6/5b1B/PPPPPP1P/RNBQK1NR')
+        with self.assertRaises(IllegalMove):  # Cannot castle if it puts player in check
+            self.board.move(position.from_coord('E8'), position.from_coord('C8'))
+
+        self.board = Board(state='r3kbnr/pp2pppp/2N2q2/2pp4/1n6/5b1B/PPPPPP1P/R1BQK1NR')
+        with self.assertRaises(IllegalMove):  # Cannot castle if intermediate square is attacked
+            self.board.move(position.from_coord('E8'), position.from_coord('C8'))
+
+        # White Queenside castling
+        self.board = Board(state='rnbqkbnr/pppppppp/8/8/1P4Q1/B1N1P3/P1PP1PPP/R3KBNR')
+        king = self.board.squares[position.from_coord('E1').index].piece
+        rook = self.board.squares[position.from_coord('A1').index].piece
+        self.board.move(position.from_coord('E1'), position.from_coord('C1'))
+        self.assertEqual(self.board.squares[position.from_coord('C1').index].piece, king)
+        self.assertEqual(self.board.squares[position.from_coord('D1').index].piece, rook)
+
+        # Black Kingside castling
+        self.board = Board(state='rnbqk2r/pppp1ppp/4p2n/2b5/8/8/PPPPPPPP/RNBQKBNR')
+        king = self.board.squares[position.from_coord('E8').index].piece
+        rook = self.board.squares[position.from_coord('H8').index].piece
+        self.board.move(position.from_coord('E8'), position.from_coord('G8'))
+        self.assertEqual(self.board.squares[position.from_coord('G8').index].piece, king)
+        self.assertEqual(self.board.squares[position.from_coord('F8').index].piece, rook)
+
+        # White Kingside castling
+        self.board = Board(state='rnbqkbnr/pppppppp/8/8/8/3BPN2/PPPP1PPP/RNBQK2R')
+        king = self.board.squares[position.from_coord('E1').index].piece
+        rook = self.board.squares[position.from_coord('H1').index].piece
+        self.board.move(position.from_coord('E1'), position.from_coord('G1'))
+        self.assertEqual(self.board.squares[position.from_coord('G1').index].piece, king)
+        self.assertEqual(self.board.squares[position.from_coord('F1').index].piece, rook)
 
 def main():
     unittest.main()

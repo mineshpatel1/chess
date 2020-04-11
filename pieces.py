@@ -27,6 +27,10 @@ if TYPE_CHECKING:
 
 class Piece:
     TYPE = None
+    CASTLE_POSITIONS = {
+        WHITE: {},
+        BLACK: {},
+    }
 
     def __init__(self, pos: Position, colour: str = WHITE):
         assert colour in [WHITE, BLACK], "Only white and black pieces allowed."
@@ -93,10 +97,10 @@ class Piece:
     @property
     def can_castle(self) -> bool:
         if self.TYPE in (ROOK, KING):  # Only Rooks and Kings can castle
-            return (
-                self.pos == self.original_pos
-                and len(self.move_history) == 0
-            )
+            if len(self.move_history) > 0:
+                return False
+
+            return self.pos in self.CASTLE_POSITIONS[self.colour]
         else:
             return False
 
@@ -114,7 +118,7 @@ class Piece:
         return (
             self.TYPE == other.TYPE and
             self.colour == other.colour and
-            self.pos == other.pos
+            self.original_pos == other.original_pos
         )
 
     def __hash__(self):
@@ -179,10 +183,14 @@ class Pawn(Piece):
 class Rook(Piece):
     TYPE = ROOK
     CASTLE_POSITIONS = {
-        Position(0, 0): QUEENSIDE,
-        Position(0, 7): QUEENSIDE,
-        Position(7, 0): KINGSIDE,
-        Position(7, 7): KINGSIDE,
+        WHITE: {
+            Position(0, 0): QUEENSIDE,
+            Position(7, 0): KINGSIDE,
+        },
+        BLACK: {
+            Position(0, 7): QUEENSIDE,
+            Position(7, 7): KINGSIDE,
+        }
     }
 
     def _moves(self, board: Board) -> Iterable[Position]:
@@ -190,8 +198,11 @@ class Rook(Piece):
         return moves
 
     @property
-    def rook_type(self) -> str:
-        return self.CASTLE_POSITIONS[self.original_pos]
+    def rook_type(self) -> Optional[str]:
+        if len(self.move_history) > 0:
+            return None
+        else:
+            return self.CASTLE_POSITIONS[self.colour].get(self.pos)
 
 
 class Knight(Piece):
@@ -230,10 +241,43 @@ class Queen(Piece):
 class King(Piece):
     TYPE = KING
 
+    CASTLE_POSITIONS = {
+        WHITE: {
+            Position(4, 0): True,
+        },
+        BLACK: {
+            Position(4, 7): True,
+        }
+    }
+
     def _moves(self, board: Board) -> Iterable[Position]:
         moves = []
         for x, y in CARDINALS + DIAGONALS:
             pos = Position(self.pos.file + x, self.pos.rank + y)
             if pos.in_board and not self._occupied_same_team(pos, board):
                 moves.append(pos)
+
+        if self.can_castle:
+            for rook in filter(
+                lambda p: p.colour == self.colour and p.TYPE == ROOK and p.can_castle,
+                board.pieces,
+            ):
+
+                if rook.rook_type == KINGSIDE:
+                    _num_squares, direction = 2, 1
+                elif rook.rook_type == QUEENSIDE:
+                    _num_squares, direction = 3, -1
+                else:
+                    continue
+
+                can_castle = True
+                for i in range(_num_squares):
+                    _castle_pos = Position(self.pos.file + (direction * (i + 1)), self.pos.rank)
+                    if board.squares[_castle_pos.index].is_occupied:
+                        can_castle = False
+                        break
+
+                if can_castle:
+                    moves.append(Position(self.pos.file + (direction * 2), self.pos.rank))
+
         return moves

@@ -4,7 +4,7 @@ import log
 import position
 from position import Position
 from pieces import Piece, Rook, Knight, Bishop, Queen, King, Pawn
-from constants import WHITE, BLACK, STARTING_STATE
+from constants import WHITE, BLACK, ROOK, KING, KINGSIDE, QUEENSIDE, STARTING_STATE
 from exceptions import IllegalMove
 
 FEN_PIECES = {
@@ -58,6 +58,44 @@ class Board:
         if not end_pos in start_square.piece.legal_moves(self):
             raise IllegalMove(f"{start_pos} to {end_pos} is an illegal move.")
 
+        # Castling attempt, only way to move a King two spaces cardinally
+        if start_piece.TYPE == KING and abs(end_pos.file - start_pos.file) == 2:
+            can_castle = True
+            if end_pos.file > start_pos.file:
+                direction = 1
+            else:
+                direction = -1
+
+            for i in range(2):
+                _castle_pos = Position(start_pos.file + (direction * (i + 1)), start_pos.rank)
+                if self.attacked_by(_castle_pos, start_piece.colour):
+                    can_castle = False
+                    break
+
+            # Special move if castling, moving two pieces
+            if can_castle and not simulate:
+                if direction > 0:   # Kingside castle
+                    num_squares = 2
+                    castle_type = KINGSIDE
+                else:               # Queenside castle
+                    num_squares = 3
+                    castle_type = QUEENSIDE
+
+                # Move King
+                start_piece.pos = end_pos
+                start_piece.move_history.append((start_pos, end_pos))
+
+                # Move Rook
+                rook = list(filter(
+                    lambda p: p.TYPE == ROOK and p.colour == start_piece.colour and p.rook_type == castle_type,
+                    self.pieces
+                ))[0]
+                move_rook = Position(rook.pos.file + (-num_squares * direction), rook.pos.rank)
+                rook.pos = move_rook
+                rook.move_history.append((rook.pos, move_rook))
+            else:
+                raise IllegalMove("Cannot castle, intermediate squares are being attacked.")
+
         end_square = squares[end_pos.index]
         if end_square.is_occupied:  # Take piece if it exists
             taken_piece = end_square.piece
@@ -85,11 +123,11 @@ class Board:
                 except IllegalMove:
                     pass
 
-    def attacked_by(self, pos: Position, colour: str = WHITE) -> bool:
+    def attacked_by(self, pos: Position, player_colour: str = WHITE) -> bool:
         """Returns whether or not a given square is being attacked by the opposite side."""
         for piece in filter(
-                lambda p: p.colour != colour,
-                self.pieces
+            lambda p: p.colour != player_colour,
+            self.pieces
         ):
             if pos in piece.legal_moves(self):
                 return True

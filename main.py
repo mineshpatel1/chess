@@ -9,11 +9,14 @@ from board import Board
 from pieces import Pawn
 from position import Position
 from exceptions import IllegalMove
-from constants import BLACK, WHITE
+from constants import ROOK, BLACK, WHITE
 
 
 def main():
     pass
+
+
+
 
 if __name__ == '__main__':
     main()
