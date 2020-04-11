@@ -7,7 +7,7 @@ import position
 from board import Board
 from position import Position
 from constants import WHITE, BLACK
-from exceptions import FiftyMoveDraw
+from exceptions import FiftyMoveDraw, ThreefoldRepetition
 
 
 class TestBoard(unittest.TestCase):
@@ -146,6 +146,31 @@ class TestBoard(unittest.TestCase):
         _board._move(Position(6, 3), Position(5, 2))  # Take piece
         _board.raise_if_game_over()
         self.assertEqual(_board.halfmove_clock, 0)
+
+    def test_threefold_repetition(self):
+        _board = Board()
+        for move in (
+            ('B2', 'B3'),
+            ('C7', 'C6'),
+            ('B3', 'B4'),
+            ('C6', 'C5'),
+            ('B4', 'C5'),
+            ('B8', 'C6'),
+            ('C2', 'C4'),
+            ('A8', 'B8'),
+            ('D1', 'B3'),
+            ('B8', 'A8'),
+            ('B3', 'D3'),
+            ('A8', 'B8'),
+            ('D3', 'B3'),
+            ('B8', 'A8'),
+            ('B3', 'D3'),
+            ('A8', 'B8'),
+            ('D3', 'B3'),
+        ):
+            _board.player_move(position.from_coord(move[0]), position.from_coord(move[1]))
+        with self.assertRaises(ThreefoldRepetition):
+            _board.raise_if_game_over()
 
     def test_en_passant(self):
         _board = Board(state=board.STARTING_STATE)

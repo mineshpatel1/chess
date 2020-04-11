@@ -113,7 +113,7 @@ class Piece:
         return None
 
     def __str__(self) -> str:
-        return f'{self.icon}: {self.pos}'
+        return f'{self.icon}: {self.pos} {self.colour} {self.original_pos}'
 
     def __repr__(self) -> str:
         return str(self)
@@ -126,7 +126,7 @@ class Piece:
         )
 
     def __hash__(self):
-        return hash((self.type, self.pos, self.colour))
+        return hash((self.type, self.original_pos, self.colour))
 
     def __lt__(self, other) -> bool:
         return self.pos < other.pos
