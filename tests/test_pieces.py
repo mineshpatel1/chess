@@ -168,6 +168,21 @@ class TestBoard(unittest.TestCase):
         self.assertFalse(piece in self.board.pieces)
         self.assertEqual(Position(2, 2), knight.pos)
 
+    def test_king(self):
+        self.board = Board(state='rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR')
+        king = self.board.squares[Position(4, 7).index].piece
+
+        self.assertEqual(
+            king.legal_moves(self.board),
+            {position.from_coord(c) for c in {'D8', 'E7'}}
+        )
+
+        with self.assertRaises(IllegalMove):  # Cannot move if it puts player in check
+            self.board.move(Position(4, 7), Position(4, 6))
+
+        self.board.move(Position(4, 7), Position(3, 7))
+        self.assertEqual(Position(3, 7), king.pos)
+
 
 def main():
     unittest.main()
