@@ -15,7 +15,5 @@ from constants import ROOK, BLACK, WHITE, QUEENSIDE, KINGSIDE
 def main():
     pass
 
-
-
 if __name__ == '__main__':
     main()

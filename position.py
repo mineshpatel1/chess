@@ -1,5 +1,7 @@
 from typing import Tuple
 
+from constants import WHITE, BLACK
+
 
 class Position:
     def __init__(
@@ -13,6 +15,11 @@ class Position:
 
         self.file = file
         self.rank = rank
+
+    @property
+    def colour(self) -> str:
+        odd_rank = self.rank % 2
+        return BLACK if (self.index + odd_rank) % 2 == 0 else WHITE
 
     @property
     def index(self) -> int:

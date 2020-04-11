@@ -18,26 +18,26 @@ class TestBoard(unittest.TestCase):
         self.board = Board(state=board.STARTING_STATE)
 
         with self.assertRaises(IllegalMove):
-            self.board.move(Position(0, 1), Position(0, 4))
+            self.board._move(Position(0, 1), Position(0, 4))
 
         with self.assertRaises(IllegalMove):
-            self.board.move(Position(0, 1), Position(0, 1))
+            self.board._move(Position(0, 1), Position(0, 1))
 
         with self.assertRaises(IllegalMove):
-            self.board.move(Position(0, 1), Position(0, -1))
+            self.board._move(Position(0, 1), Position(0, -1))
 
         with self.assertRaises(IllegalMove):
-            self.board.move(Position(0, 1), Position(1, 2))
+            self.board._move(Position(0, 1), Position(1, 2))
 
     def test_pawn_forward(self):
         self.board = Board(state=board.STARTING_STATE)
-        self.board.move(Position(0, 1), Position(0, 3))
+        self.board._move(Position(0, 1), Position(0, 3))
 
         with self.assertRaises(IllegalMove):
-            self.board.move(Position(0, 3), Position(0, 5))
+            self.board._move(Position(0, 3), Position(0, 5))
 
-        self.board.move(Position(0, 3), Position(0, 4))
-        self.board.move(Position(0, 4), Position(0, 5))
+        self.board._move(Position(0, 3), Position(0, 4))
+        self.board._move(Position(0, 4), Position(0, 5))
 
     def test_pawn_take(self):
         self.board = Board(state='rnbqkbnr/pppppppp/P7/8/8/8/1PPPPPPP/RNBQKBNR')
@@ -48,7 +48,7 @@ class TestBoard(unittest.TestCase):
         pawn2 = self.board.squares[Position(1, 6).index].piece
         self.assertEqual(pawn2.colour, BLACK)
 
-        self.board.move(Position(0, 5), Position(1, 6))
+        self.board._move(Position(0, 5), Position(1, 6))
         self.assertFalse(pawn2 in self.board.pieces)
         self.assertEqual(Position(1, 6), pawn1.pos)
 
@@ -62,7 +62,7 @@ class TestBoard(unittest.TestCase):
             pawn1.legal_moves(self.board),
             {position.from_coord(c) for c in {'F6', 'G6'}}
         )
-        self.board.move(position.from_coord('F5'), position.from_coord('G6'))
+        self.board._move(position.from_coord('F5'), position.from_coord('G6'))
         self.assertEqual(self.board.squares[position.from_coord('G6').index].piece, pawn1)
         self.assertFalse(pawn2 in self.board.pieces)
         self.assertEqual(self.board.en_passant, None)
@@ -76,7 +76,7 @@ class TestBoard(unittest.TestCase):
             pawn1.legal_moves(self.board),
             {position.from_coord(c) for c in {'G3', 'F3'}}
         )
-        self.board.move(position.from_coord('G4'), position.from_coord('F3'))
+        self.board._move(position.from_coord('G4'), position.from_coord('F3'))
         self.assertEqual(self.board.squares[position.from_coord('F3').index].piece, pawn1)
         self.assertFalse(pawn2 in self.board.pieces)
         self.assertEqual(self.board.en_passant, None)
@@ -91,20 +91,20 @@ class TestBoard(unittest.TestCase):
         )
 
         with self.assertRaises(IllegalMove):  # Cannot move diagonally
-            self.board.move(Position(2, 3), Position(3, 4))
+            self.board._move(Position(2, 3), Position(3, 4))
 
         with self.assertRaises(IllegalMove):  # Cannot move beyond opposition piece
-            self.board.move(Position(2, 3), Position(5, 3))
+            self.board._move(Position(2, 3), Position(5, 3))
 
         with self.assertRaises(IllegalMove):  # Cannot move to occupied square (of same colour)
-            self.board.move(Position(2, 3), Position(0, 3))
+            self.board._move(Position(2, 3), Position(0, 3))
 
-        self.board.move(Position(2, 3), Position(1, 3))  # Move cardinally
+        self.board._move(Position(2, 3), Position(1, 3))  # Move cardinally
 
         # Take a piece of opposite colour
         piece = self.board.squares[Position(4, 3).index].piece
         self.assertEqual('p', piece.code)
-        self.board.move(Position(1, 3), Position(4, 3))
+        self.board._move(Position(1, 3), Position(4, 3))
         self.assertFalse(piece in self.board.pieces)
         self.assertEqual(Position(4, 3), rook.pos)
 
@@ -118,20 +118,20 @@ class TestBoard(unittest.TestCase):
         )
 
         with self.assertRaises(IllegalMove):  # Cannot move beyond opposition piece
-            self.board.move(Position(2, 3), Position(6, 6))
+            self.board._move(Position(2, 3), Position(6, 6))
 
         with self.assertRaises(IllegalMove):  # Cannot move to occupied square (of same colour)
-            self.board.move(Position(2, 3), Position(0, 1))
+            self.board._move(Position(2, 3), Position(0, 1))
 
         with self.assertRaises(IllegalMove):  # Cannot move cardinally
-            self.board.move(Position(2, 3), Position(1, 3))
+            self.board._move(Position(2, 3), Position(1, 3))
 
-        self.board.move(Position(2, 3), Position(4, 5))  # Move diagonally
+        self.board._move(Position(2, 3), Position(4, 5))  # Move diagonally
 
         # Take a piece of opposite colour
         piece = self.board.squares[Position(5, 6).index].piece
         self.assertEqual('p', piece.code)
-        self.board.move(Position(4, 5), Position(5, 6))
+        self.board._move(Position(4, 5), Position(5, 6))
         self.assertFalse(piece in self.board.pieces)
         self.assertEqual(Position(5, 6), bishop.pos)
 
@@ -152,21 +152,21 @@ class TestBoard(unittest.TestCase):
         )
 
         with self.assertRaises(IllegalMove):  # Cannot move beyond opposition piece
-            self.board.move(Position(2, 3), Position(6, 7))
+            self.board._move(Position(2, 3), Position(6, 7))
 
         with self.assertRaises(IllegalMove):  # Cannot move to occupied square (of same colour)
-            self.board.move(Position(2, 3), Position(1, 2))
+            self.board._move(Position(2, 3), Position(1, 2))
 
         with self.assertRaises(IllegalMove):  # Can only move cardinally and diagonally
-            self.board.move(Position(2, 3), Position(6, 6))
+            self.board._move(Position(2, 3), Position(6, 6))
 
-        self.board.move(Position(2, 3), Position(3, 3))  # Move cardinally
-        self.board.move(Position(3, 3), Position(6, 6))  # Move diagonally
+        self.board._move(Position(2, 3), Position(3, 3))  # Move cardinally
+        self.board._move(Position(3, 3), Position(6, 6))  # Move diagonally
 
         # Take a piece of opposite colour
         piece = self.board.squares[Position(7, 7).index].piece
         self.assertEqual('r', piece.code)
-        self.board.move(Position(6, 6), Position(7, 7))
+        self.board._move(Position(6, 6), Position(7, 7))
         self.assertFalse(piece in self.board.pieces)
         self.assertEqual(Position(7, 7), queen.pos)
 
@@ -180,20 +180,20 @@ class TestBoard(unittest.TestCase):
         )
 
         with self.assertRaises(IllegalMove):  # Cannot move cardinally
-            self.board.move(Position(5, 3), Position(5, 4))
+            self.board._move(Position(5, 3), Position(5, 4))
 
         with self.assertRaises(IllegalMove):  # Cannot move diagonally
-            self.board.move(Position(5, 3), Position(6, 4))
+            self.board._move(Position(5, 3), Position(6, 4))
 
         with self.assertRaises(IllegalMove):  # Cannot move to occupied square (of same colour)
-            self.board.move(Position(5, 3), Position(6, 1))
+            self.board._move(Position(5, 3), Position(6, 1))
 
-        self.board.move(Position(5, 3), Position(4, 1))  # Move L-shape
+        self.board._move(Position(5, 3), Position(4, 1))  # Move L-shape
 
         # Take a piece of opposite colour
         piece = self.board.squares[Position(2, 2).index].piece
         self.assertEqual('n', piece.code)
-        self.board.move(Position(4, 1), Position(2, 2))
+        self.board._move(Position(4, 1), Position(2, 2))
         self.assertFalse(piece in self.board.pieces)
         self.assertEqual(Position(2, 2), knight.pos)
 
@@ -207,9 +207,9 @@ class TestBoard(unittest.TestCase):
         )
 
         with self.assertRaises(IllegalMove):  # Cannot move if it puts player in check
-            self.board.move(Position(4, 7), Position(4, 6))
+            self.board._move(Position(4, 7), Position(4, 6))
 
-        self.board.move(Position(4, 7), Position(3, 7))
+        self.board._move(Position(4, 7), Position(3, 7))
         self.assertEqual(Position(3, 7), king.pos)
 
     def test_castle_flags(self):
@@ -218,10 +218,10 @@ class TestBoard(unittest.TestCase):
             self.assertTrue(piece.can_castle)
 
         # Show castling is unavailable after moving pieces
-        b.move(Position(0, 6), Position(0, 5))
-        b.move(Position(0, 7), Position(0, 6))
-        b.move(Position(4, 6), Position(4, 5))
-        b.move(Position(4, 7), Position(4, 6))
+        b._move(Position(0, 6), Position(0, 5))
+        b._move(Position(0, 7), Position(0, 6))
+        b._move(Position(4, 6), Position(4, 5))
+        b._move(Position(4, 7), Position(4, 6))
 
         for piece in filter(lambda p: p.TYPE in (ROOK, KING), b.pieces):
             if str(piece.original_pos) in ('A8', 'E8'):
@@ -239,23 +239,23 @@ class TestBoard(unittest.TestCase):
             king.legal_moves(self.board),
             {position.from_coord(c) for c in {'C8', 'D8', 'D7'}}
         )
-        self.board.move(position.from_coord('E8'), position.from_coord('C8'))
+        self.board._move(position.from_coord('E8'), position.from_coord('C8'))
         self.assertEqual(self.board.squares[position.from_coord('C8').index].piece, king)
         self.assertEqual(self.board.squares[position.from_coord('D8').index].piece, rook)
 
         self.board = Board(state='r3kbnr/pp2pppp/5q2/2pp4/1n6/5b1B/PPPPPP1P/RNBQK1NR')
         with self.assertRaises(IllegalMove):  # Cannot castle if it puts player in check
-            self.board.move(position.from_coord('E8'), position.from_coord('C8'))
+            self.board._move(position.from_coord('E8'), position.from_coord('C8'))
 
         self.board = Board(state='r3kbnr/pp2pppp/2N2q2/2pp4/1n6/5b1B/PPPPPP1P/R1BQK1NR')
         with self.assertRaises(IllegalMove):  # Cannot castle if intermediate square is attacked
-            self.board.move(position.from_coord('E8'), position.from_coord('C8'))
+            self.board._move(position.from_coord('E8'), position.from_coord('C8'))
 
         # White Queenside castling
         self.board = Board(state='rnbqkbnr/pppppppp/8/8/1P4Q1/B1N1P3/P1PP1PPP/R3KBNR')
         king = self.board.squares[position.from_coord('E1').index].piece
         rook = self.board.squares[position.from_coord('A1').index].piece
-        self.board.move(position.from_coord('E1'), position.from_coord('C1'))
+        self.board._move(position.from_coord('E1'), position.from_coord('C1'))
         self.assertEqual(self.board.squares[position.from_coord('C1').index].piece, king)
         self.assertEqual(self.board.squares[position.from_coord('D1').index].piece, rook)
 
@@ -263,7 +263,7 @@ class TestBoard(unittest.TestCase):
         self.board = Board(state='rnbqk2r/pppp1ppp/4p2n/2b5/8/8/PPPPPPPP/RNBQKBNR')
         king = self.board.squares[position.from_coord('E8').index].piece
         rook = self.board.squares[position.from_coord('H8').index].piece
-        self.board.move(position.from_coord('E8'), position.from_coord('G8'))
+        self.board._move(position.from_coord('E8'), position.from_coord('G8'))
         self.assertEqual(self.board.squares[position.from_coord('G8').index].piece, king)
         self.assertEqual(self.board.squares[position.from_coord('F8').index].piece, rook)
 
@@ -271,7 +271,7 @@ class TestBoard(unittest.TestCase):
         self.board = Board(state='rnbqkbnr/pppppppp/8/8/8/3BPN2/PPPP1PPP/RNBQK2R')
         king = self.board.squares[position.from_coord('E1').index].piece
         rook = self.board.squares[position.from_coord('H1').index].piece
-        self.board.move(position.from_coord('E1'), position.from_coord('G1'))
+        self.board._move(position.from_coord('E1'), position.from_coord('G1'))
         self.assertEqual(self.board.squares[position.from_coord('G1').index].piece, king)
         self.assertEqual(self.board.squares[position.from_coord('F1').index].piece, rook)
 

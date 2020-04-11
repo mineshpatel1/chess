@@ -4,7 +4,7 @@ import log
 import position
 from position import Position
 from pieces import Piece, Rook, Knight, Bishop, Queen, King, Pawn
-from exceptions import IllegalMove
+from exceptions import Checkmate, Stalemate, IllegalMove
 
 from constants import (
     WHITE,
@@ -47,7 +47,9 @@ class Board:
         (
             self.pieces,
             self.turn,
-            self.en_passant
+            self.en_passant,
+            self.halfmove_clock,
+            self.fullmoves,
         ) = from_fen(state)
 
     def _can_castle(self, colour: str, castle_type: str) -> bool:
@@ -66,7 +68,7 @@ class Board:
             return False
         return True
 
-    def move(self, start_pos: Position, end_pos: Position, simulate: bool = False):
+    def _move(self, start_pos: Position, end_pos: Position, simulate: bool = False):
         """Moves a piece from the start position to the end position if legal."""
 
         def _reverse_move(
@@ -81,8 +83,6 @@ class Board:
 
         squares = self.squares
         start_square = squares[start_pos.index]
-        assert start_square.is_occupied, f"No piece at {start_pos}"
-
         start_piece = squares[start_pos.index].piece
 
         if not end_pos in start_square.piece.legal_moves(self):
@@ -123,6 +123,7 @@ class Board:
                 move_rook = Position(rook.pos.file + (-num_squares * direction), rook.pos.rank)
                 rook.pos = move_rook
                 rook.move_history.append((rook.pos, move_rook))
+                self.halfmove_clock += 1
                 return
             else:
                 raise IllegalMove("Cannot castle, intermediate squares are being attacked.")
@@ -153,17 +154,47 @@ class Board:
             _reverse_move(self, start_piece, start_pos, taken_piece)
         else:
             # Mark en passant square if a pawn moves two squares, otherwise clear
-            if start_piece.TYPE == PAWN and abs(end_pos.rank - start_pos.rank) == 2:
+            if start_piece.type == PAWN and abs(end_pos.rank - start_pos.rank) == 2:
                 self.en_passant = end_pos
             else:
                 self.en_passant = None
             start_piece.move_history.append((start_pos, end_pos))
 
+            # Reset or increment the half move clock
+            if start_piece.type == PAWN or taken_piece is not None:
+                self.halfmove_clock = 0
+            else:
+                self.halfmove_clock += 1
+
+    def raise_game_over(self):
+        if self.halfmove_clock >= 50:
+            raise Stalemate("Half-move clock has reached 50.")
+        elif self.is_checkmate(self.turn):
+            raise Checkmate
+        elif self.is_stalemate(self.turn):
+            raise Stalemate(f"No legal moves and {self.turn} is not in check.")
+
+    def player_move(self, start_pos: Position, end_pos: Position):
+        squares = self.squares
+        start_square = squares[start_pos.index]
+        assert start_square.is_occupied, f"No piece at {start_pos}"
+
+        start_piece = squares[start_pos.index].piece
+        assert start_piece.colour == self.turn, f"It is {self.turn}'s turn, cannot move enemy piece."
+
+        self._move(start_pos, end_pos, simulate=False)
+
+        if self.turn == BLACK:
+            self.fullmoves += 1
+            self.turn = WHITE
+        else:
+            self.turn = BLACK
+
     def possible_moves(self, colour: str = WHITE) -> Iterable[Tuple[Position, Position]]:
         for piece in filter(lambda p: p.colour == colour, self.pieces):
             for move in piece.legal_moves(self):
                 try:
-                    self.move(piece.pos, move, simulate=True)
+                    self._move(piece.pos, move, simulate=True)
                     yield (piece.pos, move)
                 except IllegalMove:
                     pass
@@ -290,7 +321,7 @@ class Board:
         if self.turn:
             _turn = 'w' if self.turn == WHITE else 'b'
             _en_passant = '-' if self.en_passant is None else str(self.en_passant).lower()
-            fen_str += f' {_turn} {self.castle_flags} {_en_passant}'
+            fen_str += f' {_turn} {self.castle_flags} {_en_passant} {self.halfmove_clock} {self.fullmoves}'
         return fen_str
 
     def __str__(self) -> str:
@@ -307,12 +338,14 @@ class Board:
         return board_str
 
 
-def from_fen(fen: str = STARTING_STATE) -> Tuple[Set[Piece], str, Position]:
+def from_fen(fen: str = STARTING_STATE) -> Tuple[Set[Piece], str, Position, int, int]:
     rank = 7
     file = 0
     pieces = set()
     turn = None
     en_passant = None
+    halfmove_clock = 0
+    fullmoves = 1
 
     components = fen.split(' ')
     for char in components[0]:
@@ -337,4 +370,10 @@ def from_fen(fen: str = STARTING_STATE) -> Tuple[Set[Piece], str, Position]:
         _en_passant_coord = components[3].upper()
         en_passant = None if _en_passant_coord == '-' else position.from_coord(_en_passant_coord)
 
-    return pieces, turn, en_passant
+    if len(components) > 4:
+        halfmove_clock = int(components[4])
+
+    if len(components) > 5:
+        fullmoves = int(components[5])
+
+    return pieces, turn, en_passant, halfmove_clock, fullmoves

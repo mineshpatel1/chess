@@ -3,3 +3,6 @@ class IllegalMove(Exception):
 
 class Checkmate(Exception):
     pass
+
+class Stalemate(Exception):
+    pass
