@@ -1,10 +1,19 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Tuple, Set, TYPE_CHECKING
+from typing import Optional, Iterable, List, Tuple, Set, TYPE_CHECKING
 
 import log
 from position import Position
-from constants import WHITE, BLACK, PIECE_ICONS, PIECE_NAMES, CARDINALS, DIAGONALS
+from constants import (
+    WHITE,
+    BLACK,
+    PIECE_ICONS,
+    PIECE_NAMES,
+    CARDINALS,
+    DIAGONALS,
+    QUEENSIDE,
+    KINGSIDE,
+)
 
 if TYPE_CHECKING:
     from board import Board
@@ -16,7 +25,9 @@ class Piece:
     def __init__(self, pos: Position, colour: str = WHITE):
         assert colour in [WHITE, BLACK], "Only white and black pieces allowed."
         self.colour = colour
+        self.original_pos = pos
         self.pos = pos
+        self.move_history = []
 
     def _moves(self, board: Board) -> Iterable[Position]:
         return []
@@ -72,6 +83,14 @@ class Piece:
     @property
     def icon(self) -> str:
         return PIECE_ICONS[self.code]
+
+    @property
+    def can_castle(self) -> bool:
+        return False
+
+    @property
+    def rook_type(self) -> Optional[str]:
+        return None
 
     def __str__(self) -> str:
         return f'{self.icon}: {self.pos}'
@@ -147,6 +166,27 @@ class Pawn(Piece):
 
 class Rook(Piece):
     TYPE = 'r'
+    CASTLE_POSITIONS = {
+        Position(0, 0): QUEENSIDE,
+        Position(0, 7): QUEENSIDE,
+        Position(7, 0): KINGSIDE,
+        Position(7, 7): KINGSIDE,
+    }
+
+    def __init__(self, pos: Position, colour: str = WHITE):
+        super(Rook, self).__init__(pos, colour)
+
+    @property
+    def rook_type(self) -> str:
+        return self.CASTLE_POSITIONS[self.original_pos]
+
+    @property
+    def can_castle(self) -> bool:
+        """Returns True if the rook has not moved in the game."""
+        return (
+            self.pos == self.original_pos
+            and len(self.move_history) == 0
+        )
 
     def _moves(self, board: Board) -> Iterable[Position]:
         moves = self._repeat_move(board, CARDINALS)

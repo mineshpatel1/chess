@@ -1,4 +1,4 @@
-from typing import Iterable, Dict, List, Tuple, Set
+from typing import Iterable, Optional, Dict, List, Tuple, Set
 
 import log
 import position
@@ -18,7 +18,7 @@ FEN_PIECES = {
 
 
 class Square:
-    def __init__(self, pos: Position, piece: Piece = None):
+    def __init__(self, pos: Position, piece: Optional[Piece] = None):
         self.pos = pos
         self.piece = piece
 
@@ -73,6 +73,8 @@ class Board:
 
         if simulate:
             _reverse_move(self, start_piece, start_pos, taken_piece)
+        else:
+            start_piece.move_history.append((start_pos, end_pos))
 
     def possible_moves(self, colour: str = WHITE) -> Iterable[Tuple[Position, Position]]:
         for piece in filter(lambda p: p.colour == colour, self.pieces):

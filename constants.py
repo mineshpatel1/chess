@@ -1,5 +1,7 @@
 WHITE = 'white'
 BLACK = 'black'
+QUEENSIDE = 'queenside'
+KINGSIDE = 'kingside'
 
 PIECE_NAMES = {
     'p': 'Pawn',
