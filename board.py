@@ -1,4 +1,4 @@
-from typing import Dict, List, Set, Union
+from typing import Iterable, Dict, List, Tuple, Set
 
 import log
 import position
@@ -36,8 +36,16 @@ class Board:
     def __init__(self, state: str = STARTING_STATE):
         self.pieces = from_fen(state)
 
-    def move(self, start_pos: Position, end_pos: Position):
+    def move(self, start_pos: Position, end_pos: Position, simulate: bool = False):
         """Moves a piece from the start position to the end position if legal."""
+
+        def _reverse_move(
+                _board, _start_piece, _start_pos, _taken_piece=None,
+        ):
+            _start_piece.pos = _start_pos
+            if _taken_piece:
+                _board.pieces.add(_taken_piece)
+
         if start_pos == end_pos or not start_pos.in_board or not end_pos.in_board:
             raise IllegalMove(f"{start_pos} to {end_pos} is an illegal move.")
 
@@ -52,19 +60,28 @@ class Board:
 
         end_square = squares[end_pos.index]
         if end_square.is_occupied:  # Take piece if it exists
-            piece_to_take = end_square.piece
+            taken_piece = end_square.piece
             self.pieces.remove(end_square.piece)
         else:
-            piece_to_take = None
+            taken_piece = None
         start_piece.pos = end_pos  # Move piece
 
         # If the move would put the player in check, reverse it and declare it illegal
         if self.is_in_check(start_piece.colour):
-            start_piece.pos = start_pos
-            if piece_to_take:
-                self.pieces.add(piece_to_take)
+            _reverse_move(self, start_piece, start_pos, taken_piece)
             raise IllegalMove(f"{start_pos} to {end_pos} would put {start_piece.colour} in check.")
 
+        if simulate:
+            _reverse_move(self, start_piece, start_pos, taken_piece)
+
+    def possible_moves(self, colour: str = WHITE) -> Iterable[Tuple[Position, Position]]:
+        for piece in filter(lambda p: p.colour == colour, self.pieces):
+            for move in piece.legal_moves(self):
+                try:
+                    self.move(piece.pos, move, simulate=True)
+                    yield (piece.pos, move)
+                except IllegalMove:
+                    pass
 
     def attacked_by(self, pos: Position, colour: str = WHITE) -> bool:
         """Returns whether or not a given square is being attacked by the opposite side."""
@@ -87,6 +104,14 @@ class Board:
 
         # Loop through legal moves of opposing side and return true if they contain the King
         return self.attacked_by(king.pos, colour)
+
+    def is_checkmate(self, colour: str = WHITE) -> bool:
+        """Checks if a given player has been checkmated."""
+
+        if self.is_in_check(colour) and len(list(self.possible_moves(colour))) == 0:
+            return True
+        else:
+            return False
 
     @property
     def _squares_by_rank(self) -> Dict[int, List[Square]]:

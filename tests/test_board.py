@@ -60,8 +60,20 @@ class TestBoard(unittest.TestCase):
             ('rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR', BLACK, False),
             ('rnb2bnr/ppppkppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR', BLACK, True),
         ]:
-            board = Board(state=test[0])
-            self.assertEqual(board.is_in_check(test[1]), test[2])
+            _board = Board(state=test[0])
+            self.assertEqual(_board.is_in_check(test[1]), test[2])
+
+    def test_checkmate(self):
+        for test in [
+            ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', WHITE, False),
+            ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', BLACK, False),
+            ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR', WHITE, True),
+            ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR', BLACK, False),
+            ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1', WHITE, False),
+            ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1', BLACK, True),
+        ]:
+            _board = Board(state=test[0])
+            self.assertEqual(_board.is_checkmate(test[1]), test[2])
 
     def test_fen(self):
         for fen in [
