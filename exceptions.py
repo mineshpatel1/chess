@@ -4,5 +4,14 @@ class IllegalMove(Exception):
 class Checkmate(Exception):
     pass
 
-class Stalemate(Exception):
+class Draw(Exception):
+    pass
+
+class Stalemate(Draw):
+    pass
+
+class FiftyMoveDraw(Draw):
+    pass
+
+class InsufficientMaterial(Draw):
     pass

@@ -10,7 +10,7 @@ from exceptions import IllegalMove
 from constants import WHITE, BLACK, ROOK, KING
 
 
-class TestBoard(unittest.TestCase):
+class TestPieces(unittest.TestCase):
     def tearDown(self):
         self.board = None
 

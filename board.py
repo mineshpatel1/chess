@@ -4,13 +4,22 @@ import log
 import position
 from position import Position
 from pieces import Piece, Rook, Knight, Bishop, Queen, King, Pawn
-from exceptions import Checkmate, Stalemate, IllegalMove
+from exceptions import (
+    Stalemate,
+    Checkmate,
+    InsufficientMaterial,
+    FiftyMoveDraw,
+    IllegalMove,
+)
 
 from constants import (
     WHITE,
     BLACK,
     PAWN,
+    KNIGHT,
+    BISHOP,
     ROOK,
+    QUEEN,
     KING,
     KINGSIDE,
     QUEENSIDE,
@@ -52,21 +61,29 @@ class Board:
             self.fullmoves,
         ) = from_fen(state)
 
-    def _can_castle(self, colour: str, castle_type: str) -> bool:
-        assert colour in (BLACK, WHITE), f"Invalid colour, {colour}, specified."
-        assert castle_type in (QUEENSIDE, KINGSIDE), f"Invalid castle type, {castle_type}, specified."
-
-        king = list(filter(lambda p: p.colour == colour and p.type == KING and p.can_castle, self.pieces))
-        if len(king) == 0:
+    @property
+    def has_insufficient_material(self) -> bool:
+        if len(self.pieces) > 4:  # Any game with more than 4 pieces can be won
             return False
+        elif len(self.pieces) < 3:  # Any game with only kings can't be won
+            return True
+        elif len(self.pieces) == 3:
+            for piece in self.pieces:
+                if piece.type in (PAWN, ROOK, QUEEN):  # Any of these can can checkmate
+                    return False
+            return True
+        elif len(self.pieces) == 4:
+            bishop_squares = set()
+            for piece in self.pieces:
+                if piece.type in (PAWN, KNIGHT, ROOK, QUEEN):  # Any of these can can checkmate
+                    return False
+                elif piece.type == BISHOP:
+                    bishop_squares.add(piece.pos.colour)
 
-        rook = list(filter(
-            lambda p: p.colour == colour and p.type in ROOK and p.can_castle and p.rook_type == castle_type,
-            self.pieces)
-        )
-        if len(rook) == 0:
-            return False
-        return True
+            # Two bishops on the same colour can't checkmate
+            if len(bishop_squares) > 1:
+                return False
+            return True
 
     def _move(self, start_pos: Position, end_pos: Position, simulate: bool = False):
         """Moves a piece from the start position to the end position if legal."""
@@ -166,13 +183,32 @@ class Board:
             else:
                 self.halfmove_clock += 1
 
-    def raise_game_over(self):
+    def _can_castle(self, colour: str, castle_type: str) -> bool:
+        assert colour in (BLACK, WHITE), f"Invalid colour, {colour}, specified."
+        assert castle_type in (QUEENSIDE, KINGSIDE), f"Invalid castle type, {castle_type}, specified."
+
+        king = list(filter(lambda p: p.colour == colour and p.type == KING and p.can_castle, self.pieces))
+        if len(king) == 0:
+            return False
+
+        rook = list(filter(
+            lambda p: p.colour == colour and p.type in ROOK and p.can_castle and p.rook_type == castle_type,
+            self.pieces)
+        )
+        if len(rook) == 0:
+            return False
+        return True
+
+    def raise_if_game_over(self):
+        """Raises an exception if the board is in an end state."""
         if self.halfmove_clock >= 50:
-            raise Stalemate("Half-move clock has reached 50.")
+            raise FiftyMoveDraw
+        elif self.has_insufficient_material:  # This draw can be achieved on either player's turn
+            raise InsufficientMaterial
         elif self.is_checkmate(self.turn):
             raise Checkmate
         elif self.is_stalemate(self.turn):
-            raise Stalemate(f"No legal moves and {self.turn} is not in check.")
+            raise Stalemate
 
     def player_move(self, start_pos: Position, end_pos: Position):
         squares = self.squares
@@ -375,5 +411,8 @@ def from_fen(fen: str = STARTING_STATE) -> Tuple[Set[Piece], str, Position, int,
 
     if len(components) > 5:
         fullmoves = int(components[5])
+
+    if len(pieces) < 2:
+        raise ValueError(f"Invalid FEN: {fen}")
 
     return pieces, turn, en_passant, halfmove_clock, fullmoves

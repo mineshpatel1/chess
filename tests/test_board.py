@@ -7,6 +7,7 @@ import position
 from board import Board
 from position import Position
 from constants import WHITE, BLACK
+from exceptions import FiftyMoveDraw
 
 
 class TestBoard(unittest.TestCase):
@@ -81,7 +82,7 @@ class TestBoard(unittest.TestCase):
             ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', BLACK, False),
             ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR', WHITE, False),
             ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR', BLACK, False),
-            ('5k2/5P2/5K2/8/8/8/8/8 b - - 0 1', WHITE, False),
+            ('5k2/5P2/5K2/8/8/8/8/8 w - - 0 1', WHITE, False),
             ('5k2/5P2/5K2/8/8/8/8/8 b - - 0 1', BLACK, True),
         ):
             _board = Board(state=test[0])
@@ -115,6 +116,36 @@ class TestBoard(unittest.TestCase):
         ):
             _board = board.Board(fen)
             self.assertEqual(_board.fen, fen)
+
+    def test_insufficient_material(self):
+        for fen, result in (
+            ('5k2/5P2/5K2/8/8/8/8/8 b - - 0 1', False),
+            ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w', False),
+            ('8/8/3K4/8/1k6/8/8/8 w - - 0 1', True),
+            ('8/8/3K4/8/1k6/8/3b4/8 w - - 0 1', True),
+            ('8/8/3n4/8/1k6/8/3K4/8 b - - 0 1', True),
+            ('8/8/3bb3/8/1k6/8/3K4/8 b - - 0 1', False),
+            ('8/8/3b4/8/1k6/4B3/3K4/8 b - - 0 1', True),
+        ):
+            _board = Board(fen)
+            self.assertEqual(_board.has_insufficient_material, result)
+
+    def test_fifty_move_draw(self):
+        _board = Board('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 49 1')
+        self.assertEqual(_board.halfmove_clock, 49)
+        _board._move(Position(0, 1), Position(0, 2))  # Move pawn
+        _board.raise_if_game_over()
+        self.assertEqual(_board.halfmove_clock, 0)
+
+        _board = Board('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 49 60')
+        _board._move(Position(1, 0), Position(2, 2))  # Move other piece
+        with self.assertRaises(FiftyMoveDraw):
+            _board.raise_if_game_over()
+
+        _board = Board('rn1qkbnr/ppp1pppp/3p4/8/6b1/5P2/PPPPP1PP/RNBQKBNR b KQkq - 49 60')
+        _board._move(Position(6, 3), Position(5, 2))  # Take piece
+        _board.raise_if_game_over()
+        self.assertEqual(_board.halfmove_clock, 0)
 
     def test_en_passant(self):
         _board = Board(state=board.STARTING_STATE)
