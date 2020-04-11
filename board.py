@@ -193,7 +193,25 @@ class Board:
     def is_checkmate(self, colour: str) -> bool:
         """Checks if a given player has been checkmated."""
 
-        if self.is_in_check(colour) and len(list(self.possible_moves(colour))) == 0:
+        if self.is_in_check(colour):
+            i = 0
+            for _ in self.possible_moves(colour):
+                i += 1
+                if i > 0:
+                    return False
+            return True
+        else:
+            return False
+
+    def is_stalemate(self, colour: str) -> bool:
+        """Checks if a game is in stalemate."""
+
+        if not self.is_in_check(colour):
+            i = 0
+            for _ in self.possible_moves(colour):
+                i += 1
+                if i > 0:
+                    return False
             return True
         else:
             return False

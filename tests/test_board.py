@@ -75,6 +75,18 @@ class TestBoard(unittest.TestCase):
             _board = Board(state=test[0])
             self.assertEqual(_board.is_checkmate(test[1]), test[2])
 
+    def test_stalemate(self):
+        for test in (
+            ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', WHITE, False),
+            ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', BLACK, False),
+            ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR', WHITE, False),
+            ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR', BLACK, False),
+            ('5k2/5P2/5K2/8/8/8/8/8 b - - 0 1', WHITE, False),
+            ('5k2/5P2/5K2/8/8/8/8/8 b - - 0 1', BLACK, True),
+        ):
+            _board = Board(state=test[0])
+            self.assertEqual(_board.is_stalemate(test[1]), test[2])
+
     def test_castle_flags(self):
         for test in (
             (board.STARTING_STATE, 'KQkq'),
