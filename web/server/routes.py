@@ -6,7 +6,7 @@ from engine.constants import WHITE, BLACK
 from engine.board import Board
 from engine.exceptions import IllegalMove, Checkmate, Draw
 from engine import position
-from web.app import app
+from web.server import app
 
 cache = {
     'board': None,

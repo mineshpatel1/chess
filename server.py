@@ -1,2 +1,2 @@
-from web.app import app
+from web.server import app
 
