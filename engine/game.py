@@ -96,6 +96,7 @@ class Game:
         # FEN isn't sufficient to describe this, so assume unique
         self.repetitions = {}  # type: Dict[str, int]
         self.move_history = []  # type: List[Move]
+        self.counter = 0
 
     @property
     def has_insufficient_material(self) -> bool:
@@ -130,10 +131,17 @@ class Game:
 
     @property
     def board_value(self):
+        """Evaluation of the board, positive for white, negative for black."""
         total = 0
         for piece in self.pieces:
             total += piece.value
         return total
+
+    @property
+    def relative_value(self):
+        """Board value normalised for the given player. All players should look to maximise this value."""
+        modifier = 1 if self.turn == WHITE else -1
+        return modifier * self.board_value
 
     def _add_repetition(self):
         fen = self._short_fen

@@ -115,7 +115,7 @@ class Game extends React.Component {
             error: null,
             message: null,
             loading: false,
-            twoPlayer: false,
+            twoPlayer: true,
         };
     }
 
