@@ -113,7 +113,7 @@ class Piece:
         return None
 
     def __str__(self) -> str:
-        return f'{self.icon}: {self.pos} {self.colour} {self.original_pos}'
+        return f'{self.icon}: {self.pos}'
 
     def __repr__(self) -> str:
         return str(self)

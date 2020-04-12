@@ -1,0 +1,106 @@
+body {
+    background-color: #323031;
+    color: #fff;
+    font: 14px "Century Gothic", Futura, sans-serif;
+}
+
+.reactive_square {
+    position: relative;
+    width: 40%;
+    background-color: #3D3B3C;;
+    margin: auto;
+    margin-top: 50px;
+}
+  
+.reactive_square:after {
+    content: "";
+    display: block;
+    padding-bottom: 100%;
+}
+  
+.board {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+}
+
+.row {
+    height: 12.5%;
+    width: 100%;
+    background-color: red;
+}
+
+.square {
+    height: 100%;
+    width: 12.5%;
+    float: left;
+}
+
+.square.black {
+    background-color: #574f50;
+}
+
+.square.white {
+    background-color: #9497a0;
+}
+
+.square.selected {
+    background-color: #ffe497;
+}
+
+.piece {
+    text-align: center;
+    vertical-align: middle;
+    height: 100%;
+    margin-top: auto;
+    margin: auto;
+    cursor: pointer;
+}
+
+.piece:after {
+    content: '';
+    display: inline-block;
+    width: 0;
+    height: 100%;
+    vertical-align: middle;
+}
+
+.piece svg {
+    font-size: 3vw;
+    display: inline-block;
+    vertical-align: middle;
+    text-align: left;
+    white-space: nowrap;
+    padding-top: 17%;
+}
+
+.piece.black svg {
+    color: #261e1a;
+}
+
+.piece.white svg {
+    color: #e4eaf2;
+}
+
+.button {
+    cursor: pointer;
+}
+
+.controls {
+    margin: auto;
+    width: 40%;
+    margin-top: 25px;
+}
+
+.button {
+    cursor: pointer;
+    width: 250px;
+    text-align: center;
+    font-size: 24px;
+    padding: 25px;
+    background-color: #2394ca;
+}
+
+.clickable {
+    cursor: pointer;
+}
