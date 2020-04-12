@@ -1,6 +1,6 @@
 import log
 from engine import position
-from engine.board import Board
+from engine.game import Game
 
 def main():
     pass

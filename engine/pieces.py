@@ -22,7 +22,7 @@ from engine.constants import (
 )
 
 if TYPE_CHECKING:
-    from engine.board import Board
+    from engine.game import Game
 
 
 class Piece:
@@ -39,10 +39,10 @@ class Piece:
         self.pos = pos
         self.move_history = []
 
-    def _moves(self, board: Board) -> Iterable[Position]:
+    def _moves(self, board: Game) -> Iterable[Position]:
         return []
 
-    def _repeat_move(self, board: Board, move_patterns: List[Tuple[int, int]]) -> List[Position]:
+    def _repeat_move(self, board: Game, move_patterns: List[Tuple[int, int]]) -> List[Position]:
         moves = []
 
         for x, y in move_patterns:
@@ -59,14 +59,14 @@ class Piece:
                 _pos = Position(_pos.file + x, _pos.rank + y)
         return moves
 
-    def _occupied_same_team(self, pos: Position, board: Board) -> bool:
+    def _occupied_same_team(self, pos: Position, board: Game) -> bool:
         square = board.squares[pos.index]
         if square.is_occupied:
             return square.piece.colour == self.colour
         else:
             return False
 
-    def _occupied_opposite_team(self, pos: Position, board: Board) -> bool:
+    def _occupied_opposite_team(self, pos: Position, board: Game) -> bool:
         square = board.squares[pos.index]
         if square.is_occupied:
             return square.piece.colour != self.colour
@@ -76,7 +76,7 @@ class Piece:
     def same_team(self, other) -> bool:
         return self.colour == other.colour
 
-    def legal_moves(self, board: Board) -> Set[Position]:
+    def legal_moves(self, board: Game) -> Set[Position]:
         return set(filter(
             lambda pos: pos.in_board,
             self._moves(board),
@@ -144,7 +144,7 @@ class Piece:
 class Pawn(Piece):
     TYPE = PAWN
 
-    def _moves(self, board: Board) -> Iterable[Position]:
+    def _moves(self, board: Game) -> Iterable[Position]:
         direction = 1 if self.colour == WHITE else -1
 
         forwards = [
@@ -199,7 +199,7 @@ class Rook(Piece):
         }
     }
 
-    def _moves(self, board: Board) -> Iterable[Position]:
+    def _moves(self, board: Game) -> Iterable[Position]:
         moves = self._repeat_move(board, CARDINALS)
         return moves
 
@@ -214,7 +214,7 @@ class Rook(Piece):
 class Knight(Piece):
     TYPE = KNIGHT
 
-    def _moves(self, board: Board) -> Iterable[Position]:
+    def _moves(self, board: Game) -> Iterable[Position]:
         moves = []
         for i in [1, -1, 2, -2]:
             for j in [1, -1, 2, -2]:
@@ -231,7 +231,7 @@ class Knight(Piece):
 class Bishop(Piece):
     TYPE = BISHOP
 
-    def _moves(self, board: Board) -> Iterable[Position]:
+    def _moves(self, board: Game) -> Iterable[Position]:
         moves = self._repeat_move(board, DIAGONALS)
         return moves
 
@@ -239,7 +239,7 @@ class Bishop(Piece):
 class Queen(Piece):
     TYPE = QUEEN
 
-    def _moves(self, board: Board) -> Iterable[Position]:
+    def _moves(self, board: Game) -> Iterable[Position]:
         moves = self._repeat_move(board, CARDINALS + DIAGONALS)
         return moves
 
@@ -256,7 +256,7 @@ class King(Piece):
         }
     }
 
-    def _moves(self, board: Board) -> Iterable[Position]:
+    def _moves(self, board: Game) -> Iterable[Position]:
         moves = []
         for x, y in CARDINALS + DIAGONALS:
             pos = Position(self.pos.file + x, self.pos.rank + y)

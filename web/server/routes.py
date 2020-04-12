@@ -3,7 +3,7 @@ from flask import request
 
 import log
 from engine.constants import WHITE, BLACK
-from engine.board import Board
+from engine.game import Game
 from engine.exceptions import IllegalMove, Checkmate, Draw
 from engine import position
 from web.server import app
@@ -50,14 +50,14 @@ def json_board(board, params=None):
 
 @app.route('/newGame')
 def new_game():
-    board = Board()
+    board = Game()
     cache['board'] = board
     return json_board(board)
 
 @app.route('/loadGame', methods=['POST'])
 def load_game():
     data = request.get_json()
-    board = Board(state=data['state'])
+    board = Game(state=data['state'])
     cache['board'] = board
     return json_board(board)
 

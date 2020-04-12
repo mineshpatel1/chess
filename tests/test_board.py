@@ -4,8 +4,8 @@ from engine import position
 from engine.exceptions import FiftyMoveDraw, ThreefoldRepetition
 from engine.position import Position
 
-from engine import board
-from engine.board import Board
+from engine import game
+from engine.game import Game
 from engine.constants import WHITE, BLACK
 
 
@@ -43,7 +43,7 @@ class TestBoard(unittest.TestCase):
             self.assertEqual(position.from_coord(coord), pos)
 
     def test_start_layout(self):
-        _board = Board(state=board.STARTING_STATE)
+        _board = Game(state=game.STARTING_STATE)
         _pieces = {
             0: 'R', 1: 'N', 2: 'B', 3: 'Q', 4: 'K', 5: 'B', 6: 'N', 7: 'R', 8: 'P', 9: 'P', 10: 'P', 11: 'P', 12: 'P',
             13: 'P', 14: 'P', 15: 'P', 48: 'p', 49: 'p', 50: 'p', 51: 'p', 52: 'p', 53: 'p', 54: 'p', 55: 'p', 56: 'r',
@@ -60,7 +60,7 @@ class TestBoard(unittest.TestCase):
             ('rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR', BLACK, False),
             ('rnb2bnr/ppppkppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR', BLACK, True),
         ):
-            _board = Board(state=test[0])
+            _board = Game(state=test[0])
             self.assertEqual(_board.is_in_check(test[1]), test[2])
 
     def test_checkmate(self):
@@ -72,7 +72,7 @@ class TestBoard(unittest.TestCase):
             ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1', WHITE, False),
             ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1', BLACK, True),
         ):
-            _board = Board(state=test[0])
+            _board = Game(state=test[0])
             self.assertEqual(_board.is_checkmate(test[1]), test[2])
 
     def test_stalemate(self):
@@ -84,12 +84,12 @@ class TestBoard(unittest.TestCase):
             ('5k2/5P2/5K2/8/8/8/8/8 w - - 0 1', WHITE, False),
             ('5k2/5P2/5K2/8/8/8/8/8 b - - 0 1', BLACK, True),
         ):
-            _board = Board(state=test[0])
+            _board = Game(state=test[0])
             self.assertEqual(_board.is_stalemate(test[1]), test[2])
 
     def test_castle_flags(self):
         for test in (
-            (board.STARTING_STATE, 'KQkq'),
+            (game.STARTING_STATE, 'KQkq'),
             ('rnbqkbnr/pppppppp/8/8/8/7P/PPPPPPPR/RNBQKBN1', 'Qkq'),
             ('rnbqkbnr/pppppppp/8/8/8/P3P3/RPPP1PPP/1NBQKBNR', 'Kkq'),
             ('rnbqkbnr/pppppppp/8/8/8/4P3/PPPPKPPP/RNBQ1BNR', 'kq'),
@@ -98,7 +98,7 @@ class TestBoard(unittest.TestCase):
             ('rnbq1bnr/ppppkpp1/7p/4p3/8/8/PPPPPPPP/RNBQKBNR', 'KQ'),
             ('rnbq1bnr/ppppkpp1/7p/4p3/8/4P3/PPPPKPPP/RNBQ1BNR', '-'),
         ):
-            _board = Board(state=test[0])
+            _board = Game(state=test[0])
             self.assertEqual(_board.castle_flags, test[1])
 
     def test_fen(self):
@@ -113,7 +113,7 @@ class TestBoard(unittest.TestCase):
             'rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 0 1',
             'rnbqkbnr/pppppp1p/8/8/5Pp1/8/PPPPP1PP/RNBQKBNR b KQkq f3 0 1',
         ):
-            _board = board.Board(fen)
+            _board = game.Game(fen)
             self.assertEqual(_board.fen, fen)
 
     def test_insufficient_material(self):
@@ -126,28 +126,28 @@ class TestBoard(unittest.TestCase):
             ('8/8/3bb3/8/1k6/8/3K4/8 b - - 0 1', False),
             ('8/8/3b4/8/1k6/4B3/3K4/8 b - - 0 1', True),
         ):
-            _board = Board(fen)
+            _board = Game(fen)
             self.assertEqual(_board.has_insufficient_material, result)
 
     def test_fifty_move_draw(self):
-        _board = Board('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 49 1')
+        _board = Game('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 49 1')
         self.assertEqual(_board.halfmove_clock, 49)
         _board._move(Position(0, 1), Position(0, 2))  # Move pawn
         _board.raise_if_game_over()
         self.assertEqual(_board.halfmove_clock, 0)
 
-        _board = Board('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 49 60')
+        _board = Game('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 49 60')
         _board._move(Position(1, 0), Position(2, 2))  # Move other piece
         with self.assertRaises(FiftyMoveDraw):
             _board.raise_if_game_over()
 
-        _board = Board('rn1qkbnr/ppp1pppp/3p4/8/6b1/5P2/PPPPP1PP/RNBQKBNR b KQkq - 49 60')
+        _board = Game('rn1qkbnr/ppp1pppp/3p4/8/6b1/5P2/PPPPP1PP/RNBQKBNR b KQkq - 49 60')
         _board._move(Position(6, 3), Position(5, 2))  # Take piece
         _board.raise_if_game_over()
         self.assertEqual(_board.halfmove_clock, 0)
 
     def test_threefold_repetition(self):
-        _board = Board()
+        _board = Game()
         for move in (
             ('B2', 'B3'),
             ('C7', 'C6'),
@@ -172,7 +172,7 @@ class TestBoard(unittest.TestCase):
             _board.raise_if_game_over()
 
     def test_en_passant(self):
-        _board = Board(state=board.STARTING_STATE)
+        _board = Game(state=game.STARTING_STATE)
         self.assertEqual(_board.en_passant, None)
 
         _board._move(position.from_coord('B2'), position.from_coord('B4'))
@@ -184,7 +184,7 @@ class TestBoard(unittest.TestCase):
         self.assertEqual(_board.fen, 'rnbqkb1r/pppppppp/5n2/8/1P6/8/P1PPPPPP/RNBQKBNR w KQkq - 1 1')
 
     def test_print(self):
-        _board = Board(state=board.STARTING_STATE)
+        _board = Game(state=game.STARTING_STATE)
         match = ("""
 8 [♜][♞][♝][♛][♚][♝][♞][♜]
 7 [♟][♟][♟][♟][♟][♟][♟][♟]

@@ -51,7 +51,7 @@ class Square:
         else:
             return str(self.pos)
 
-class Board:
+class Game:
     def __init__(self, state: str = STARTING_STATE):
         (
             self.pieces,
