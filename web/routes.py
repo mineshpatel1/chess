@@ -1,3 +1,4 @@
+import random
 from flask import request
 
 import log
@@ -10,6 +11,15 @@ from web.app import app
 cache = {
     'board': None,
 }
+
+def first_possible_move(board):
+    """Ultra fast, ultra terrible and predictable."""
+    for move in board.possible_moves(board.turn):
+        return move
+
+def random_move(board):
+    """Ultra terrible, but less predictable."""
+    return random.choice(list(board.possible_moves(board.turn)))
 
 def json_board(board, params=None):
     _by_rank = {}
@@ -53,6 +63,7 @@ def load_game():
 
 @app.route('/makeMove', methods=['POST'])
 def make_move():
+    """Both white and black players are human."""
     data = request.get_json()
     board = cache['board']
 
@@ -72,3 +83,20 @@ def make_move():
         return json_board(board, {'end': str(err)})
 
 
+@app.route('/makeMoveAi')
+def make_move_ai():
+    """Randomly choose a possible move."""
+    board = cache['board']
+    try:
+        board.raise_if_game_over()
+        # from_pos, to_pos = first_possible_move(board)
+        from_pos, to_pos = random_move(board)
+        board.player_move(from_pos, to_pos)
+        return json_board(board)
+    except IllegalMove as err:
+        return {'error': str(err)}
+    except Checkmate:
+        winner = BLACK if board.turn == WHITE else WHITE
+        return json_board(board, {'end': f"Checkmate: {winner} wins!"})
+    except Draw as err:
+        return json_board(board, {'end': err.MESSAGE})

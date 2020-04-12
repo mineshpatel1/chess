@@ -2,9 +2,16 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faChessRook, faChessKnight, faChessBishop, faChessQueen, faChessKing, faChessPawn } from '@fortawesome/free-solid-svg-icons'
+import {
+    faChessRook, faChessKnight, faChessBishop, faChessQueen, faChessKing, faChessPawn,
+    faCircleNotch,
+} from '@fortawesome/free-solid-svg-icons'
 
 import './index.css';
+
+function sleep (seconds) {
+    return new Promise(resolve => setTimeout(resolve, seconds * 1000));
+}
 
 function capitalise(s) { 
     return s[0].toUpperCase() + s.slice(1); 
@@ -107,7 +114,40 @@ class Game extends React.Component {
             mode: 'selectPiece',
             error: null,
             message: null,
+            loading: false,
+            twoPlayer: false,
         };
+    }
+
+    processBoard(data, humanMove) {
+        console.log(data, humanMove);
+
+        if (data.end) {
+            this.setState({
+                'board': data.board,
+                'message': data.end,
+                'selected': null,
+                'mode': 'end',
+                'error': null,
+                'loading': false
+            });
+        } else if (data.error) {
+            this.setState({'error': data.error, 'selected': null, 'mode': 'selectPiece'});
+        } else if (data.board) {
+            this.setState({
+                'board': data.board,
+                'turn': data.turn,
+                'fen': data.fen,
+                'selected': null,
+                'mode': 'selectPiece',
+                'error': null,
+                'loading': false,
+            }, () => {
+                if (humanMove && !this.state.twoPlayer) {
+                    this.aiMove();
+                }
+            });
+        }
     }
 
     selectPiece(i) {
@@ -122,30 +162,26 @@ class Game extends React.Component {
         } else if (this.state.mode === 'selectSquare') {
             const requestOptions = post_req({ 'start_pos': this.state.selected, 'end_pos': i });
             fetch('/makeMove', requestOptions).then(res => res.json())
-                .then(data => {
-                    if (data.end) {
-                        this.setState({'board': data.board, 'message': data.end, 'selected': null, 'mode': 'end', 'error': null});
-                    } else if (data.error) {
-                        this.setState({'error': data.error, 'selected': null, 'mode': 'selectPiece'});
-                    } else if (data.board) {
-                        this.setState({
-                            'board': data.board,
-                            'turn': data.turn,
-                            'fen': data.fen,
-                            'selected': null,
-                            'mode': 'selectPiece',
-                            'error': null,
-                        });
-                    }
-                })
+                .then(data => {this.processBoard(data, true)})
                 .catch(() => {
                     this.setState({'error': "Server error: could not make move."});
                 });
         }
     }
 
+    aiMove() {
+        this.setState({
+            'loading': true,
+        }, () => {
+            fetch('/makeMoveAi').then(res => res.json())
+                .then(data => {
+                    this.processBoard(data, false)
+                });
+        })
+    }
+
     loadGame() {
-        const requestOptions = post_req({ 'state': '3Q4/5k2/p1R5/8/3PQ3/1q5p/7P/7K w - - 3 58' });
+        const requestOptions = post_req({ 'state': 'Q2Q4/4N3/2R5/1k4B1/4P1R1/1p3K1B/1P3P1P/8 w - - 6 46' });
         fetch('/loadGame', requestOptions).then(res => res.json())
             .then(data => {
                 this.setState({
@@ -257,6 +293,12 @@ class Game extends React.Component {
                         {this.state.error}
                     </div>
                 </div>
+                {
+                    this.state.loading &&
+                    <div className="loading">
+                        <FontAwesomeIcon icon={faCircleNotch} size="lg" spin />
+                    </div>
+                }
             </div>
         );
     }

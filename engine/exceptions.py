@@ -5,16 +5,16 @@ class Checkmate(Exception):
     pass
 
 class Draw(Exception):
-    pass
+    MESSAGE = "Match drawn."
 
 class Stalemate(Draw):
-    pass
+    MESSAGE = "Stalemate: player has no legal moves but is not in check."
 
 class FiftyMoveDraw(Draw):
-    pass
+    MESSAGE = "50 moves have occured without moving a pawn or taking a piece."
 
 class InsufficientMaterial(Draw):
-    pass
+    MESSAGE = "Player has insufficient material to checkmate."
 
 class ThreefoldRepetition(Draw):
-    pass
+    MESSAGE = "Same board position has occurred 3 times."
