@@ -168,10 +168,7 @@ class Game:
         # Castling attempt, only way to move a King two spaces cardinally
         if start_piece.type == KING and abs(end_pos.file - start_pos.file) == 2:
             can_castle = True
-            if end_pos.file > start_pos.file:
-                direction = 1
-            else:
-                direction = -1
+            direction = 1 if end_pos.file > start_pos.file else -1
 
             for i in range(2):
                 _castle_pos = Position(start_pos.file + (direction * (i + 1)), start_pos.rank)
@@ -325,6 +322,15 @@ class Game:
 
             if move.taken_piece:
                 self.pieces.add(move.taken_piece)  # Put piece back
+
+            if move.was_castle:
+                direction = 1 if move.end_pos.file > move.start_pos.file else -1
+                rook = self.is_occupied(Position(move.start_pos.file + direction, move.start_pos.rank))
+
+                if direction > 0:  # Kingside castle
+                    rook.pos = Position(7, rook.pos.rank)
+                else:
+                    rook.pos = Position(0, rook.pos.rank)
 
             self.en_passant = move.prev_en_passant
             self.halfmove_clock = move.halfmove_clock
