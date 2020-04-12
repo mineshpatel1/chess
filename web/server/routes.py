@@ -1,7 +1,7 @@
-import random
 from flask import request
 
 import log
+from ai import dumb
 from engine.constants import WHITE, BLACK
 from engine.game import Game
 from engine.exceptions import IllegalMove, Checkmate, Draw
@@ -11,15 +11,6 @@ from web.server import app
 cache = {
     'board': None,
 }
-
-def first_possible_move(board):
-    """Ultra fast, ultra terrible and predictable."""
-    for move in board.possible_moves(board.turn):
-        return move
-
-def random_move(board):
-    """Ultra terrible, but less predictable."""
-    return random.choice(list(board.possible_moves(board.turn)))
 
 def json_board(board, params=None):
     _by_rank = {}
@@ -89,8 +80,8 @@ def make_move_ai():
     board = cache['board']
     try:
         board.raise_if_game_over()
-        # from_pos, to_pos = first_possible_move(board)
-        from_pos, to_pos = random_move(board)
+        # from_pos, to_pos = dumb.first_possible_move(board)
+        from_pos, to_pos = dumb.random_move(board)
         board.player_move(from_pos, to_pos)
         return json_board(board)
     except IllegalMove as err:
