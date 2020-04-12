@@ -1,8 +1,9 @@
-import time
 from flask import request
 
 import log
+from engine.constants import WHITE, BLACK
 from engine.board import Board
+from engine.exceptions import IllegalMove, Checkmate, Draw
 from engine import position
 from web.app import app
 
@@ -10,7 +11,7 @@ cache = {
     'board': None,
 }
 
-def json_board(board):
+def json_board(board, params=None):
     _by_rank = {}
     for square in board.squares:
         rank = square.pos.rank
@@ -32,30 +33,42 @@ def json_board(board):
     for i, rank in enumerate(sorted(_by_rank.keys(), reverse=True)):
         by_rank[i] = _by_rank[rank]
 
-    return {'board': by_rank}
+    payload = {'board': by_rank, 'turn': board.turn, 'fen': board.fen}
+    if params:
+        payload.update(params)
+    return payload
 
-@app.route('/')
-@app.route('/index')
-def index():
-    return "Hello, World, Shirley"
-
-@app.route('/time')
-def get_current_time():
-    return {'time': time.time()}
-
-@app.route('/newBoard')
-def new_board():
+@app.route('/newGame')
+def new_game():
     board = Board()
     cache['board'] = board
     return json_board(board)
 
+@app.route('/loadGame', methods=['POST'])
+def load_game():
+    data = request.get_json()
+    board = Board(state=data['state'])
+    cache['board'] = board
+    return json_board(board)
 
 @app.route('/makeMove', methods=['POST'])
 def make_move():
     data = request.get_json()
     board = cache['board']
-    board.player_move(
-        position.from_index(data['start_pos']),
-        position.from_index(data['end_pos']),
-    )
-    return json_board(board)
+
+    try:
+        board.player_move(
+            position.from_index(data['start_pos']),
+            position.from_index(data['end_pos']),
+        )
+        board.raise_if_game_over()
+        return json_board(board)
+    except IllegalMove as err:
+        return {'error': str(err)}
+    except Checkmate:
+        winner = BLACK if board.turn == WHITE else WHITE
+        return json_board(board, {'end': f"Checkmate: {winner} wins!"})
+    except Draw as err:
+        return json_board(board, {'end': str(err)})
+
+

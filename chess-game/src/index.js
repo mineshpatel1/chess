@@ -6,6 +6,18 @@ import { faChessRook, faChessKnight, faChessBishop, faChessQueen, faChessKing, f
 
 import './index.css';
 
+function capitalise(s) { 
+    return s[0].toUpperCase() + s.slice(1); 
+}
+
+function post_req(data) {
+    return {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    };
+}
+
 export class _Square {
     constructor(rank, file, piece, pieceColour) {
         this.rank = rank;
@@ -36,8 +48,7 @@ class Button extends React.Component {
 
 class Square extends React.Component {
     render() {
-        let square = this.props.square;
-        let mode = this.props.mode;
+        let {square, mode, turn} = this.props;
 
         let square_classes;
         if (square.selected) {
@@ -46,7 +57,10 @@ class Square extends React.Component {
             square_classes = `square ${square.colour}`;
         }
 
-        if (mode === 'selectSquare') {
+        if (
+            (mode === 'selectSquare' || square.pieceColour === turn) &&
+            mode != 'end'
+        ) {
             square_classes += ' clickable';
         }
 
@@ -88,8 +102,11 @@ class Game extends React.Component {
 
         this.state = {
             board: null,
+            turn: null,
             selected: null,
             mode: 'selectPiece',
+            error: null,
+            message: null,
         };
     }
 
@@ -100,27 +117,72 @@ class Game extends React.Component {
     }
 
     selectSquare(i) {
-        if (this.state.mode === 'selectSquare') {
-            const requestOptions = {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 'start_pos': this.state.selected, 'end_pos': i }),
-            };
-            fetch('/makeMove', requestOptions).then(res => res.json()).then(data => {
-                this.setState({'board': data.board, 'selected': null, 'mode': 'selectPiece'});
-            });
+        if (this.state.mode === 'selectSquare' && i === this.state.selected) {
+            this.setState({'selected': null, 'mode': 'selectPiece'});
+        } else if (this.state.mode === 'selectSquare') {
+            const requestOptions = post_req({ 'start_pos': this.state.selected, 'end_pos': i });
+            fetch('/makeMove', requestOptions).then(res => res.json())
+                .then(data => {
+                    if (data.end) {
+                        this.setState({'board': data.board, 'message': data.end, 'selected': null, 'mode': 'end', 'error': null});
+                    } else if (data.error) {
+                        this.setState({'error': data.error, 'selected': null, 'mode': 'selectPiece'});
+                    } else if (data.board) {
+                        this.setState({
+                            'board': data.board,
+                            'turn': data.turn,
+                            'fen': data.fen,
+                            'selected': null,
+                            'mode': 'selectPiece',
+                            'error': null,
+                        });
+                    }
+                })
+                .catch(() => {
+                    this.setState({'error': "Server error: could not make move."});
+                });
         }
     }
 
+    loadGame() {
+        const requestOptions = post_req({ 'state': '3Q4/5k2/p1R5/8/3PQ3/1q5p/7P/7K w - - 3 58' });
+        fetch('/loadGame', requestOptions).then(res => res.json())
+            .then(data => {
+                this.setState({
+                    'board': data.board,
+                    'turn': data.turn,
+                    'fen': data.fen,
+                    'selected': null,
+                    'error': null,
+                    'message': null,
+                    'mode': 'selectPiece',
+                });
+            })
+            .catch(() => {
+                this.setState({'error': "Server error: cannot load game."})
+            });
+    }
+
     newGame() {
-        fetch('/newBoard').then(res => res.json()).then(data => {
-            this.setState({'board': data.board});
-        });
+        fetch('/newGame').then(res => res.json())
+            .then(data => {
+                this.setState({
+                    'board': data.board,
+                    'turn': data.turn,
+                    'fen': data.fen,
+                    'selected': null,
+                    'error': null,
+                    'message': null,
+                    'mode': 'selectPiece',
+                });
+            })
+            .catch(() => {
+                this.setState({'error': "Server error: cannot start new game."})
+            });
     }
 
     render() {
-        let board = this.state.board;
-        let mode = this.state.mode;
+        let {board, mode, turn, fen, message} = this.state;
         let rows = [];
         for (let i = 0; i < 8; i++) {
             let squares = [];
@@ -141,9 +203,22 @@ class Game extends React.Component {
             }
             rows.push(squares);
         }
+        let info = null;
+        if (turn) {
+            if (mode === 'end') {
+                info = message;
+            } else {
+                info = capitalise(turn) + " to move";
+            }
+        }
 
         return (
             <div className="container">
+                <div className="state">{fen}</div>
+                <div className="panel">
+                    <Button label="New Game" onClick={() => { this.newGame(); }}/>
+                    <Button label="Load Game" onClick={() => { this.loadGame(); }}/>
+                </div>
                 <div className="reactive_square">
                     <div className="board">
                         {
@@ -154,9 +229,9 @@ class Game extends React.Component {
                                             rank.map((square, j) => {
                                                 return (
                                                     <Square 
-                                                        square={square} key={j} mode={mode}
+                                                        square={square} key={j} mode={mode} turn={turn}
                                                         onClick={() => {
-                                                            if (mode === 'selectPiece') {
+                                                            if (mode === 'selectPiece' && square.pieceColour === turn) {
                                                                 this.selectPiece(square.index);
                                                             } else if (mode === 'selectSquare') {
                                                                 this.selectSquare(square.index);
@@ -172,8 +247,15 @@ class Game extends React.Component {
                         }
                     </div>
                 </div>
-                <div className="controls" onClick={() => { this.newGame(); }}>
-                    <Button label="New Game"/>
+                <div className="panel">
+                    <div className="message info">
+                        {info}
+                    </div>
+                </div>
+                <div className="panel">
+                    <div className="message error">
+                        {this.state.error}
+                    </div>
                 </div>
             </div>
         );
