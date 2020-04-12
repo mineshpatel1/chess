@@ -68,6 +68,8 @@ def make_move():
     except IllegalMove as err:
         return {'error': str(err)}
     except Checkmate:
+        for move in board.move_history:
+            log.info(move)
         winner = BLACK if board.turn == WHITE else WHITE
         return json_board(board, {'end': f"Checkmate: {winner} wins!"})
     except Draw as err:

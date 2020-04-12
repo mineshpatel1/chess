@@ -1,5 +1,6 @@
 from typing import Iterable, Optional, Dict, List, Tuple, Set
 
+import log
 from engine import position
 from engine.exceptions import (
     InsufficientMaterial,
@@ -51,6 +52,37 @@ class Square:
         else:
             return str(self.pos)
 
+class Move:
+    """Defines a move completely, including pieces taken, castling and promotion. Used to enable reliable undo."""
+    def __init__(
+            self,
+            start_pos: Position,
+            end_pos: Position,
+            colour: str,
+            halfmove_clock: int,
+            prev_en_passant: Position,
+            taken_piece: Optional[Piece] = None,
+            was_castle: bool = False,
+            was_promoted: bool = False,
+    ):
+        self.start_pos = start_pos
+        self.end_pos = end_pos
+        self.colour = colour
+        self.halfmove_clock = halfmove_clock
+        self.prev_en_passant = prev_en_passant
+        self.taken_piece = taken_piece
+        self.was_castle = was_castle
+        self.was_promoted = was_promoted
+
+    def __str__(self):
+        _str = f"{self.start_pos} -> {self.end_pos}"
+        if self.taken_piece:
+            _str += f" ({self.taken_piece.icon})"
+        return _str
+
+    def __repr__(self):
+        return str(self)
+
 class Game:
     def __init__(self, state: str = STARTING_STATE):
         (
@@ -63,7 +95,7 @@ class Game:
 
         # FEN isn't sufficient to describe this, so assume unique
         self.repetitions = {}  # type: Dict[str, int]
-        self.move_history = []
+        self.move_history = []  # type: List[Move]
 
     @property
     def has_insufficient_material(self) -> bool:
@@ -107,6 +139,11 @@ class Game:
         fen = self._short_fen
         self.repetitions[fen] = self.repetitions.get(fen, 0)
         self.repetitions[fen] += 1
+
+    def _remove_repetition(self):
+        fen = self._short_fen
+        if fen in self.repetitions:
+            self.repetitions[fen] -= 1
 
     def _move(self, start_pos: Position, end_pos: Position, simulate: bool = False):
         """Moves a piece from the start position to the end position if legal."""
@@ -163,8 +200,11 @@ class Game:
                 move_rook = Position(rook.pos.file + (-num_squares * direction), rook.pos.rank)
                 rook.pos = move_rook
 
-                self.move_history.append((start_pos, end_pos))
+                self.move_history.append(
+                    Move(start_pos, end_pos, start_piece.colour, self.halfmove_clock, self.en_passant, was_castle=True)
+                )
                 self.halfmove_clock += 1  # Note that we don't add a repetition here
+                self.en_passant = None
                 return
             else:
                 raise IllegalMove("Cannot castle, intermediate squares are being attacked.")
@@ -195,14 +235,16 @@ class Game:
             _reverse_move(self, start_piece, start_pos, taken_piece)
         else:
             # Mark en passant square if a pawn moves two squares, otherwise clear
+            prev_en_passant = self.en_passant
             if start_piece.type == PAWN and abs(end_pos.rank - start_pos.rank) == 2:
                 direction = -1 if start_piece.colour == WHITE else 1
                 self.en_passant = Position(start_piece.pos.file, start_piece.pos.rank + direction)
             else:
                 self.en_passant = None
-            start_piece.move_history.append((start_pos, end_pos))
-            self.move_history.append((start_pos, end_pos))
 
+            start_piece.move_history.append((start_pos, end_pos))
+
+            was_promoted = False
             if start_piece.type == PAWN:  # Promote pawn if it reaches the end of the board
                 end_rank = 7 if start_piece.colour == WHITE else 0
                 if end_pos.rank == end_rank:
@@ -210,6 +252,14 @@ class Game:
                     new_piece = Queen(pos=end_pos, colour=start_piece.colour)  # Automatically choose Queen for now
                     new_piece.move_history = start_piece.move_history
                     self.pieces.add(new_piece)
+                    was_promoted = True
+
+            self.move_history.append(
+                Move(
+                    start_pos, end_pos, start_piece.colour, self.halfmove_clock, prev_en_passant,
+                    taken_piece=taken_piece, was_promoted=was_promoted
+                )
+            )
 
             # Reset or increment the half move clock
             if start_piece.type == PAWN or taken_piece is not None:
@@ -265,6 +315,28 @@ class Game:
             self.turn = WHITE
         else:
             self.turn = BLACK
+
+    def undo_move(self):
+        if len(self.move_history) > 0:
+            move = self.move_history[-1:][0]
+            piece = self.is_occupied(move.end_pos)
+            piece.pos = move.start_pos
+            del piece.move_history[-1]
+
+            if move.taken_piece:
+                self.pieces.add(move.taken_piece)  # Put piece back
+
+            self.en_passant = move.prev_en_passant
+            self.halfmove_clock = move.halfmove_clock
+            self._remove_repetition()
+            self.turn = move.colour
+            if move.colour == BLACK:
+                self.fullmoves -= 1
+            del self.move_history[-1]
+        else:
+            log.warning("No moves to undo")
+
+
 
     def possible_moves(self, colour: str = WHITE) -> Iterable[Tuple[Position, Position]]:
         for piece in filter(lambda p: p.colour == colour, self.pieces):
