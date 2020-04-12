@@ -63,6 +63,7 @@ class Game:
 
         # FEN isn't sufficient to describe this, so assume unique
         self.repetitions = {}  # type: Dict[str, int]
+        self.move_history = []
 
     @property
     def has_insufficient_material(self) -> bool:
@@ -154,7 +155,8 @@ class Game:
                 ))[0]
                 move_rook = Position(rook.pos.file + (-num_squares * direction), rook.pos.rank)
                 rook.pos = move_rook
-                rook.move_history.append((rook.pos, move_rook))
+
+                self.move_history.append((start_pos, end_pos))
                 self.halfmove_clock += 1  # Note that we don't add a repetition here
                 return
             else:
@@ -192,6 +194,7 @@ class Game:
             else:
                 self.en_passant = None
             start_piece.move_history.append((start_pos, end_pos))
+            self.move_history.append((start_pos, end_pos))
 
             if start_piece.type == PAWN:  # Promote pawn if it reaches the end of the board
                 end_rank = 7 if start_piece.colour == WHITE else 0
@@ -312,6 +315,10 @@ class Game:
             return True
         else:
             return False
+
+    def is_occupied(self, pos: Position) -> Optional[Piece]:
+        """Returns a piece for the given position if there is one."""
+        return self.squares[pos.index].piece
 
     @property
     def castle_flags(self) -> str:

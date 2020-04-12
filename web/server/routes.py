@@ -1,7 +1,7 @@
 from flask import request
 
 import log
-from ai import dumb
+from ai import dumb, algo
 from engine.constants import WHITE, BLACK
 from engine.game import Game
 from engine.exceptions import IllegalMove, Checkmate, Draw
@@ -80,8 +80,10 @@ def make_move_ai():
     board = cache['board']
     try:
         board.raise_if_game_over()
-        # from_pos, to_pos = dumb.first_possible_move(board)
-        from_pos, to_pos = dumb.random_move(board)
+
+        # from_pos, to_pos = dumb.random_move(board)
+        from_pos, to_pos = algo.evaluate_piece(board)
+
         board.player_move(from_pos, to_pos)
         return json_board(board)
     except IllegalMove as err:
