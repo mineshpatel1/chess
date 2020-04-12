@@ -192,6 +192,14 @@ class Board:
                 self.en_passant = None
             start_piece.move_history.append((start_pos, end_pos))
 
+            if start_piece.type == PAWN:  # Promote pawn if it reaches the end of the board
+                end_rank = 7 if start_piece.colour == WHITE else 0
+                if end_pos.rank == end_rank:
+                    self.pieces.remove(start_piece)
+                    new_piece = Queen(pos=end_pos, colour=start_piece.colour)  # Automatically choose Queen for now
+                    new_piece.move_history = start_piece.move_history
+                    self.pieces.add(new_piece)
+
             # Reset or increment the half move clock
             if start_piece.type == PAWN or taken_piece is not None:
                 self.halfmove_clock = 0

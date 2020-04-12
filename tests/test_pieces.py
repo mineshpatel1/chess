@@ -6,7 +6,7 @@ from engine.position import Position
 
 from engine import board
 from engine.board import Board
-from engine.constants import WHITE, BLACK, ROOK, KING
+from engine.constants import WHITE, BLACK, ROOK, KING, QUEEN
 
 
 class TestPieces(unittest.TestCase):
@@ -79,6 +79,19 @@ class TestPieces(unittest.TestCase):
         self.assertEqual(self.board.squares[position.from_coord('F3').index].piece, pawn1)
         self.assertFalse(pawn2 in self.board.pieces)
         self.assertEqual(self.board.en_passant, None)
+
+    def test_pawn_promotion(self):
+        fen = 'r1bqkbnr/p1pp3P/1pn1p3/5p2/8/4P3/PPPP2PP/RNBQKBNR w KQkq f6 0 1'
+        self.board = Board(fen)
+        h7 = position.from_coord('H7')
+        g8 = position.from_coord('G8')
+        pawn = self.board.squares[h7.index].piece
+        self.board._move(h7, g8, simulate=True)  # Dry run
+        self.assertEqual(self.board.fen, fen)
+
+        self.board._move(h7, g8)  # Move pawn and promote piece to queen
+        self.assertFalse(pawn in self.board.pieces)
+        self.assertEqual(self.board.squares[g8.index].piece.type, QUEEN)  # Check the new piece is a queen
 
     def test_rook(self):
         self.board = Board(state='rnbqkbnr/pppppp1p/8/8/P1R1p3/8/1PPP1PPP/1NBQKBNR')
