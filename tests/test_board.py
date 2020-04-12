@@ -176,8 +176,8 @@ class TestBoard(unittest.TestCase):
         self.assertEqual(_board.en_passant, None)
 
         _board._move(position.from_coord('B2'), position.from_coord('B4'))
-        self.assertEqual(_board.en_passant, position.from_coord('B4'))
-        self.assertEqual(_board.fen, 'rnbqkbnr/pppppppp/8/8/1P6/8/P1PPPPPP/RNBQKBNR w KQkq b4 0 1')
+        self.assertEqual(_board.en_passant, position.from_coord('B3'))
+        self.assertEqual(_board.fen, 'rnbqkbnr/pppppppp/8/8/1P6/8/P1PPPPPP/RNBQKBNR w KQkq b3 0 1')
 
         _board._move(position.from_coord('G8'), position.from_coord('F6'))
         self.assertEqual(_board.en_passant, None)

@@ -187,7 +187,8 @@ class Board:
         else:
             # Mark en passant square if a pawn moves two squares, otherwise clear
             if start_piece.type == PAWN and abs(end_pos.rank - start_pos.rank) == 2:
-                self.en_passant = end_pos
+                direction = -1 if start_piece.colour == WHITE else 1
+                self.en_passant = Position(start_piece.pos.file, start_piece.pos.rank + direction)
             else:
                 self.en_passant = None
             start_piece.move_history.append((start_pos, end_pos))
@@ -240,10 +241,12 @@ class Board:
     def player_move(self, start_pos: Position, end_pos: Position):
         squares = self.squares
         start_square = squares[start_pos.index]
-        assert start_square.is_occupied, f"No piece at {start_pos}"
+        if not start_square.is_occupied:
+            raise IllegalMove(f"No piece at {start_pos}")
 
         start_piece = squares[start_pos.index].piece
-        assert start_piece.colour == self.turn, f"It is {self.turn}'s turn, cannot move enemy piece."
+        if start_piece.colour != self.turn:
+            raise IllegalMove(f"It is {self.turn}'s turn, cannot move enemy piece.")
 
         self._move(start_pos, end_pos, simulate=False)
 

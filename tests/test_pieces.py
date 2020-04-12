@@ -53,7 +53,7 @@ class TestPieces(unittest.TestCase):
 
     def test_pawn_en_passant(self):
         # White En Passant
-        self.board = Board(state='rnbqkbnr/pppppp1p/8/5Pp1/8/8/PPPPP1PP/RNBQKBNR w KQkq g6')
+        self.board = Board(state='rnbqkbnr/pppppp1p/8/5Pp1/8/8/PPPPP1PP/RNBQKBNR w KQkq g6 0 1')
         self.assertEqual(self.board.en_passant, position.from_coord('G6'))
         pawn1 = self.board.squares[position.from_coord('F5').index].piece
         pawn2 = self.board.squares[position.from_coord('G5').index].piece
