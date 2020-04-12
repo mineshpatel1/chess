@@ -96,6 +96,13 @@ class Game:
                 return True
         return False
 
+    @property
+    def board_value(self):
+        total = 0
+        for piece in self.pieces:
+            total += piece.value
+        return total
+
     def _add_repetition(self):
         fen = self._short_fen
         self.repetitions[fen] = self.repetitions.get(fen, 0)

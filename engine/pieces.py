@@ -9,6 +9,7 @@ from engine.constants import (
     BLACK,
     PIECE_ICONS,
     PIECE_NAMES,
+    PIECE_POINTS,
     PAWN,
     ROOK,
     KNIGHT,
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 
 class Piece:
     TYPE = None
+    BASE_VALUE = 0
     CASTLE_POSITIONS = {
         WHITE: {},
         BLACK: {},
@@ -107,6 +109,11 @@ class Piece:
             return self.pos in self.CASTLE_POSITIONS[self.colour]
         else:
             return False
+
+    @property
+    def value(self) -> int:
+        modifier = 1 if self.colour == WHITE else -1
+        return modifier * PIECE_POINTS[self.type]
 
     @property
     def rook_type(self) -> Optional[str]:

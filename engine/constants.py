@@ -34,6 +34,15 @@ PIECE_ICONS = {
     KING: '♚',
 }
 
+PIECE_POINTS = {
+    PAWN: 1,
+    KNIGHT: 3,
+    BISHOP: 3,
+    ROOK: 5,
+    QUEEN: 9,
+    KING: 90,
+}
+
 CARDINALS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 DIAGONALS = [(1, 1), (-1, -1), (-1, 1), (1, -1)]
 

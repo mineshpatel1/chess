@@ -6,7 +6,7 @@ from engine.position import Position
 
 from engine import game
 from engine.game import Game
-from engine.constants import WHITE, BLACK
+from engine.constants import WHITE, BLACK, STARTING_STATE
 
 
 class TestBoard(unittest.TestCase):
@@ -43,7 +43,7 @@ class TestBoard(unittest.TestCase):
             self.assertEqual(position.from_coord(coord), pos)
 
     def test_start_layout(self):
-        _board = Game(state=game.STARTING_STATE)
+        _board = Game(state=STARTING_STATE)
         _pieces = {
             0: 'R', 1: 'N', 2: 'B', 3: 'Q', 4: 'K', 5: 'B', 6: 'N', 7: 'R', 8: 'P', 9: 'P', 10: 'P', 11: 'P', 12: 'P',
             13: 'P', 14: 'P', 15: 'P', 48: 'p', 49: 'p', 50: 'p', 51: 'p', 52: 'p', 53: 'p', 54: 'p', 55: 'p', 56: 'r',
@@ -89,7 +89,7 @@ class TestBoard(unittest.TestCase):
 
     def test_castle_flags(self):
         for test in (
-            (game.STARTING_STATE, 'KQkq'),
+            (STARTING_STATE, 'KQkq'),
             ('rnbqkbnr/pppppppp/8/8/8/7P/PPPPPPPR/RNBQKBN1', 'Qkq'),
             ('rnbqkbnr/pppppppp/8/8/8/P3P3/RPPP1PPP/1NBQKBNR', 'Kkq'),
             ('rnbqkbnr/pppppppp/8/8/8/4P3/PPPPKPPP/RNBQ1BNR', 'kq'),
@@ -172,7 +172,7 @@ class TestBoard(unittest.TestCase):
             _board.raise_if_game_over()
 
     def test_en_passant(self):
-        _board = Game(state=game.STARTING_STATE)
+        _board = Game(state=STARTING_STATE)
         self.assertEqual(_board.en_passant, None)
 
         _board._move(position.from_coord('B2'), position.from_coord('B4'))
@@ -183,8 +183,18 @@ class TestBoard(unittest.TestCase):
         self.assertEqual(_board.en_passant, None)
         self.assertEqual(_board.fen, 'rnbqkb1r/pppppppp/5n2/8/1P6/8/P1PPPPPP/RNBQKBNR w KQkq - 1 1')
 
+    def test_value(self):
+        for test in (
+            (STARTING_STATE, 0),
+            ('rn1qk3/p1p1p3/8/3Q4/8/8/PPPPPP1P/RNBQKBNR b - - 0 1', 27),
+            ('rnbqkbnr/pppp1ppp/8/8/3q4/8/P2P1PPP/4KBNR w - - 0 1', -31),
+        ):
+            _board = Game(state=test[0])
+            self.assertEqual(_board.board_value, test[1])
+
+
     def test_print(self):
-        _board = Game(state=game.STARTING_STATE)
+        _board = Game(state=STARTING_STATE)
         match = ("""
 8 [♜][♞][♝][♛][♚][♝][♞][♜]
 7 [♟][♟][♟][♟][♟][♟][♟][♟]
