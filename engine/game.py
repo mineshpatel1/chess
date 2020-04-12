@@ -63,7 +63,7 @@ class Move:
             prev_en_passant: Position,
             taken_piece: Optional[Piece] = None,
             was_castle: bool = False,
-            was_promoted: bool = False,
+            was_promoted: Optional[Piece] = None,
     ):
         self.start_pos = start_pos
         self.end_pos = end_pos
@@ -241,7 +241,7 @@ class Game:
 
             start_piece.move_history.append((start_pos, end_pos))
 
-            was_promoted = False
+            was_promoted = None
             if start_piece.type == PAWN:  # Promote pawn if it reaches the end of the board
                 end_rank = 7 if start_piece.colour == WHITE else 0
                 if end_pos.rank == end_rank:
@@ -249,7 +249,7 @@ class Game:
                     new_piece = Queen(pos=end_pos, colour=start_piece.colour)  # Automatically choose Queen for now
                     new_piece.move_history = start_piece.move_history
                     self.pieces.add(new_piece)
-                    was_promoted = True
+                    was_promoted = start_piece
 
             self.move_history.append(
                 Move(
@@ -318,7 +318,8 @@ class Game:
             move = self.move_history[-1:][0]
             piece = self.is_occupied(move.end_pos)
             piece.pos = move.start_pos
-            del piece.move_history[-1]
+            if len(piece.move_history) > 0:
+                del piece.move_history[-1]
 
             if move.taken_piece:
                 self.pieces.add(move.taken_piece)  # Put piece back
@@ -331,6 +332,12 @@ class Game:
                     rook.pos = Position(7, rook.pos.rank)
                 else:
                     rook.pos = Position(0, rook.pos.rank)
+
+            if move.was_promoted:
+                self.pieces.remove(piece)
+                move.was_promoted.pos = move.start_pos
+                del move.was_promoted.move_history[-1]
+                self.pieces.add(move.was_promoted)
 
             self.en_passant = move.prev_en_passant
             self.halfmove_clock = move.halfmove_clock
