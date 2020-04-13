@@ -27,6 +27,10 @@ class TestMoves(unittest.TestCase):
 
     def test_safe_moves(self):
         for fen, match in (
+            (STARTING_STATE, {
+                'b1a3', 'h2h3', 'h2h4', 'f2f3', 'g2g3', 'e2e4', 'g2g4', 'f2f4', 'e2e3', 'd2d4', 'd2d3', 'c2c4', 'c2c3',
+                'b2b4', 'b2b3', 'a2a4', 'a2a3', 'g1h3', 'g1f3', 'b1c3'
+            }),
             ('rnb1kbnr/pppp1ppp/4p3/2K1B2q/8/BP3P2/P1PPP1PP/RN1Q2NR w - - 0 1', {'c5b5', 'c5d4', 'c5c4'}),
             ('rnb2bnr/ppppNppp/2B1p3/1k5q/3K4/BPQ2P2/P1PPP1PP/R5NR b - - 0 1', {
                 'b8c6', 'd7c6', 'c7c6', 'b7c6', 'b5c6', 'b5b6', 'b5a6'
@@ -36,7 +40,19 @@ class TestMoves(unittest.TestCase):
             _moves = {m.uci for m in _board.legal_moves}
             self.assertEqual(_moves, match)
 
-
+    def test_castling(self):
+        for fen, match in (
+            ('rnbqkbnr/pppppppp/8/8/8/3BPN2/PPPP1PPP/RNBQK2R w KQkq - 0 1', {'e1f1', 'e1h1', 'e1e2'}),
+            (
+                'rnbqkbnr/pppppppp/8/8/N1B5/BP1PPN2/P1PQ1PPP/R3K2R w KQkq - 0 1',
+                {'e1f1', 'e1e2', 'e1h1', 'e1a1', 'e1d1'}
+            ),
+            ('rnb1kbnr/pppppppp/8/1P6/N1B5/BPqPPN2/P2Q1PPP/R3K2R w KQkq - 0 1', {'e1h1', 'e1d1', 'e1e2', 'e1f1'}),
+            ('rnb1kbn1/pppppppp/4q3/1P6/N1B5/BP1PPN2/P2QrPPP/R3K2R w KQq - 0 1', {'e1f1', 'e1d1', 'e1e2'}),
+        ):
+            _board = Board(fen=fen)
+            _moves = {m.uci for m in _board.legal_moves if m.from_square == E1}
+            self.assertEqual(_moves, match)
 
 def main():
     unittest.main()

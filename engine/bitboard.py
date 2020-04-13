@@ -242,6 +242,10 @@ def _gen_rays(file_adjust, rank_adjust) -> List[Bitboard]:
     return bbs
 
 
+BB_CASTLING = {
+    WHITE: (BB_A1 | BB_H1),
+    BLACK: (BB_A8 | BB_H8),
+}
 BB_KNIGHT_MOVES = _gen_moves(((1, 2), (1, -2), (-1, 2), (-1, -2), (2, 1), (2, -1), (-2, 1), (-2, -1)))
 BB_KING_MOVES = _gen_moves(((1, 1), (0, 1), (1, 0), (-1, -1), (-1, 0), (0, -1), (1, -1), (-1, 1)))
 BB_PAWN_ATTACKS = {
@@ -253,10 +257,10 @@ BB_PAWN_MOVES = {
     BLACK: _gen_moves(((0, -1),)),
 }
 
-for rank in (1, 6):
-    for file in range(8):
-        i = file_rank_to_index(file, rank)
-        if rank == 1:  # White pawns
+for _rank in (1, 6):
+    for _file in range(8):
+        i = file_rank_to_index(_file, _rank)
+        if _rank == 1:  # White pawns
             single_move = BB_PAWN_MOVES[WHITE][i]
             BB_PAWN_MOVES[WHITE][i] = single_move << 8 | single_move
         else:
@@ -284,7 +288,7 @@ BB_DIAGONALS = [
     for i in range(64)
 ]
 
-BB_BETWEEN = []
+BB_BETWEEN = []  # type: List[List[int]]
 
 
 def _calc_between(rays, _from_sq, _to_sq):
@@ -350,17 +354,25 @@ class Piece:
 
 
 class Move:
-    def __init__(self, from_square: Square, to_square: Square):
+    def __init__(
+            self,
+            from_square: Square,
+            to_square: Square,
+            is_castling: bool = False,
+    ):
         self.from_square = Square(from_square)
         self.to_square = Square(to_square)
+        self.is_castling = is_castling
 
     @property
     def uci(self):
         return f'{str(self.from_square).lower()}{str(self.to_square).lower()}'
 
     def __str__(self):
-        return f'{self.from_square} -> {self.to_square}'
+        return f'{self.uci}'
 
+    def __repr__(self):
+        return f"'{str(self)}'"
 
 class Board:
     def __init__(self, fen: str = STARTING_STATE):
@@ -400,6 +412,10 @@ class Board:
         }
         self.occupied = BB_EMPTY
         self.turn = WHITE
+        self.castling_rights = {  # Should call self._update_castling_rights
+            WHITE: BB_CASTLING[WHITE],
+            BLACK: BB_CASTLING[BLACK],
+        }
 
     def _set_from_fen(self, fen: str):
         rank = 7
@@ -423,19 +439,21 @@ class Board:
         if len(components) > 1:
             self.turn = WHITE if components[1].lower() == 'w' else BLACK
 
+        self._update_castling_rights()  # Cache castling rights
+
     def _attack_rays_from_square(
-            self, square: Square, directions: Iterable[Direction], bb_filter: Bitboard = BB_EMPTY,
+            self, square: Square, directions: Iterable[Direction], ignore: Bitboard = BB_EMPTY,
     ) -> Bitboard:
         moves = BB_EMPTY
         for direction in directions:
             possible = BB_RAYS[direction][square]
-            blockers = (possible & self.occupied) ^ bb_filter
+            blockers = (possible & self.occupied) ^ ignore
             blocked_paths = BB_RAYS[direction][lsb(blockers)] | BB_RAYS[direction][msb(blockers)]
             moves |= possible & ~blocked_paths
         return moves
 
     def _moves_from_square(
-            self, square: Square, colour: Colour, attacks_only: bool = False, bb_filter: Bitboard = BB_EMPTY,
+            self, square: Square, colour: Colour, attacks_only: bool = False, ignore: Bitboard = BB_EMPTY,
     ) -> Optional[Bitboard]:
         bb_sq = BB_SQUARES[square]
 
@@ -448,25 +466,26 @@ class Board:
                 moves |= BB_PAWN_MOVES[colour][square]
             return moves
         elif self.rooks[colour] & bb_sq:
-            return self._attack_rays_from_square(square, (NORTH, EAST, WEST, SOUTH), bb_filter=bb_filter)
+            return self._attack_rays_from_square(square, (NORTH, EAST, WEST, SOUTH), ignore=ignore)
         elif self.knights[colour] & bb_sq:
             return BB_KNIGHT_MOVES[square]
         elif self.bishops[colour] & bb_sq:
             return self._attack_rays_from_square(
                 square,
                 (NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),
-                bb_filter=bb_filter,
+                ignore=ignore,
             )
         elif self.queens[colour] & bb_sq:
             return self._attack_rays_from_square(
                 square,
                 (NORTH, EAST, WEST, SOUTH, NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),
-                bb_filter=bb_filter,
+                ignore=ignore,
             )
         elif self.kings[colour] & bb_sq:
-            return BB_KING_MOVES[square]
+            moves = BB_KING_MOVES[square]
+            return moves
 
-    def _attack_bitboard(self, colour: Colour, bb_filter: Bitboard = BB_EMPTY) -> Bitboard:
+    def _attack_bitboard(self, colour: Colour, ignore: Bitboard = BB_EMPTY) -> Bitboard:
         """
         Returns a bitboard of all possible squares that a player can currently attack.
 
@@ -476,7 +495,7 @@ class Board:
         """
         attack_moves = BB_EMPTY
         for from_square in bitboard_to_squares(self.occupied_colour[colour]):
-            x = self._moves_from_square(from_square, colour, bb_filter=bb_filter, attacks_only=True)
+            x = self._moves_from_square(from_square, colour, ignore=ignore, attacks_only=True)
             attack_moves |= x
         return attack_moves & ~self.occupied_colour[colour]
 
@@ -510,6 +529,7 @@ class Board:
         return protectors
 
     def _pseudo_legal_moves(self, colour: Colour) -> Iterable[Move]:
+        # Generic moves
         for from_square in bitboard_to_squares(self.occupied_colour[colour]):
             moves = self._moves_from_square(from_square, colour)
             if moves:
@@ -517,22 +537,36 @@ class Board:
                 for to_square in bitboard_to_squares(moves):
                     yield Move(from_square, to_square)
 
+        # Castling moves
+        if self.castling_rights:
+            from_square = msb(self.kings[colour])  # Is a move for the King
+            for castle_sq in bitboard_to_squares(self.castling_rights[colour]):
+                if not (BB_BETWEEN[from_square][castle_sq] & self.occupied):  # Check no pieces in-between
+                    yield Move(from_square, castle_sq, is_castling=True)
+
     @property
     def is_in_check(self):
         return bool(self.kings[self.turn] & self._attack_bitboard(not self.turn))
 
     @property
     def legal_moves(self) -> Iterable[Move]:
+        """Yields legal moves for the turn player."""
         king = self.kings[self.turn]
         king_pos = msb(king)
         protectors = self._protectors(king_pos, self.turn)
-        attacks = self._attack_bitboard(not self.turn, bb_filter=king)
+        attacks = self._attack_bitboard(not self.turn, ignore=king)  # Pretend the King isn't there
         in_check = king & attacks
         for move in self._pseudo_legal_moves(self.turn):
             # If we are moving the king we should be careful
             if move.from_square == king_pos:
-                if attacks & BB_SQUARES[move.to_square]:  # This position is under attack
+                if attacks & BB_SQUARES[move.to_square]:  # New position is under attack
                     continue
+
+                if move.is_castling:
+                    if in_check:  # Cannot castle whilst in check
+                        continue
+                    elif (attacks & BB_BETWEEN[move.from_square][move.to_square]) > BB_EMPTY:
+                        continue  # Cannot castle if intermediate squares are under attack
 
             # Cannot move this piece, it's protecting the King
             if protectors & BB_SQUARES[move.from_square]:
@@ -555,6 +589,26 @@ class Board:
                         continue
 
             yield move
+
+    def _update_castling_rights(self):
+        # Can never get castling rights back, so if we've removed them all, return quickly
+        if not (self.castling_rights[WHITE] | self.castling_rights[BLACK]):
+            return self.castling_rights
+
+        white_castling = BB_CASTLING[WHITE] & self.rooks[WHITE] & self.castling_rights[WHITE]
+        black_castling = BB_CASTLING[BLACK] & self.rooks[BLACK] & self.castling_rights[BLACK]
+
+        # Kings can't have moved
+        if not self.kings[WHITE] & BB_E1:
+            white_castling = BB_EMPTY
+        if not self.kings[BLACK] & BB_E8:
+            black_castling = BB_EMPTY
+
+        self.castling_rights = {
+            WHITE: white_castling,
+            BLACK: black_castling,
+        }
+        return self.castling_rights
 
     def place_piece(self, square: Square, piece_type: PieceType, colour: Colour):
         """Place a piece of a given colour on a square of the board."""
