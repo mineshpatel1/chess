@@ -14,7 +14,7 @@ class TestBoard(unittest.TestCase):
         f, r = position.index_to_rankfile(index)
         self.assertEqual((f, r), (file, rank))
 
-        i = position.rankfile_to_index(f, r)
+        i = position.file_rank_to_index(f, r)
         self.assertEqual(i, index)
 
         p = position.from_index(index)

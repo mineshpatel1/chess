@@ -1,3 +1,4 @@
+Colour = str
 WHITE = 'white'
 BLACK = 'black'
 
@@ -7,12 +8,14 @@ KINGSIDE = 'kingside'
 FILE_NAMES = ["A", "B", "C", "D", "E", "F", "G", "H"]
 RANK_NAMES = ["1", "2", "3", "4", "5", "6", "7", "8"]
 
+PieceType = str
 PAWN = 'p'
 ROOK = 'r'
 KNIGHT = 'n'
 BISHOP = 'b'
 QUEEN = 'q'
 KING = 'k'
+PIECE_TYPES = (PAWN, ROOK, KNIGHT, BISHOP, QUEEN, KING)
 
 PIECE_NAMES = {
     PAWN: 'Pawn',

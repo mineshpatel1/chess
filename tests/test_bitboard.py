@@ -25,7 +25,7 @@ class TestBoard(unittest.TestCase):
    A  B  C  D  E  F  G  H """)
         self.assertEqual(_board, match)
 
-        _board = bitboard_to_str(BOARD)
+        _board = bitboard_to_str(BB_BOARD)
         match = ("""
 8 [•][•][•][•][•][•][•][•]
 7 [•][•][•][•][•][•][•][•]
@@ -51,7 +51,7 @@ class TestBoard(unittest.TestCase):
    A  B  C  D  E  F  G  H """)
         self.assertEqual(_board, match)
 
-        _board = bitboard_to_str(WHITE_SQUARES)
+        _board = bitboard_to_str(BB_BLACK_SQUARES)
         match = ("""
 8 [ ][•][ ][•][ ][•][ ][•]
 7 [•][ ][•][ ][•][ ][•][ ]

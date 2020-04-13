@@ -23,7 +23,7 @@ class Position:
 
     @property
     def index(self) -> int:
-        return rankfile_to_index(self.file, self.rank)
+        return file_rank_to_index(self.file, self.rank)
 
     @property
     def in_board(self):
@@ -55,12 +55,12 @@ class Position:
 
 
 def index_to_rankfile(idx: int) -> Tuple[int, int]:
-    """Converts an integer position into the corresponding rank and file (in that order)."""
+    """Converts an integer position into the corresponding file and rank (in that order)."""
     assert 0 <= idx < 64, "Board index must be between 0 and 63."
     return idx % 8, int(idx / 8)
 
 
-def rankfile_to_index(file: int, rank: int) -> int:
+def file_rank_to_index(file: int, rank: int) -> int:
     assert 0 <= file < 8 and 0 <= rank < 8, "Rank and file must be between 0 and 7."
     return (rank * 8) + (file % 8)
 
@@ -80,6 +80,7 @@ def char_to_file(char: str) -> int:
         'G': 6,
         'H': 7,
     }[char.upper()]
+
 
 def from_index(index: int) -> Position:
     file, rank = index_to_rankfile(index)
