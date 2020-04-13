@@ -11,12 +11,13 @@ from engine.bitboard import *
 
 def main():
 
-    # bb = Board('rnbqkbnr/ppp1pppp/8/8/2p1R2P/8/PPPPPPP1/RNBQKBN1 w Qkq - 0 1')
-    # log.info(bb)
-    # for move in bb._pseudo_legal_moves(WHITE):
-    #     log.info(move.uci)
+    bb = Board('rnbqkbnr/ppp1pppp/8/8/2p1R2P/BP1Q1PB1/P1PPP1P1/RN2K1N1 w Qkq - 0 1')
+    log.info(bb)
+    for move in bb._pseudo_legal_moves_from_square(Square.from_coord('E2'), WHITE):
+        log.info(move.uci)
 
-    pass
+
+
 
 if __name__ == '__main__':
     main()

@@ -1,7 +1,7 @@
 from typing import List, Tuple, Optional, Iterable
 
 import log
-from engine.position import file_rank_to_index
+from engine.position import char_to_file, file_rank_to_index
 from engine.constants import (
     Colour,
     WHITE,
@@ -23,6 +23,7 @@ from engine.constants import (
     PIECE_TYPES,
     PIECE_POINTS,
 
+    Direction,
     NORTH,
     NORTHEAST,
     EAST,
@@ -33,6 +34,18 @@ from engine.constants import (
     NORTHWEST,
 )
 
+Bitboard = int
+
+
+def msb(x):
+    """Returns most significant bit."""
+    return x.bit_length() - 1
+
+
+def lsb(x):
+    """Returns least significant bit."""
+    return msb(x & -x)
+
 
 def binary_str(i: int):
     """Returns a base 2 integer as a binary string of length 64"""
@@ -40,9 +53,6 @@ def binary_str(i: int):
     s = ('0' * (64 - len(s))) + s  # Pad with zeroes
     assert len(s) == 64
     return s
-
-
-Bitboard = int
 
 
 def bitboard_to_squares(bb):
@@ -72,6 +82,12 @@ def bitboard_to_str(bb):
 class Square(int):
     @staticmethod
     def from_file_rank(file: int, rank: int):
+        return Square(file_rank_to_index(file, rank))
+
+    @staticmethod
+    def from_coord(coord: str):
+        file = char_to_file(coord[0].upper())
+        rank = int(coord[1]) - 1
         return Square(file_rank_to_index(file, rank))
 
     @property
@@ -352,31 +368,46 @@ class Board:
                 )
                 file += 1
 
+    def _attack_rays_from_square(self, square: Square, directions: Iterable[Direction]) -> Bitboard:
+        moves = BB_EMPTY
+        for direction in directions:
+            possible = BB_RAYS[direction][square]
+            blockers = possible & self.occupied
+            moves |= possible & ~BB_RAYS[direction][lsb(blockers)]
+        return moves
+
     def _attacks_from_square(self, square: Square, colour: Colour) -> Optional[Bitboard]:
         bb_sq = BB_SQUARES[square]
 
         if self.pawns[colour] & bb_sq:
             return None
         elif self.rooks[colour] & bb_sq:
-            return None
+            return self._attack_rays_from_square(square, (NORTH, EAST, WEST, SOUTH))
         elif self.knights[colour] & bb_sq:
             return BB_KNIGHT_MOVES[square]
         elif self.bishops[colour] & bb_sq:
-            return None
+            return self._attack_rays_from_square(square, (NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST))
         elif self.queens[colour] & bb_sq:
-            return None
+            return self._attack_rays_from_square(
+                square,
+                (NORTH, EAST, WEST, SOUTH, NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST)
+            )
         elif self.kings[colour] & bb_sq:
             return BB_KING_MOVES[square]
+
+    def _pseudo_legal_moves_from_square(self, from_square: Square, colour: Colour) -> Iterable[Move]:
+        attack_moves = self._attacks_from_square(from_square, colour)
+        if attack_moves:
+            attack_moves = attack_moves & ~self.occupied_colour[colour]
+            for to_square in bitboard_to_squares(attack_moves):
+                yield Move(from_square, to_square)
 
     def _pseudo_legal_moves(self, colour: Colour) -> Iterable[Move]:
         for from_square in bitboard_to_squares(
             self.occupied_colour[colour]
         ):
-            attack_moves = self._attacks_from_square(from_square, colour)
-            if attack_moves:
-                attack_moves = attack_moves & ~self.occupied_colour[colour]
-                for to_square in bitboard_to_squares(attack_moves):
-                    yield Move(from_square, to_square)
+            for move in self._pseudo_legal_moves_from_square(from_square, colour):
+                yield move
 
     def place_piece(self, square: Square, piece_type: PieceType, colour: Colour):
         """Place a piece of a given colour on a square of the board."""

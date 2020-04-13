@@ -50,6 +50,7 @@ PIECE_POINTS = {
     KING: 90,
 }
 
+Direction = str
 NORTH = 'n'
 NORTHEAST = 'ne'
 EAST = 'e'
