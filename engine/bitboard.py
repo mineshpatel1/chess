@@ -22,6 +22,15 @@ from engine.constants import (
     PIECE_NAMES,
     PIECE_TYPES,
     PIECE_POINTS,
+
+    NORTH,
+    NORTHEAST,
+    EAST,
+    SOUTHEAST,
+    SOUTH,
+    SOUTHWEST,
+    WEST,
+    NORTHWEST,
 )
 
 
@@ -85,6 +94,14 @@ class Square(int):
         return self.name
 
 
+def square_distance(a: Square, b: Square) -> int:
+    """
+    Gets the distance (i.e., the number of king steps) from square *a* to *b*.
+    """
+    a, b = Square(a), Square(b)
+    return max(abs(a.file - b.file), abs(a.rank - b.rank))
+
+
 def mirror_square(square: Square, vertical: bool = True) -> Square:
     """Returns a square position as if the board was mirrored vertically."""
     if vertical:
@@ -107,14 +124,14 @@ SQUARES = [
 SQUARES_VFLIP = [mirror_square(sq, True) for sq in SQUARES]
 
 BB_DIRECTIONS = {
-    'n': 8,
-    'ne': 9,
-    'e': 1,
-    'se': -7,
-    's': -8,
-    'sw': -9,
-    'w': -1,
-    'nw': 7,
+    NORTH: 8,
+    NORTHEAST: 9,
+    EAST: 1,
+    SOUTHEAST: -7,
+    SOUTH: -8,
+    SOUTHWEST: -9,
+    WEST: -1,
+    NORTHWEST: 7,
 }
 
 # 64-bit representations of board positions
@@ -165,7 +182,7 @@ BB_RANKS = [
 ]
 
 
-def _gen_moves(intervals) -> List[Bitboard]:
+def _gen_moves(intervals: Iterable[Tuple[int, int]]) -> List[Bitboard]:
     bbs = []
     for sq in SQUARES:
         moves = BB_EMPTY
@@ -179,8 +196,52 @@ def _gen_moves(intervals) -> List[Bitboard]:
     return bbs
 
 
-KNIGHT_MOVES = _gen_moves(((1, 2), (1, -2), (-1, 2), (-1, -2), (2, 1), (2, -1), (-2, 1), (-2, -1)))
-KING_MOVES = _gen_moves(((1, 1), (0, 1), (1, 0), (-1, -1), (-1, 0), (0, -1), (1, -1), (-1, 1)))
+def _gen_rays(file_adjust, rank_adjust) -> List[Bitboard]:
+    def _in_board(_file, _rank):
+        return 0 <= _file < 8 and 0 <= _rank < 8
+
+    bbs = []
+    for sq in SQUARES:
+        moves = BB_EMPTY
+        _file = sq.file
+        _rank = sq.rank
+        while _in_board(_file, _rank):  # Still in board
+            _file = _file + file_adjust
+            _rank = _rank + rank_adjust
+            if _in_board(_file, _rank):
+                _sq = file_rank_to_index(_file, _rank)
+                moves |= BB_SQUARES[_sq]
+        bbs.append(moves)
+    return bbs
+
+
+BB_KNIGHT_MOVES = _gen_moves(((1, 2), (1, -2), (-1, 2), (-1, -2), (2, 1), (2, -1), (-2, 1), (-2, -1)))
+BB_KING_MOVES = _gen_moves(((1, 1), (0, 1), (1, 0), (-1, -1), (-1, 0), (0, -1), (1, -1), (-1, 1)))
+BB_PAWN_ATTACKS = {
+    WHITE: _gen_moves(((1, 1), (-1, 1))),
+    BLACK: _gen_moves(((1, -1), (-1, -1))),
+}
+
+BB_RAYS = {
+    NORTH: _gen_rays(0, 1),
+    NORTHEAST: _gen_rays(1, 1),
+    EAST: _gen_rays(1, 0),
+    SOUTHEAST: _gen_rays(1, -1),
+    SOUTH: _gen_rays(0, -1),
+    SOUTHWEST: _gen_rays(-1, -1),
+    WEST: _gen_rays(-1, 0),
+    NORTHWEST: _gen_rays(-1, 1),
+}
+
+BB_CARDINALS = [
+    BB_RAYS[NORTH][i] | BB_RAYS[EAST][i] | BB_RAYS[SOUTH][i] | BB_RAYS[WEST][i]
+    for i in range(64)
+]
+
+BB_DIAGONALS = [
+    BB_RAYS[NORTHEAST][i] | BB_RAYS[SOUTHEAST][i] | BB_RAYS[SOUTHWEST][i] | BB_RAYS[NORTHWEST][i]
+    for i in range(64)
+]
 
 
 class Piece:
@@ -299,13 +360,13 @@ class Board:
         elif self.rooks[colour] & bb_sq:
             return None
         elif self.knights[colour] & bb_sq:
-            return KNIGHT_MOVES[square]
+            return BB_KNIGHT_MOVES[square]
         elif self.bishops[colour] & bb_sq:
             return None
         elif self.queens[colour] & bb_sq:
             return None
         elif self.kings[colour] & bb_sq:
-            return KING_MOVES[square]
+            return BB_KING_MOVES[square]
 
     def _pseudo_legal_moves(self, colour: Colour) -> Iterable[Move]:
         for from_square in bitboard_to_squares(

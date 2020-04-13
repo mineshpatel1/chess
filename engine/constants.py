@@ -50,6 +50,16 @@ PIECE_POINTS = {
     KING: 90,
 }
 
+NORTH = 'n'
+NORTHEAST = 'ne'
+EAST = 'e'
+SOUTHEAST = 'se'
+SOUTH = 's'
+SOUTHWEST = 'sw'
+WEST = 'w'
+NORTHWEST = 'nw'
+
+
 CARDINALS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 DIAGONALS = [(1, 1), (-1, -1), (-1, 1), (1, -1)]
 
