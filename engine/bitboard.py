@@ -1,4 +1,4 @@
-from typing import Tuple, Optional
+from typing import List, Optional, Iterable
 
 import log
 from engine.position import file_rank_to_index
@@ -24,7 +24,38 @@ from engine.constants import (
     PIECE_POINTS,
 )
 
-Bitboard = int  # For type hints
+
+def binary_str(i: int):
+    """Returns a base 2 integer as a binary string of length 64"""
+    s = '{0:b}'.format(i)
+    s = ('0' * (64 - len(s))) + s  # Pad with zeroes
+    assert len(s) == 64
+    return s
+
+
+class Bitboard(int):
+    def __str__(self):
+        """Prints a visual representation of the occupation represented by the input bitboard integer."""
+        board_str = ''
+        rank = 8
+        for sq in SQUARES_VFLIP:
+            if rank > sq.rank:
+                board_str += f'\n{sq.rank + 1} '
+                rank = sq.rank
+
+            if binary_str(self)[63 - sq] == '1':
+                board_str += '[•]'
+            else:
+                board_str += '[ ]'
+        board_str += '\n   A  B  C  D  E  F  G  H '
+        return board_str
+
+    def to_squares(self):
+        bb = Bitboard(self)
+        while bb:
+            r = bb.bit_length() - 1
+            yield Square(r)
+            bb ^= BB_SQUARES[r]
 
 
 class Square(int):
@@ -47,6 +78,9 @@ class Square(int):
     @property
     def name(self):
         return FILE_NAMES[self.file] + RANK_NAMES[self.rank]
+
+    def __str__(self):
+        return self.name
 
 
 def mirror_square(square: Square, vertical: bool = True) -> Square:
@@ -82,10 +116,10 @@ BB_DIRECTIONS = {
 }
 
 # 64-bit representations of board positions
-BB_EMPTY = 0
-BB_BOARD = (2 ** 64) - 1
-BB_WHITE_SQUARES = 6172840429334713770
-BB_BLACK_SQUARES = 12273903644374837845
+BB_EMPTY = Bitboard(0)
+BB_BOARD = Bitboard((2 ** 64) - 1)
+BB_WHITE_SQUARES = Bitboard(6172840429334713770)
+BB_BLACK_SQUARES = Bitboard(12273903644374837845)
 
 BB_SQUARES = [
     BB_A1, BB_B1, BB_C1, BB_D1, BB_E1, BB_F1, BB_G1, BB_H1,
@@ -96,7 +130,7 @@ BB_SQUARES = [
     BB_A6, BB_B6, BB_C6, BB_D6, BB_E6, BB_F6, BB_G6, BB_H6,
     BB_A7, BB_B7, BB_C7, BB_D7, BB_E7, BB_F7, BB_G7, BB_H7,
     BB_A8, BB_B8, BB_C8, BB_D8, BB_E8, BB_F8, BB_G8, BB_H8,
-] = [1 << sq for sq in SQUARES]
+] = [Bitboard(1 << sq) for sq in SQUARES]
 
 BB_FILES = [
     BB_FILE_A,
@@ -129,29 +163,22 @@ BB_RANKS = [
 ]
 
 
-def binary_str(i: int):
-    """Returns a base 2 integer as a binary string of length 64"""
-    s = '{0:b}'.format(i)
-    s = ('0' * (64 - len(s))) + s  # Pad with zeroes
-    assert len(s) == 64
-    return s
+def _gen_moves(intervals) -> List[Bitboard]:
+    bbs = []
+    for sq in SQUARES:
+        moves = BB_EMPTY
+        for i, j in intervals:
+            _file = sq.file + i
+            _rank = sq.rank + j
+            if 0 <= _file < 8 and 0 <= _rank < 8:  # Checks within the board
+                _sq = file_rank_to_index(sq.file + i, sq.rank + j)
+                moves |= BB_SQUARES[_sq]
+        bbs.append(moves)
+    return bbs
 
 
-def bitboard_to_str(bb: Bitboard):
-    """Prints a visual representation of the occupation represented by the input bitboard integer."""
-    board_str = ''
-    rank = 8
-    for sq in SQUARES_VFLIP:
-        if rank > sq.rank:
-            board_str += f'\n{sq.rank + 1} '
-            rank = sq.rank
-
-        if binary_str(bb)[63 - sq] == '1':
-            board_str += '[•]'
-        else:
-            board_str += '[ ]'
-    board_str += '\n   A  B  C  D  E  F  G  H '
-    return board_str
+KNIGHT_MOVES = _gen_moves(((1, 2), (1, -2), (-1, 2), (-1, -2), (2, 1), (2, -1), (-2, 1), (-2, -1)))
+KING_MOVES = _gen_moves(((1, 1), (0, 1), (1, 0), (-1, -1), (-1, 0), (0, -1), (1, -1), (-1, 1)))
 
 
 class Piece:
@@ -241,7 +268,6 @@ class Board:
                 rank -= 1
                 file = 0
             else:
-                log.info((char, file, rank))
                 assert char.lower() in PIECE_TYPES, f'{char} is not a valid piece in FEN notation.'
                 self.place_piece(
                     Square.from_file_rank(file, rank),
@@ -249,6 +275,9 @@ class Board:
                     WHITE if char.isupper() else BLACK,
                 )
                 file += 1
+
+    def _pseudo_legal_moves(self, colour: Colour):
+        pass
 
     def place_piece(self, square: Square, piece_type: PieceType, colour: Colour):
         """Place a piece of a given colour on a square of the board."""

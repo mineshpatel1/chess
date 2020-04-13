@@ -1,18 +1,11 @@
 import unittest
 
-from engine import position
-from engine.exceptions import FiftyMoveDraw, ThreefoldRepetition
-from engine.position import Position
-
-from engine import game
-from engine.game import Game
-from engine.constants import WHITE, BLACK, STARTING_STATE
 from engine.bitboard import *
 
 
 class TestBoard(unittest.TestCase):
     def test_print(self):
-        _board = bitboard_to_str(BB_A1)
+        _board = BB_A1
         match = ("""
 8 [ ][ ][ ][ ][ ][ ][ ][ ]
 7 [ ][ ][ ][ ][ ][ ][ ][ ]
@@ -23,9 +16,9 @@ class TestBoard(unittest.TestCase):
 2 [ ][ ][ ][ ][ ][ ][ ][ ]
 1 [•][ ][ ][ ][ ][ ][ ][ ]
    A  B  C  D  E  F  G  H """)
-        self.assertEqual(_board, match)
+        self.assertEqual(str(_board), match)
 
-        _board = bitboard_to_str(BB_BOARD)
+        _board = BB_BOARD
         match = ("""
 8 [•][•][•][•][•][•][•][•]
 7 [•][•][•][•][•][•][•][•]
@@ -36,9 +29,9 @@ class TestBoard(unittest.TestCase):
 2 [•][•][•][•][•][•][•][•]
 1 [•][•][•][•][•][•][•][•]
    A  B  C  D  E  F  G  H """)
-        self.assertEqual(_board, match)
+        self.assertEqual(str(_board), match)
 
-        _board = bitboard_to_str(BB_G5)
+        _board = BB_G5
         match = ("""
 8 [ ][ ][ ][ ][ ][ ][ ][ ]
 7 [ ][ ][ ][ ][ ][ ][ ][ ]
@@ -49,9 +42,9 @@ class TestBoard(unittest.TestCase):
 2 [ ][ ][ ][ ][ ][ ][ ][ ]
 1 [ ][ ][ ][ ][ ][ ][ ][ ]
    A  B  C  D  E  F  G  H """)
-        self.assertEqual(_board, match)
+        self.assertEqual(str(_board), match)
 
-        _board = bitboard_to_str(BB_BLACK_SQUARES)
+        _board = BB_BLACK_SQUARES
         match = ("""
 8 [ ][•][ ][•][ ][•][ ][•]
 7 [•][ ][•][ ][•][ ][•][ ]
@@ -62,7 +55,21 @@ class TestBoard(unittest.TestCase):
 2 [ ][•][ ][•][ ][•][ ][•]
 1 [•][ ][•][ ][•][ ][•][ ]
    A  B  C  D  E  F  G  H """)
-        self.assertEqual(_board, match)
+        self.assertEqual(str(_board), match)
+
+    def test_print_board(self):
+            _board = Board()
+            match = ("""
+8 [♜][♞][♝][♛][♚][♝][♞][♜]
+7 [♟][♟][♟][♟][♟][♟][♟][♟]
+6 [ ][ ][ ][ ][ ][ ][ ][ ]
+5 [ ][ ][ ][ ][ ][ ][ ][ ]
+4 [ ][ ][ ][ ][ ][ ][ ][ ]
+3 [ ][ ][ ][ ][ ][ ][ ][ ]
+2 [♙][♙][♙][♙][♙][♙][♙][♙]
+1 [♖][♘][♗][♕][♔][♗][♘][♖]
+   A  B  C  D  E  F  G  H """)
+            self.assertEqual(str(_board), match)
 
 
 def main():

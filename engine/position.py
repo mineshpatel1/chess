@@ -54,7 +54,7 @@ class Position:
         return self.index >= other.index
 
 
-def index_to_rankfile(idx: int) -> Tuple[int, int]:
+def index_to_file_rank(idx: int) -> Tuple[int, int]:
     """Converts an integer position into the corresponding file and rank (in that order)."""
     assert 0 <= idx < 64, "Board index must be between 0 and 63."
     return idx % 8, int(idx / 8)
@@ -83,7 +83,7 @@ def char_to_file(char: str) -> int:
 
 
 def from_index(index: int) -> Position:
-    file, rank = index_to_rankfile(index)
+    file, rank = index_to_file_rank(index)
     return Position(file, rank)
 
 

@@ -11,7 +11,7 @@ from engine.constants import WHITE, BLACK, STARTING_STATE
 
 class TestBoard(unittest.TestCase):
     def _verify_pos(self, index, file, rank, coord):
-        f, r = position.index_to_rankfile(index)
+        f, r = position.index_to_file_rank(index)
         self.assertEqual((f, r), (file, rank))
 
         i = position.file_rank_to_index(f, r)
