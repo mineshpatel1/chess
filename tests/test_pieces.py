@@ -210,7 +210,7 @@ class TestPieces(unittest.TestCase):
         self.assertEqual(Position(2, 2), knight.pos)
 
     def test_king(self):
-        self.board = Game(state='rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR')
+        self.board = Game(state='rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR b')
         king = self.board.squares[Position(4, 7).index].piece
 
         self.assertEqual(

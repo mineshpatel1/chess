@@ -55,11 +55,19 @@ def binary_str(i: int):
     return s
 
 
+def bit_count(i):
+    count = 0
+    while i:
+        i &= i - 1
+        count += 1
+    return count
+
+
 def bitboard_to_squares(bb):
-        while bb:
-            r = bb.bit_length() - 1
-            yield Square(r)
-            bb ^= BB_SQUARES[r]
+    while bb:
+        r = bb.bit_length() - 1
+        yield Square(r)
+        bb ^= BB_SQUARES[r]
 
 
 def bitboard_to_str(bb):
@@ -276,6 +284,32 @@ BB_DIAGONALS = [
     for i in range(64)
 ]
 
+BB_BETWEEN = []
+
+
+def _calc_between(rays, _from_sq, _to_sq):
+    possible = rays[_from_sq]
+    blockers = possible & BB_SQUARES[_to_sq]
+    blocked_paths = rays[lsb(blockers)] | rays[msb(blockers)]
+    return (possible & ~blocked_paths) ^ BB_SQUARES[_to_sq]
+
+
+for from_sq in SQUARES:
+    BB_BETWEEN.append([])
+    for to_sq in SQUARES:
+        bb_to_sq = BB_SQUARES[to_sq]
+
+        between = None
+        for direction in BB_RAYS:
+            if BB_RAYS[direction][from_sq] & bb_to_sq:
+                between = _calc_between(BB_RAYS[direction], from_sq, to_sq)
+                continue
+
+        if between:
+            BB_BETWEEN[from_sq].append(between)
+        else:
+            BB_BETWEEN[from_sq].append(BB_EMPTY)
+
 
 class Piece:
     TYPE = None
@@ -389,44 +423,60 @@ class Board:
         if len(components) > 1:
             self.turn = WHITE if components[1].lower() == 'w' else BLACK
 
-    def _attack_rays_from_square(self, square: Square, directions: Iterable[Direction]) -> Bitboard:
+    def _attack_rays_from_square(
+            self, square: Square, directions: Iterable[Direction], bb_filter: Bitboard = BB_EMPTY,
+    ) -> Bitboard:
         moves = BB_EMPTY
         for direction in directions:
             possible = BB_RAYS[direction][square]
-            blockers = possible & self.occupied
+            blockers = (possible & self.occupied) ^ bb_filter
             blocked_paths = BB_RAYS[direction][lsb(blockers)] | BB_RAYS[direction][msb(blockers)]
             moves |= possible & ~blocked_paths
         return moves
 
     def _moves_from_square(
-            self, square: Square, colour: Colour, attacks_only: bool = False,
+            self, square: Square, colour: Colour, attacks_only: bool = False, bb_filter: Bitboard = BB_EMPTY,
     ) -> Optional[Bitboard]:
         bb_sq = BB_SQUARES[square]
 
         if self.pawns[colour] & bb_sq:
-            moves = BB_PAWN_ATTACKS[colour][square] & self.occupied_colour[not colour]
+            moves = BB_PAWN_ATTACKS[colour][square]
+
+            # If actually moving the piece, need to restrict pawn diagonal moves to captures
             if not attacks_only:
+                moves &= self.occupied_colour[not colour]
                 moves |= BB_PAWN_MOVES[colour][square]
             return moves
         elif self.rooks[colour] & bb_sq:
-            return self._attack_rays_from_square(square, (NORTH, EAST, WEST, SOUTH))
+            return self._attack_rays_from_square(square, (NORTH, EAST, WEST, SOUTH), bb_filter=bb_filter)
         elif self.knights[colour] & bb_sq:
             return BB_KNIGHT_MOVES[square]
         elif self.bishops[colour] & bb_sq:
-            return self._attack_rays_from_square(square, (NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST))
+            return self._attack_rays_from_square(
+                square,
+                (NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),
+                bb_filter=bb_filter,
+            )
         elif self.queens[colour] & bb_sq:
             return self._attack_rays_from_square(
                 square,
-                (NORTH, EAST, WEST, SOUTH, NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST)
+                (NORTH, EAST, WEST, SOUTH, NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),
+                bb_filter=bb_filter,
             )
         elif self.kings[colour] & bb_sq:
             return BB_KING_MOVES[square]
 
-    def _attack_bitboard(self, colour: Colour) -> Bitboard:
-        """Returns a bitboard of all possible squares that a player can currently attack."""
+    def _attack_bitboard(self, colour: Colour, bb_filter: Bitboard = BB_EMPTY) -> Bitboard:
+        """
+        Returns a bitboard of all possible squares that a player can currently attack.
+
+        Args:
+            colour: Colour of the player attacking
+            mask: Filters out any pieces included in the mask: calculates the attack board as if they weren't there.
+        """
         attack_moves = BB_EMPTY
         for from_square in bitboard_to_squares(self.occupied_colour[colour]):
-            x = self._moves_from_square(from_square, colour, attacks_only=True)
+            x = self._moves_from_square(from_square, colour, bb_filter=bb_filter, attacks_only=True)
             attack_moves |= x
         return attack_moves & ~self.occupied_colour[colour]
 
@@ -436,6 +486,28 @@ class Board:
             attack_moves = moves & ~self.occupied_colour[colour]  # Cannot take our own pieces
             for to_square in bitboard_to_squares(attack_moves):
                 yield Move(from_square, to_square)
+
+    def _attackers(self, target: Square, colour) -> Bitboard:
+        cardinal_movers = self.rooks[colour] | self.queens[colour]
+        diagonal_movers = self.bishops[colour] | self.queens[colour]
+
+        return (
+            (BB_CARDINALS[target] & cardinal_movers) |
+            (BB_DIAGONALS[target] & diagonal_movers)
+        )
+
+    def _protectors(self, target: Square, colour: Colour) -> Bitboard:
+        """
+        Returns positions of pieces of the given colour that are protecting the given square from queens, rooks and
+        bishops.
+        """
+        attackers = self._attackers(target, not colour)
+        protectors = BB_EMPTY
+        for attacker_sq in bitboard_to_squares(attackers):
+            _blocker = BB_BETWEEN[attacker_sq][target] & self.occupied
+            if _blocker and BB_SQUARES[msb(_blocker)] == _blocker:  # Check there's exactly one blocker
+                protectors |= _blocker
+        return protectors
 
     def _pseudo_legal_moves(self, colour: Colour) -> Iterable[Move]:
         for from_square in bitboard_to_squares(self.occupied_colour[colour]):
@@ -448,6 +520,41 @@ class Board:
     @property
     def is_in_check(self):
         return bool(self.kings[self.turn] & self._attack_bitboard(not self.turn))
+
+    @property
+    def legal_moves(self) -> Iterable[Move]:
+        king = self.kings[self.turn]
+        king_pos = msb(king)
+        protectors = self._protectors(king_pos, self.turn)
+        attacks = self._attack_bitboard(not self.turn, bb_filter=king)
+        in_check = king & attacks
+        for move in self._pseudo_legal_moves(self.turn):
+            # If we are moving the king we should be careful
+            if move.from_square == king_pos:
+                if attacks & BB_SQUARES[move.to_square]:  # This position is under attack
+                    continue
+
+            # Cannot move this piece, it's protecting the King
+            if protectors & BB_SQUARES[move.from_square]:
+                continue
+
+            # If in check and we are not moving the king, we must protect it
+            if in_check:
+                if move.from_square != king_pos:
+                    attackers = self._attackers(king_pos, not self.turn)
+
+                    # If there is more than one attacking piece, we can't protect
+                    if bit_count(attackers) > 1:
+                        continue
+
+                    attacker_sq = list(bitboard_to_squares(attackers))[0]
+                    if not (  # Deem illegal unless the move is one of these two caveats:
+                        BB_BETWEEN[attacker_sq][king_pos] & BB_SQUARES[move.to_square] or  # Piece blocks danger
+                        move.to_square == attacker_sq  # Piece takes attacker
+                    ):
+                        continue
+
+            yield move
 
     def place_piece(self, square: Square, piece_type: PieceType, colour: Colour):
         """Place a piece of a given colour on a square of the board."""

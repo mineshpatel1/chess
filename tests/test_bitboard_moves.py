@@ -16,14 +16,26 @@ class TestMoves(unittest.TestCase):
         self.assertEqual(white_moves, match)
 
     def test_check(self):
-        for test in (
+        for fen, match in (
             ('rnbqkb2/ppppp1p1/5p2/2n1r2p/3KP3/3P4/PPP2PPP/RNBQ1BNR w', False),
-            # ('rnb1kbnr/pppp1ppp/4p3/8/7q/5P2/PPPPP1PP/RNBQKBNR w', True),
-            # ('rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR b', False),
-            # ('rnb2bnr/ppppkppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR b', True),
+            ('rnb1kbnr/pppp1ppp/4p3/8/7q/5P2/PPPPP1PP/RNBQKBNR w', True),
+            ('rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR b', False),
+            ('rnb2bnr/ppppkppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR b', True),
         ):
-            _board = Board(fen=test[0])
-            self.assertEqual(_board.is_in_check, test[1])
+            _board = Board(fen=fen)
+            self.assertEqual(_board.is_in_check, match)
+
+    def test_safe_moves(self):
+        for fen, match in (
+            ('rnb1kbnr/pppp1ppp/4p3/2K1B2q/8/BP3P2/P1PPP1PP/RN1Q2NR w - - 0 1', {'c5b5', 'c5d4', 'c5c4'}),
+            ('rnb2bnr/ppppNppp/2B1p3/1k5q/3K4/BPQ2P2/P1PPP1PP/R5NR b - - 0 1', {
+                'b8c6', 'd7c6', 'c7c6', 'b7c6', 'b5c6', 'b5b6', 'b5a6'
+            }),
+        ):
+            _board = Board(fen=fen)
+            _moves = {m.uci for m in _board.legal_moves}
+            self.assertEqual(_moves, match)
+
 
 
 def main():
