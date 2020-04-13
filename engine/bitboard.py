@@ -109,6 +109,9 @@ class Square(int):
     def __str__(self):
         return self.name
 
+    def __repr__(self):
+        return str(self)
+
 
 def square_distance(a: Square, b: Square) -> int:
     """
@@ -237,6 +240,20 @@ BB_PAWN_ATTACKS = {
     WHITE: _gen_moves(((1, 1), (-1, 1))),
     BLACK: _gen_moves(((1, -1), (-1, -1))),
 }
+BB_PAWN_MOVES = {
+    WHITE: _gen_moves(((0, 1),)),  # Single advance
+    BLACK: _gen_moves(((0, -1),)),
+}
+
+for rank in (1, 6):
+    for file in range(8):
+        i = file_rank_to_index(file, rank)
+        if rank == 1:  # White pawns
+            single_move = BB_PAWN_MOVES[WHITE][i]
+            BB_PAWN_MOVES[WHITE][i] = single_move << 8 | single_move
+        else:
+            single_move = BB_PAWN_MOVES[BLACK][i]
+            BB_PAWN_MOVES[BLACK][i] = single_move >> 8 | single_move
 
 BB_RAYS = {
     NORTH: _gen_rays(0, 1),
@@ -380,7 +397,9 @@ class Board:
         bb_sq = BB_SQUARES[square]
 
         if self.pawns[colour] & bb_sq:
-            return None
+            moves = BB_PAWN_ATTACKS[colour][square] & self.occupied_colour[not colour]
+            moves |= BB_PAWN_MOVES[colour][square]
+            return moves
         elif self.rooks[colour] & bb_sq:
             return self._attack_rays_from_square(square, (NORTH, EAST, WEST, SOUTH))
         elif self.knights[colour] & bb_sq:
@@ -398,14 +417,12 @@ class Board:
     def _pseudo_legal_moves_from_square(self, from_square: Square, colour: Colour) -> Iterable[Move]:
         attack_moves = self._attacks_from_square(from_square, colour)
         if attack_moves:
-            attack_moves = attack_moves & ~self.occupied_colour[colour]
+            attack_moves = attack_moves & ~self.occupied_colour[colour]  # Cannot take our own pieces
             for to_square in bitboard_to_squares(attack_moves):
                 yield Move(from_square, to_square)
 
     def _pseudo_legal_moves(self, colour: Colour) -> Iterable[Move]:
-        for from_square in bitboard_to_squares(
-            self.occupied_colour[colour]
-        ):
+        for from_square in bitboard_to_squares(self.occupied_colour[colour]):
             for move in self._pseudo_legal_moves_from_square(from_square, colour):
                 yield move
 

@@ -496,7 +496,7 @@ class Game:
             if rank > 0:
                 fen_str += '/'
 
-        if self.turn:
+        if self.turn is not None:
             _turn = 'w' if self.turn == WHITE else 'b'
             _en_passant = '-' if self.en_passant is None else str(self.en_passant).lower()
             fen_str += f' {_turn} {self.castle_flags} {_en_passant} {self.halfmove_clock} {self.fullmoves}'

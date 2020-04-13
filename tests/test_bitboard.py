@@ -3,7 +3,7 @@ import unittest
 from engine.bitboard import *
 
 
-class TestBoard(unittest.TestCase):
+class TestBitboard(unittest.TestCase):
     def test_precalc_moves(self):
         self.assertEqual(BB_KNIGHT_MOVES[D5], 5666883501293568)
         self.assertEqual(BB_KING_MOVES[D5], 30872694685696)

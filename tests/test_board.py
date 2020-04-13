@@ -1,5 +1,6 @@
 import unittest
 
+import log
 from engine import position
 from engine.exceptions import FiftyMoveDraw, ThreefoldRepetition
 from engine.position import Position

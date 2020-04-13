@@ -1,6 +1,6 @@
 Colour = str
-WHITE = 'white'
-BLACK = 'black'
+WHITE = True
+BLACK = False
 
 QUEENSIDE = 'queenside'
 KINGSIDE = 'kingside'
