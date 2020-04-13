@@ -3,10 +3,9 @@ from typing import Tuple
 import log
 from engine.game import Game
 from engine.position import Position
-from engine.constants import WHITE, BLACK
+from engine.constants import WHITE, BLACK, PIECE_POINTS
 
 LOW_BOUND = -9999
-COUNTER = 0
 
 def evaluate_piece(board: Game) -> Tuple[Position, Position]:
     """Really basic algorithm that just looks at the possible moves on show and takes the best piece."""
@@ -64,4 +63,48 @@ def negamax(board: Game, depth: int = 1) -> Tuple[Position, Position]:
             score = value
             best_move = move
 
+    return best_move
+
+
+def evaluation_fast(board):
+    total = 0
+    for square, piece in board.piece_map().items():
+        if piece.color:
+            total += PIECE_POINTS[piece.symbol().lower()]
+        else:
+            total -= PIECE_POINTS[piece.symbol().lower()]
+    modifier = 1 if board.turn else -1
+    return total * modifier
+
+
+def _negamax_fast(board, depth, mutable):
+    if depth == 0:
+        mutable.append(0)
+        return evaluation_fast(board)
+
+    score = LOW_BOUND
+    for move in board.legal_moves:
+        board.push_uci(move.uci())
+        value = -1 * _negamax_fast(board, depth - 1, mutable)
+        board.pop()
+        if value > score:
+            score = value
+    return score
+
+
+def negamax_fast(board, depth):
+    score = LOW_BOUND
+    best_move = None
+    mutable = []
+
+    for move in board.legal_moves:
+        board.push_uci(move.uci())
+        value = _negamax_fast(board, depth - 1, mutable)
+        board.pop()
+
+        if value > score:
+            score = value
+            best_move = move
+
+    log.info(len(mutable))
     return best_move

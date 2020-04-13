@@ -1,7 +1,11 @@
 WHITE = 'white'
 BLACK = 'black'
+
 QUEENSIDE = 'queenside'
 KINGSIDE = 'kingside'
+
+FILE_NAMES = ["A", "B", "C", "D", "E", "F", "G", "H"]
+RANK_NAMES = ["1", "2", "3", "4", "5", "6", "7", "8"]
 
 PAWN = 'p'
 ROOK = 'r'
