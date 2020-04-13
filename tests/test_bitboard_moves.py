@@ -15,6 +15,16 @@ class TestMoves(unittest.TestCase):
         white_moves = {m.uci for m in bb._pseudo_legal_moves(WHITE)}
         self.assertEqual(white_moves, match)
 
+    def test_check(self):
+        for test in (
+            ('rnbqkb2/ppppp1p1/5p2/2n1r2p/3KP3/3P4/PPP2PPP/RNBQ1BNR w', False),
+            # ('rnb1kbnr/pppp1ppp/4p3/8/7q/5P2/PPPPP1PP/RNBQKBNR w', True),
+            # ('rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR b', False),
+            # ('rnb2bnr/ppppkppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR b', True),
+        ):
+            _board = Board(fen=test[0])
+            self.assertEqual(_board.is_in_check, test[1])
+
 
 def main():
     unittest.main()

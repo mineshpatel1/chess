@@ -365,6 +365,7 @@ class Board:
             BLACK: BB_EMPTY,
         }
         self.occupied = BB_EMPTY
+        self.turn = WHITE
 
     def _set_from_fen(self, fen: str):
         rank = 7
@@ -385,20 +386,27 @@ class Board:
                 )
                 file += 1
 
+        if len(components) > 1:
+            self.turn = WHITE if components[1].lower() == 'w' else BLACK
+
     def _attack_rays_from_square(self, square: Square, directions: Iterable[Direction]) -> Bitboard:
         moves = BB_EMPTY
         for direction in directions:
             possible = BB_RAYS[direction][square]
             blockers = possible & self.occupied
-            moves |= possible & ~BB_RAYS[direction][lsb(blockers)]
+            blocked_paths = BB_RAYS[direction][lsb(blockers)] | BB_RAYS[direction][msb(blockers)]
+            moves |= possible & ~blocked_paths
         return moves
 
-    def _attacks_from_square(self, square: Square, colour: Colour) -> Optional[Bitboard]:
+    def _moves_from_square(
+            self, square: Square, colour: Colour, attacks_only: bool = False,
+    ) -> Optional[Bitboard]:
         bb_sq = BB_SQUARES[square]
 
         if self.pawns[colour] & bb_sq:
             moves = BB_PAWN_ATTACKS[colour][square] & self.occupied_colour[not colour]
-            moves |= BB_PAWN_MOVES[colour][square]
+            if not attacks_only:
+                moves |= BB_PAWN_MOVES[colour][square]
             return moves
         elif self.rooks[colour] & bb_sq:
             return self._attack_rays_from_square(square, (NORTH, EAST, WEST, SOUTH))
@@ -414,17 +422,32 @@ class Board:
         elif self.kings[colour] & bb_sq:
             return BB_KING_MOVES[square]
 
+    def _attack_bitboard(self, colour: Colour) -> Bitboard:
+        """Returns a bitboard of all possible squares that a player can currently attack."""
+        attack_moves = BB_EMPTY
+        for from_square in bitboard_to_squares(self.occupied_colour[colour]):
+            x = self._moves_from_square(from_square, colour, attacks_only=True)
+            attack_moves |= x
+        return attack_moves & ~self.occupied_colour[colour]
+
     def _pseudo_legal_moves_from_square(self, from_square: Square, colour: Colour) -> Iterable[Move]:
-        attack_moves = self._attacks_from_square(from_square, colour)
-        if attack_moves:
-            attack_moves = attack_moves & ~self.occupied_colour[colour]  # Cannot take our own pieces
+        moves = self._moves_from_square(from_square, colour)
+        if moves:
+            attack_moves = moves & ~self.occupied_colour[colour]  # Cannot take our own pieces
             for to_square in bitboard_to_squares(attack_moves):
                 yield Move(from_square, to_square)
 
     def _pseudo_legal_moves(self, colour: Colour) -> Iterable[Move]:
         for from_square in bitboard_to_squares(self.occupied_colour[colour]):
-            for move in self._pseudo_legal_moves_from_square(from_square, colour):
-                yield move
+            moves = self._moves_from_square(from_square, colour)
+            if moves:
+                moves &= ~self.occupied_colour[colour]  # Cannot take our own pieces
+                for to_square in bitboard_to_squares(moves):
+                    yield Move(from_square, to_square)
+
+    @property
+    def is_in_check(self):
+        return bool(self.kings[self.turn] & self._attack_bitboard(not self.turn))
 
     def place_piece(self, square: Square, piece_type: PieceType, colour: Colour):
         """Place a piece of a given colour on a square of the board."""

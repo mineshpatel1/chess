@@ -1,4 +1,4 @@
-Colour = str
+Colour = bool
 WHITE = True
 BLACK = False
 
