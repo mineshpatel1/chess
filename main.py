@@ -8,7 +8,11 @@ from engine.bitboard import *
 from engine.constants import PIECE_POINTS
 
 def main():
-    pass
+    bb = Board()
+    log.info(bb)
+    for move in bb._pseudo_legal_moves(WHITE):
+        log.info(move.uci)
+
 
 
 if __name__ == '__main__':

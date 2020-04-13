@@ -1,4 +1,4 @@
-from typing import List, Optional, Iterable
+from typing import List, Tuple, Optional, Iterable
 
 import log
 from engine.position import file_rank_to_index
@@ -33,29 +33,31 @@ def binary_str(i: int):
     return s
 
 
-class Bitboard(int):
-    def __str__(self):
-        """Prints a visual representation of the occupation represented by the input bitboard integer."""
-        board_str = ''
-        rank = 8
-        for sq in SQUARES_VFLIP:
-            if rank > sq.rank:
-                board_str += f'\n{sq.rank + 1} '
-                rank = sq.rank
+Bitboard = int
 
-            if binary_str(self)[63 - sq] == '1':
-                board_str += '[•]'
-            else:
-                board_str += '[ ]'
-        board_str += '\n   A  B  C  D  E  F  G  H '
-        return board_str
 
-    def to_squares(self):
-        bb = Bitboard(self)
+def bitboard_to_squares(bb):
         while bb:
             r = bb.bit_length() - 1
             yield Square(r)
             bb ^= BB_SQUARES[r]
+
+
+def bitboard_to_str(bb):
+    """Prints a visual representation of the occupation represented by the input bitboard integer."""
+    board_str = ''
+    rank = 8
+    for sq in SQUARES_VFLIP:
+        if rank > sq.rank:
+            board_str += f'\n{sq.rank + 1} '
+            rank = sq.rank
+
+        if binary_str(bb)[63 - sq] == '1':
+            board_str += '[•]'
+        else:
+            board_str += '[ ]'
+    board_str += '\n   A  B  C  D  E  F  G  H '
+    return board_str
 
 
 class Square(int):
@@ -116,10 +118,10 @@ BB_DIRECTIONS = {
 }
 
 # 64-bit representations of board positions
-BB_EMPTY = Bitboard(0)
-BB_BOARD = Bitboard((2 ** 64) - 1)
-BB_WHITE_SQUARES = Bitboard(6172840429334713770)
-BB_BLACK_SQUARES = Bitboard(12273903644374837845)
+BB_EMPTY = 0
+BB_BOARD = (2 ** 64) - 1
+BB_WHITE_SQUARES = 6172840429334713770
+BB_BLACK_SQUARES = 12273903644374837845
 
 BB_SQUARES = [
     BB_A1, BB_B1, BB_C1, BB_D1, BB_E1, BB_F1, BB_G1, BB_H1,
@@ -130,7 +132,7 @@ BB_SQUARES = [
     BB_A6, BB_B6, BB_C6, BB_D6, BB_E6, BB_F6, BB_G6, BB_H6,
     BB_A7, BB_B7, BB_C7, BB_D7, BB_E7, BB_F7, BB_G7, BB_H7,
     BB_A8, BB_B8, BB_C8, BB_D8, BB_E8, BB_F8, BB_G8, BB_H8,
-] = [Bitboard(1 << sq) for sq in SQUARES]
+] = [1 << sq for sq in SQUARES]
 
 BB_FILES = [
     BB_FILE_A,
@@ -219,6 +221,19 @@ class Piece:
         return str(self)
 
 
+class Move:
+    def __init__(self, from_square: Square, to_square: Square):
+        self.from_square = Square(from_square)
+        self.to_square = Square(to_square)
+
+    @property
+    def uci(self):
+        return f'{str(self.from_square).lower()}{str(self.to_square).lower()}'
+
+    def __str__(self):
+        return f'{self.from_square} -> {self.to_square}'
+
+
 class Board:
     def __init__(self, fen: str = STARTING_STATE):
         self._clear()
@@ -276,8 +291,31 @@ class Board:
                 )
                 file += 1
 
-    def _pseudo_legal_moves(self, colour: Colour):
-        pass
+    def _attacks_from_square(self, square: Square, colour: Colour) -> Optional[Bitboard]:
+        bb_sq = BB_SQUARES[square]
+
+        if self.pawns[colour] & bb_sq:
+            return None
+        elif self.rooks[colour] & bb_sq:
+            return None
+        elif self.knights[colour] & bb_sq:
+            return KNIGHT_MOVES[square]
+        elif self.bishops[colour] & bb_sq:
+            return None
+        elif self.queens[colour] & bb_sq:
+            return None
+        elif self.kings[colour] & bb_sq:
+            return KING_MOVES[square]
+
+    def _pseudo_legal_moves(self, colour: Colour) -> Iterable[Move]:
+        for from_square in bitboard_to_squares(
+            self.occupied_colour[colour]
+        ):
+            attack_moves = self._attacks_from_square(from_square, colour)
+            if attack_moves:
+                attack_moves = attack_moves & ~self.occupied_colour[colour]
+                for to_square in bitboard_to_squares(attack_moves):
+                    yield Move(from_square, to_square)
 
     def place_piece(self, square: Square, piece_type: PieceType, colour: Colour):
         """Place a piece of a given colour on a square of the board."""

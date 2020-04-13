@@ -16,7 +16,7 @@ class TestBoard(unittest.TestCase):
 2 [ ][ ][ ][ ][ ][ ][ ][ ]
 1 [•][ ][ ][ ][ ][ ][ ][ ]
    A  B  C  D  E  F  G  H """)
-        self.assertEqual(str(_board), match)
+        self.assertEqual(bitboard_to_str(_board), match)
 
         _board = BB_BOARD
         match = ("""
@@ -29,7 +29,7 @@ class TestBoard(unittest.TestCase):
 2 [•][•][•][•][•][•][•][•]
 1 [•][•][•][•][•][•][•][•]
    A  B  C  D  E  F  G  H """)
-        self.assertEqual(str(_board), match)
+        self.assertEqual(bitboard_to_str(_board), match)
 
         _board = BB_G5
         match = ("""
@@ -42,7 +42,7 @@ class TestBoard(unittest.TestCase):
 2 [ ][ ][ ][ ][ ][ ][ ][ ]
 1 [ ][ ][ ][ ][ ][ ][ ][ ]
    A  B  C  D  E  F  G  H """)
-        self.assertEqual(str(_board), match)
+        self.assertEqual(bitboard_to_str(_board), match)
 
         _board = BB_BLACK_SQUARES
         match = ("""
@@ -55,7 +55,7 @@ class TestBoard(unittest.TestCase):
 2 [ ][•][ ][•][ ][•][ ][•]
 1 [•][ ][•][ ][•][ ][•][ ]
    A  B  C  D  E  F  G  H """)
-        self.assertEqual(str(_board), match)
+        self.assertEqual(bitboard_to_str(_board), match)
 
     def test_print_board(self):
             _board = Board()
