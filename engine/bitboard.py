@@ -1,7 +1,9 @@
+from __future__ import annotations
 from typing import List, Tuple, Optional, Iterable
 
 import log
 from engine.position import char_to_file, file_rank_to_index
+from engine.exceptions import IllegalMove
 from engine.constants import (
     Colour,
     WHITE,
@@ -298,21 +300,21 @@ def _calc_between(rays, _from_sq, _to_sq):
     return (possible & ~blocked_paths) ^ BB_SQUARES[_to_sq]
 
 
-for from_sq in SQUARES:
+for _from_sq in SQUARES:
     BB_BETWEEN.append([])
-    for to_sq in SQUARES:
-        bb_to_sq = BB_SQUARES[to_sq]
+    for _to_sq in SQUARES:
+        bb_to_sq = BB_SQUARES[_to_sq]
 
         between = None
         for direction in BB_RAYS:
-            if BB_RAYS[direction][from_sq] & bb_to_sq:
-                between = _calc_between(BB_RAYS[direction], from_sq, to_sq)
+            if BB_RAYS[direction][_from_sq] & bb_to_sq:
+                between = _calc_between(BB_RAYS[direction], _from_sq, _to_sq)
                 continue
 
         if between:
-            BB_BETWEEN[from_sq].append(between)
+            BB_BETWEEN[_from_sq].append(between)
         else:
-            BB_BETWEEN[from_sq].append(BB_EMPTY)
+            BB_BETWEEN[_from_sq].append(BB_EMPTY)
 
 
 class Piece:
@@ -323,7 +325,7 @@ class Piece:
         BLACK: {},
     }
 
-    def __init__(self, piece_type: PieceType, colour: str = WHITE):
+    def __init__(self, piece_type: PieceType, colour: bool = WHITE):
         assert colour in [WHITE, BLACK], f"Invalid colour: {colour} chosen."
         assert piece_type in PIECE_TYPES, f"Invalid piece type: {piece_type} chosen."
         self.colour = colour
@@ -331,7 +333,8 @@ class Piece:
 
     @property
     def name(self) -> str:
-        return f'{self.colour.title()} {PIECE_NAMES[self.type]}'
+        colour_name = 'White' if self.colour else 'Black'
+        return f'{colour_name} {PIECE_NAMES[self.type]}'
 
     @property
     def code(self) -> str:
@@ -354,6 +357,15 @@ class Piece:
 
 
 class Move:
+    @staticmethod
+    def from_uci(uci: str) -> Move:
+        assert len(uci) == 4, "Invalid UCI"
+        pos_1 = uci[:2]
+        from_sq = file_rank_to_index(char_to_file(pos_1[0]), int(pos_1[1]) - 1)
+        pos_2 = uci[2:4]
+        to_sq = file_rank_to_index(char_to_file(pos_2[0]), int(pos_2[1]) - 1)
+        return Move(Square(from_sq), Square(to_sq))
+
     def __init__(
             self,
             from_square: Square,
@@ -374,8 +386,20 @@ class Move:
     def __repr__(self):
         return f"'{str(self)}'"
 
+    def __eq__(self, other):
+        return (
+            other.from_square == self.from_square and
+            other.to_square == self.to_square
+        )
+
+
 class Board:
     def __init__(self, fen: str = STARTING_STATE):
+        self.turn = WHITE
+        self.en_passant_sq = None
+        self.halfmove_clock = 0
+        self.fullmoves = 0
+
         self._clear()
         self._set_from_fen(fen)
 
@@ -411,11 +435,14 @@ class Board:
             BLACK: BB_EMPTY,
         }
         self.occupied = BB_EMPTY
-        self.turn = WHITE
         self.castling_rights = {  # Should call self._update_castling_rights
             WHITE: BB_CASTLING[WHITE],
             BLACK: BB_CASTLING[BLACK],
         }
+        self.turn = WHITE
+        self.en_passant_sq = None
+        self.halfmove_clock = 0
+        self.fullmoves = 0
 
     def _set_from_fen(self, fen: str):
         rank = 7
@@ -437,7 +464,19 @@ class Board:
                 file += 1
 
         if len(components) > 1:
-            self.turn = WHITE if components[1].lower() == 'w' else BLACK
+            turn = components[1].lower()
+            assert turn in ['w', 'b'], "Invalid FEN."
+            self.turn = BLACK if turn == 'b' else WHITE
+
+        # if len(components) > 3:
+        #     _en_passant_coord = components[3].upper()
+        #     en_passant = None if _en_passant_coord == '-' else position.from_coord(_en_passant_coord)
+
+        if len(components) > 4:
+            self.halfmove_clock = int(components[4])
+
+        if len(components) > 5:
+            self.fullmoves = int(components[5])
 
         self._update_castling_rights()  # Cache castling rights
 
@@ -545,6 +584,53 @@ class Board:
                     yield Move(from_square, castle_sq, is_castling=True)
 
     @property
+    def castle_flags(self) -> str:
+        flags = ''
+
+        def _castle_flag(_q, _colour):
+            flag = 'q' if _q == 1 else 'k'
+            return flag.upper() if _colour == WHITE else flag.lower()
+
+        for colour in [WHITE, BLACK]:
+            for i, file in enumerate([BB_FILE_H, BB_FILE_A]):  # Kingside, Queenside
+                if self.castling_rights[colour] & file:
+                    flags += _castle_flag(i, colour)
+
+        return flags if len(flags) > 0 else '-'
+
+    @property
+    def fen(self) -> str:
+        """
+        Returns the board's current state in FE Notation.
+        (https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation)
+        """
+        fen_str = ''
+        rank = 7
+        blank_counter = 0
+        for sq in SQUARES_VFLIP:
+            if rank > sq.rank:
+                if blank_counter > 0:
+                    fen_str += str(blank_counter)
+                    blank_counter = 0
+                fen_str += '/'
+                rank = sq.rank
+
+            piece = self.piece_at(sq)
+            if piece:
+                if blank_counter > 0:
+                    fen_str += str(blank_counter)
+                    blank_counter = 0
+                fen_str += piece.code
+            else:
+                blank_counter += 1
+
+        _turn = 'w' if self.turn == WHITE else 'b'
+        _en_passant = '-' if not self.en_passant_sq else 'TODO'
+        fen_str += f' {_turn} {self.castle_flags} {_en_passant} {self.halfmove_clock} {self.fullmoves}'
+
+        return fen_str
+
+    @property
     def is_in_check(self):
         return bool(self.kings[self.turn] & self._attack_bitboard(not self.turn))
 
@@ -610,8 +696,43 @@ class Board:
         }
         return self.castling_rights
 
+    def make_move(self, move: Move):
+        """
+        Moves a piece on the board. Warning: moves are not checked for legality in this function, this is for speed.
+        The consumer of this API should enforce legality by checking Bitboard.legal_moves.
+        """
+        piece = self.piece_at(move.from_square)
+        if not piece:
+            raise IllegalMove(f"No piece at {move.from_square}")
+
+        if piece.colour != self.turn:
+            raise IllegalMove(f"Can't move that piece, it's not your turn.")
+
+        # TODO: Castling
+        pass
+
+        # TODO: En Passant
+        pass
+
+        self.remove_piece(move.from_square)
+        captured_piece = self.piece_at(move.to_square)
+        self.place_piece(move.to_square, piece.type, piece.colour)
+
+        # Reset halfmove clock if a pawn moved or a piece was captured
+        if piece.type == PAWN or captured_piece:
+            self.halfmove_clock = 0
+        else:
+            self.halfmove_clock += 1
+
+        if self.turn == BLACK:  # Increment full moves after Black's turn
+            self.fullmoves += 1
+
+        self.turn = not self.turn
+
     def place_piece(self, square: Square, piece_type: PieceType, colour: Colour):
         """Place a piece of a given colour on a square of the board."""
+        self.remove_piece(square)  # Remove the existing piece if it exists
+
         mask = BB_SQUARES[square]
 
         if piece_type.lower() == PAWN:
@@ -629,6 +750,34 @@ class Board:
 
         self.occupied_colour[colour] |= mask
         self.occupied |= mask
+
+    def remove_piece(self, square: Square) -> Optional[Piece]:
+        """
+        Removes a piece, if possible, from a square on the board.
+
+        Returns:
+            Returns the piece that existed at the square, if applicable.
+        """
+        piece = self.piece_at(square)
+        if not piece:
+            return None
+
+        mask = BB_SQUARES[square]
+
+        if piece.type == PAWN:
+            self.pawns[piece.colour] ^= mask
+        elif piece.type == ROOK:
+            self.rooks[piece.colour] ^= mask
+        elif piece.type == KNIGHT:
+            self.knights[piece.colour] ^= mask
+        elif piece.type == BISHOP:
+            self.bishops[piece.colour] ^= mask
+        elif piece.type == QUEEN:
+            self.queens[piece.colour] ^= mask
+        elif piece.type == KING:
+            self.kings[piece.colour] ^= mask
+
+        return piece
 
     def piece_at(self, square: Square) -> Optional[Piece]:
         """Optionally returns the piece occupying the given square."""

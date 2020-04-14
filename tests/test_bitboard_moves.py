@@ -40,7 +40,15 @@ class TestMoves(unittest.TestCase):
             _moves = {m.uci for m in _board.legal_moves}
             self.assertEqual(_moves, match)
 
-    def test_castling(self):
+    def test_make_basic_moves(self):
+        bb = Board()
+        bb.make_move(Move.from_uci('c2c3'))
+        with self.assertRaises(IllegalMove):
+            bb.make_move(Move.from_uci('b2b3'))
+        bb.make_move(Move.from_uci('G8F6'))
+        self.assertEqual(bb.fen, 'rnbqkb1r/pppppppp/5n2/8/8/2P5/PP1PPPPP/RNBQKBNR w KQkq - 1 2')
+
+    def test_legal_castling(self):
         for fen, match in (
             ('rnbqkbnr/pppppppp/8/8/8/3BPN2/PPPP1PPP/RNBQK2R w KQkq - 0 1', {'e1f1', 'e1h1', 'e1e2'}),
             (
