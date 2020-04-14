@@ -244,7 +244,7 @@ def _gen_rays(file_adjust, rank_adjust) -> List[Bitboard]:
     return bbs
 
 
-BB_CASTLING = {
+BB_ORIGINAL_ROOKS = {
     WHITE: (BB_A1 | BB_H1),
     BLACK: (BB_A8 | BB_H8),
 }
@@ -430,15 +430,17 @@ class Board:
             BLACK: BB_EMPTY,
         }
 
+        self.occupied = BB_EMPTY
         self.occupied_colour = {
             WHITE: BB_EMPTY,
             BLACK: BB_EMPTY,
         }
-        self.occupied = BB_EMPTY
+
         self.castling_rights = {  # Should call self._update_castling_rights
-            WHITE: BB_CASTLING[WHITE],
-            BLACK: BB_CASTLING[BLACK],
+            WHITE: BB_ORIGINAL_ROOKS[WHITE],
+            BLACK: BB_ORIGINAL_ROOKS[BLACK],
         }
+
         self.turn = WHITE
         self.en_passant_sq = None
         self.halfmove_clock = 0
@@ -534,8 +536,9 @@ class Board:
         """
         attack_moves = BB_EMPTY
         for from_square in bitboard_to_squares(self.occupied_colour[colour]):
-            x = self._moves_from_square(from_square, colour, ignore=ignore, attacks_only=True)
-            attack_moves |= x
+            moves = self._moves_from_square(from_square, colour, ignore=ignore, attacks_only=True)
+            if moves:
+                attack_moves |= moves
         return attack_moves & ~self.occupied_colour[colour]
 
     def _pseudo_legal_moves_from_square(self, from_square: Square, colour: Colour) -> Iterable[Move]:
@@ -579,8 +582,9 @@ class Board:
         # Castling moves
         if self.castling_rights:
             from_square = msb(self.kings[colour])  # Is a move for the King
-            for castle_sq in bitboard_to_squares(self.castling_rights[colour]):
-                if not (BB_BETWEEN[from_square][castle_sq] & self.occupied):  # Check no pieces in-between
+            for rook_sq in bitboard_to_squares(self.castling_rights[colour]):
+                if not (BB_BETWEEN[from_square][rook_sq] & self.occupied):  # Check no pieces in-between
+                    castle_sq = rook_sq + 2 if rook_sq.file == 0 else rook_sq - 1
                     yield Move(from_square, castle_sq, is_castling=True)
 
     @property
@@ -625,7 +629,7 @@ class Board:
                 blank_counter += 1
 
         _turn = 'w' if self.turn == WHITE else 'b'
-        _en_passant = '-' if not self.en_passant_sq else 'TODO'
+        _en_passant = '-' if not self.en_passant_sq else str(self.en_passant_sq)
         fen_str += f' {_turn} {self.castle_flags} {_en_passant} {self.halfmove_clock} {self.fullmoves}'
 
         return fen_str
@@ -681,8 +685,8 @@ class Board:
         if not (self.castling_rights[WHITE] | self.castling_rights[BLACK]):
             return self.castling_rights
 
-        white_castling = BB_CASTLING[WHITE] & self.rooks[WHITE] & self.castling_rights[WHITE]
-        black_castling = BB_CASTLING[BLACK] & self.rooks[BLACK] & self.castling_rights[BLACK]
+        white_castling = BB_ORIGINAL_ROOKS[WHITE] & self.rooks[WHITE] & self.castling_rights[WHITE]
+        black_castling = BB_ORIGINAL_ROOKS[BLACK] & self.rooks[BLACK] & self.castling_rights[BLACK]
 
         # Kings can't have moved
         if not self.kings[WHITE] & BB_E1:
@@ -702,21 +706,54 @@ class Board:
         The consumer of this API should enforce legality by checking Bitboard.legal_moves.
         """
         piece = self.piece_at(move.from_square)
+        captured_piece = self.piece_at(move.to_square)
+
         if not piece:
             raise IllegalMove(f"No piece at {move.from_square}")
 
         if piece.colour != self.turn:
             raise IllegalMove(f"Can't move that piece, it's not your turn.")
 
-        # TODO: Castling
-        pass
+        # Castling if a king is moving more than 1 square
+        if piece.type == KING and abs(move.from_square.file - move.to_square.file) > 1:
 
-        # TODO: En Passant
-        pass
+            # Move King
+            self.remove_piece(move.from_square)
+            self.place_piece(move.to_square, piece.type, piece.colour)
 
-        self.remove_piece(move.from_square)
-        captured_piece = self.piece_at(move.to_square)
-        self.place_piece(move.to_square, piece.type, piece.colour)
+            # Move Rook
+            rook_shift = 1 if move.to_square.file < move.from_square.file else -1  # For Queen/Kingside
+            if rook_shift > 0:  # Queenside
+                self.remove_piece(Square.from_file_rank(0, move.to_square.rank))
+            else:
+                self.remove_piece(Square.from_file_rank(7, move.to_square.rank))
+
+            self.place_piece(
+                Square.from_file_rank(move.to_square.file + rook_shift, move.from_square.rank),
+                ROOK,
+                piece.colour,
+            )
+        else:
+            # Regular piece move
+            self.remove_piece(move.from_square)
+            self.place_piece(move.to_square, piece.type, piece.colour)
+
+        # Set En Passant square
+        if piece.type == PAWN:
+            distance = move.to_square.rank - move.from_square.rank
+            if abs(distance) == 2:
+                if distance > 0:  # White pawn goes from low rank to higher
+                    self.en_passant_sq = Square(move.from_square + 8)  # En Passant square is 1 rank behind
+                else:  # Black pawn
+                    self.en_passant_sq = Square(move.from_square - 8)
+            else:
+                self.en_passant_sq = None
+        else:
+            self.en_passant_sq = None
+
+        # Update castling rights if the king or rook move
+        if piece.type in (KING, ROOK):
+            self._update_castling_rights()
 
         # Reset halfmove clock if a pawn moved or a piece was captured
         if piece.type == PAWN or captured_piece:
@@ -748,8 +785,8 @@ class Board:
         elif piece_type.lower() == KING:
             self.kings[colour] |= mask
 
-        self.occupied_colour[colour] |= mask
         self.occupied |= mask
+        self.occupied_colour[colour] |= mask
 
     def remove_piece(self, square: Square) -> Optional[Piece]:
         """
@@ -776,6 +813,9 @@ class Board:
             self.queens[piece.colour] ^= mask
         elif piece.type == KING:
             self.kings[piece.colour] ^= mask
+
+        self.occupied ^= mask
+        self.occupied_colour[piece.colour] ^= mask
 
         return piece
 

@@ -10,8 +10,8 @@ from engine.constants import WHITE, BLACK
 
 
 def main():
-    pass
-
+    bb = Board()
+    log.info(bb)
 
 if __name__ == '__main__':
     main()

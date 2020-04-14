@@ -50,17 +50,54 @@ class TestMoves(unittest.TestCase):
 
     def test_legal_castling(self):
         for fen, match in (
-            ('rnbqkbnr/pppppppp/8/8/8/3BPN2/PPPP1PPP/RNBQK2R w KQkq - 0 1', {'e1f1', 'e1h1', 'e1e2'}),
+            ('rnbqkbnr/pppppppp/8/8/8/3BPN2/PPPP1PPP/RNBQK2R w KQkq - 0 1', {'e1f1', 'e1g1', 'e1e2'}),
             (
                 'rnbqkbnr/pppppppp/8/8/N1B5/BP1PPN2/P1PQ1PPP/R3K2R w KQkq - 0 1',
-                {'e1f1', 'e1e2', 'e1h1', 'e1a1', 'e1d1'}
+                {'e1f1', 'e1e2', 'e1g1', 'e1c1', 'e1d1'}
             ),
-            ('rnb1kbnr/pppppppp/8/1P6/N1B5/BPqPPN2/P2Q1PPP/R3K2R w KQkq - 0 1', {'e1h1', 'e1d1', 'e1e2', 'e1f1'}),
+            ('rnb1kbnr/pppppppp/8/1P6/N1B5/BPqPPN2/P2Q1PPP/R3K2R w KQkq - 0 1', {'e1g1', 'e1d1', 'e1e2', 'e1f1'}),
             ('rnb1kbn1/pppppppp/4q3/1P6/N1B5/BP1PPN2/P2QrPPP/R3K2R w KQq - 0 1', {'e1f1', 'e1d1', 'e1e2'}),
         ):
             _board = Board(fen=fen)
             _moves = {m.uci for m in _board.legal_moves if m.from_square == E1}
             self.assertEqual(_moves, match)
+
+    def test_castling_moves(self):
+        bb = Board()
+        for move in (
+            'g1f3',
+            'b8c6',
+            'h2h4',
+            'a7a5',
+            'g2g3',
+            'b7b6',
+            'f1g2',
+            'c8b7',
+            'd2d3',
+            'd7d5',
+            'a2a3',
+            'd8d6',
+        ):
+            m = Move.from_uci(move)
+            self.assertTrue(m in bb.legal_moves)
+            bb.make_move(m)
+
+        self.assertEqual(bb.fen, 'r3kbnr/1bp1pppp/1pnq4/p2p4/7P/P2P1NP1/1PP1PPB1/RNBQK2R w KQkq - 1 7')
+        self.assertEqual(bb.castle_flags, 'KQkq')
+
+        for move in bb.legal_moves:
+            if move.is_castling:
+                self.assertEqual(move.uci, 'e1g1')
+                bb.make_move(move)
+        self.assertEqual(bb.fen, 'r3kbnr/1bp1pppp/1pnq4/p2p4/7P/P2P1NP1/1PP1PPB1/RNBQ1RK b kq - 2 7')
+        self.assertEqual(bb.castle_flags, 'kq')
+
+        for move in bb.legal_moves:
+            if move.is_castling:
+                self.assertEqual(move.uci, 'e8c8')
+                bb.make_move(move)
+        self.assertEqual(bb.fen, '2kr1bnr/1bp1pppp/1pnq4/p2p4/7P/P2P1NP1/1PP1PPB1/RNBQ1RK w - - 3 8')
+        self.assertEqual(bb.castle_flags, '-')
 
 def main():
     unittest.main()
