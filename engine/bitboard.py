@@ -306,9 +306,9 @@ for _from_sq in SQUARES:
         bb_to_sq = BB_SQUARES[_to_sq]
 
         between = None
-        for direction in BB_RAYS:
-            if BB_RAYS[direction][_from_sq] & bb_to_sq:
-                between = _calc_between(BB_RAYS[direction], _from_sq, _to_sq)
+        for _direction in BB_RAYS:
+            if BB_RAYS[_direction][_from_sq] & bb_to_sq:
+                between = _calc_between(BB_RAYS[_direction], _from_sq, _to_sq)
                 continue
 
         if between:
@@ -446,6 +446,10 @@ class Board:
         self.halfmove_clock = 0
         self.fullmoves = 0
 
+    @property
+    def _bb_en_passant(self):
+        return BB_SQUARES[self.en_passant_sq] if self.en_passant_sq else BB_EMPTY
+
     def _set_from_fen(self, fen: str):
         rank = 7
         file = 0
@@ -503,7 +507,7 @@ class Board:
 
             # If actually moving the piece, need to restrict pawn diagonal moves to captures
             if not attacks_only:
-                moves &= self.occupied_colour[not colour]
+                moves &= (self.occupied_colour[not colour] | self._bb_en_passant)
                 moves |= BB_PAWN_MOVES[colour][square]
             return moves
         elif self.rooks[colour] & bb_sq:
@@ -629,7 +633,7 @@ class Board:
                 blank_counter += 1
 
         _turn = 'w' if self.turn == WHITE else 'b'
-        _en_passant = '-' if not self.en_passant_sq else str(self.en_passant_sq)
+        _en_passant = '-' if not self.en_passant_sq else str(self.en_passant_sq).lower()
         fen_str += f' {_turn} {self.castle_flags} {_en_passant} {self.halfmove_clock} {self.fullmoves}'
 
         return fen_str
@@ -716,7 +720,6 @@ class Board:
 
         # Castling if a king is moving more than 1 square
         if piece.type == KING and abs(move.from_square.file - move.to_square.file) > 1:
-
             # Move King
             self.remove_piece(move.from_square)
             self.place_piece(move.to_square, piece.type, piece.colour)
@@ -733,6 +736,12 @@ class Board:
                 ROOK,
                 piece.colour,
             )
+        elif piece.type == PAWN and move.to_square == self.en_passant_sq:  # Take piece by en_passant
+            shift = -8 if piece.colour == WHITE else 8
+            capture_sq = self.en_passant_sq + shift
+            captured_piece = self.remove_piece(capture_sq)
+            self.remove_piece(move.from_square)
+            self.place_piece(move.to_square, piece.type, piece.colour)
         else:
             # Regular piece move
             self.remove_piece(move.from_square)

@@ -99,6 +99,22 @@ class TestMoves(unittest.TestCase):
         self.assertEqual(bb.fen, '2kr1bnr/1bp1pppp/1pnq4/p2p4/7P/P2P1NP1/1PP1PPB1/RNBQ1RK w - - 3 8')
         self.assertEqual(bb.castle_flags, '-')
 
+    def test_en_passant(self):
+        bb = Board()
+        for m in (
+                'a2a3',
+                'g7g5',
+                'a3a4',
+                'g5g4',
+                'f2f4',
+                'g4f3',
+        ):
+            move = Move.from_uci(m)
+            self.assertTrue(move in bb.legal_moves)
+            bb.make_move(move)
+        self.assertEqual(bb.fen, 'rnbqkbnr/pppppp1p/8/8/P7/5p2/1PPPP1PP/RNBQKBNR w KQkq - 0 4')
+
+
 def main():
     unittest.main()
 
