@@ -6,10 +6,10 @@ from engine.bitboard import *
 class TestMoves(unittest.TestCase):
     def test_precalc_moves(self):
         match = {
-            'e1d1', 'd3c4', 'h4h5', 'f3f4', 'd3d8', 'e2e3', 'b4a3', 'd3d7', 'd3d6', 'g2g4', 'g3e5', 'd3d5', 'g3f2',
-            'b4e7', 'd3c3', 'g3f4', 'g3h2', 'e4g4', 'c2c4', 'e1f1', 'd2d4', 'e4d4', 'b4d6', 'b1a3', 'b4c3', 'e1f2',
-            'b1c3', 'e4e5', 'd3d4', 'a2a3', 'g3d6', 'd3e3', 'g3c7', 'c2c3', 'e4c4', 'b4c5', 'e4f4', 'a2a4', 'g1h3',
-            'e4e6', 'b3c4', 'e4e7', 'b4a5', 'e4e3'
+            'h4h5', 'e4e7', 'e4e6', 'e4e5', 'e4g4', 'e4f4', 'e4d4', 'e4c4', 'e4e3', 'b4e7', 'b4d6', 'b4c5', 'b4a5',
+            'b4c3', 'b4a3', 'g3c7', 'g3d6', 'g3e5', 'g3f4', 'g3h2', 'g3f2', 'f3f4', 'd3d8', 'd3d7', 'd3d6', 'd3d5',
+            'd3d4', 'd3c4', 'd3e3', 'd3c3', 'b3c4', 'g2g4', 'e2e3', 'd2d4', 'c2c3', 'a2a4', 'a2a3', 'g1h3', 'e1f2',
+            'e1f1', 'e1d1', 'b1c3', 'b1a3',
         }
         bb = Board('rnbqkbnr/ppp1pppp/8/8/1Bp1R2P/1P1Q1PB1/P1PPP1P1/RN2K1N1 w Qkq - 0 1')
         white_moves = {m.uci for m in bb._pseudo_legal_moves(WHITE)}
@@ -33,7 +33,7 @@ class TestMoves(unittest.TestCase):
             }),
             ('rnb1kbnr/pppp1ppp/4p3/2K1B2q/8/BP3P2/P1PPP1PP/RN1Q2NR w - - 0 1', {'c5b5', 'c5d4', 'c5c4'}),
             ('rnb2bnr/ppppNppp/2B1p3/1k5q/3K4/BPQ2P2/P1PPP1PP/R5NR b - - 0 1', {
-                'b8c6', 'd7c6', 'c7c6', 'b7c6', 'b5c6', 'b5b6', 'b5a6'
+                'b8c6', 'd7c6', 'b7c6', 'b5b6', 'b5a6',
             }),
         ):
             _board = Board(fen=fen)
@@ -113,6 +113,30 @@ class TestMoves(unittest.TestCase):
             self.assertTrue(move in bb.legal_moves)
             bb.make_move(move)
         self.assertEqual(bb.fen, 'rnbqkbnr/pppppp1p/8/8/P7/5p2/1PPPP1PP/RNBQKBNR w KQkq - 0 4')
+
+    def test_checkmate(self):
+        for fen, result in (
+            ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w', False),
+            ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b', False),
+            ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w', True),
+            ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR b', False),
+            ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1 w', False),
+            ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1 b', True),
+        ):
+            _board = Board(fen=fen)
+            self.assertEqual(_board.is_checkmate, result)
+
+    def test_stalemate(self):
+        for fen, result in (
+            ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w', False),
+            ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b', False),
+            ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w', False),
+            ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR b', False),
+            ('5k2/5P2/5K2/8/8/8/8/8 w - - 0 1 w', False),
+            ('5k2/5P2/5K2/8/8/8/8/8 b - - 0 1 b', True),
+        ):
+            _board = Board(fen=fen)
+            self.assertEqual(_board.is_stalemate, result)
 
 
 def main():

@@ -504,6 +504,12 @@ class Board:
     def _moves_from_square(
             self, square: Square, colour: Colour, attacks_only: bool = False, ignore: Bitboard = BB_EMPTY,
     ) -> Optional[Bitboard]:
+        def _filter_occupied(_moves):
+            if attacks_only:
+                return _moves
+            else:
+                return _moves & ~self.occupied_colour[colour]  # Cannot take our own pieces
+
         bb_sq = BB_SQUARES[square]
 
         if self.pawns[colour] & bb_sq:
@@ -512,27 +518,29 @@ class Board:
             # If actually moving the piece, need to restrict pawn diagonal moves to captures
             if not attacks_only:
                 moves &= (self.occupied_colour[not colour] | self._bb_en_passant)
-                moves |= BB_PAWN_MOVES[colour][square]
+                moves |= BB_PAWN_MOVES[colour][square] & ~self.occupied  # Cannot move forward onto occupied square
             return moves
         elif self.rooks[colour] & bb_sq:
-            return self._attack_rays_from_square(square, (NORTH, EAST, WEST, SOUTH), ignore=ignore)
+            moves = self._attack_rays_from_square(square, (NORTH, EAST, WEST, SOUTH), ignore=ignore)
+            return _filter_occupied(moves)
         elif self.knights[colour] & bb_sq:
-            return BB_KNIGHT_MOVES[square]
+            return _filter_occupied(BB_KNIGHT_MOVES[square])
         elif self.bishops[colour] & bb_sq:
-            return self._attack_rays_from_square(
+            moves = self._attack_rays_from_square(
                 square,
                 (NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),
                 ignore=ignore,
             )
+            return _filter_occupied(moves)
         elif self.queens[colour] & bb_sq:
-            return self._attack_rays_from_square(
+            moves =  self._attack_rays_from_square(
                 square,
                 (NORTH, EAST, WEST, SOUTH, NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),
                 ignore=ignore,
             )
+            return _filter_occupied(moves)
         elif self.kings[colour] & bb_sq:
-            moves = BB_KING_MOVES[square]
-            return moves
+            return _filter_occupied(BB_KING_MOVES[square])
 
     def _attack_bitboard(self, colour: Colour, ignore: Bitboard = BB_EMPTY) -> Bitboard:
         """
@@ -547,14 +555,7 @@ class Board:
             moves = self._moves_from_square(from_square, colour, ignore=ignore, attacks_only=True)
             if moves:
                 attack_moves |= moves
-        return attack_moves & ~self.occupied_colour[colour]
-
-    def _pseudo_legal_moves_from_square(self, from_square: Square, colour: Colour) -> Iterable[Move]:
-        moves = self._moves_from_square(from_square, colour)
-        if moves:
-            attack_moves = moves & ~self.occupied_colour[colour]  # Cannot take our own pieces
-            for to_square in bitboard_to_squares(attack_moves):
-                yield Move(from_square, to_square)
+        return attack_moves
 
     def _attackers(self, target: Square, colour) -> Bitboard:
         cardinal_movers = self.rooks[colour] | self.queens[colour]
@@ -665,6 +666,14 @@ class Board:
     @property
     def is_in_check(self):
         return bool(self.kings[self.turn] & self._attack_bitboard(not self.turn))
+
+    @property
+    def is_checkmate(self):
+        return self.is_in_check and not any(self.legal_moves)
+
+    @property
+    def is_stalemate(self):
+        return not self.is_in_check and not any(self.legal_moves)
 
     @property
     def legal_moves(self) -> Iterable[Move]:
