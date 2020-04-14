@@ -400,8 +400,16 @@ class Board:
         self.halfmove_clock = 0
         self.fullmoves = 0
 
+        self._history = []
         self._clear()
         self._set_from_fen(fen)
+
+    @property
+    def _bb_en_passant(self):
+        return BB_SQUARES[self.en_passant_sq] if self.en_passant_sq else BB_EMPTY
+
+    def _save(self):
+        self._history.append(_BoardState(self))
 
     def _clear(self):
         """Defines an empty bitbaord."""
@@ -446,10 +454,6 @@ class Board:
         self.halfmove_clock = 0
         self.fullmoves = 0
 
-    @property
-    def _bb_en_passant(self):
-        return BB_SQUARES[self.en_passant_sq] if self.en_passant_sq else BB_EMPTY
-
     def _set_from_fen(self, fen: str):
         rank = 7
         file = 0
@@ -474,9 +478,9 @@ class Board:
             assert turn in ['w', 'b'], "Invalid FEN."
             self.turn = BLACK if turn == 'b' else WHITE
 
-        # if len(components) > 3:
-        #     _en_passant_coord = components[3].upper()
-        #     en_passant = None if _en_passant_coord == '-' else position.from_coord(_en_passant_coord)
+        if len(components) > 3:
+            _en_passant_coord = components[3].upper()
+            self.en_passant_sq = None if _en_passant_coord == '-' else Square.from_coord(_en_passant_coord)
 
         if len(components) > 4:
             self.halfmove_clock = int(components[4])
@@ -591,6 +595,26 @@ class Board:
                     castle_sq = rook_sq + 2 if rook_sq.file == 0 else rook_sq - 1
                     yield Move(from_square, castle_sq, is_castling=True)
 
+    def _update_castling_rights(self):
+        # Can never get castling rights back, so if we've removed them all, return quickly
+        if not (self.castling_rights[WHITE] | self.castling_rights[BLACK]):
+            return self.castling_rights
+
+        white_castling = BB_ORIGINAL_ROOKS[WHITE] & self.rooks[WHITE] & self.castling_rights[WHITE]
+        black_castling = BB_ORIGINAL_ROOKS[BLACK] & self.rooks[BLACK] & self.castling_rights[BLACK]
+
+        # Kings can't have moved
+        if not self.kings[WHITE] & BB_E1:
+            white_castling = BB_EMPTY
+        if not self.kings[BLACK] & BB_E8:
+            black_castling = BB_EMPTY
+
+        self.castling_rights = {
+            WHITE: white_castling,
+            BLACK: black_castling,
+        }
+        return self.castling_rights
+
     @property
     def castle_flags(self) -> str:
         flags = ''
@@ -684,31 +708,12 @@ class Board:
 
             yield move
 
-    def _update_castling_rights(self):
-        # Can never get castling rights back, so if we've removed them all, return quickly
-        if not (self.castling_rights[WHITE] | self.castling_rights[BLACK]):
-            return self.castling_rights
-
-        white_castling = BB_ORIGINAL_ROOKS[WHITE] & self.rooks[WHITE] & self.castling_rights[WHITE]
-        black_castling = BB_ORIGINAL_ROOKS[BLACK] & self.rooks[BLACK] & self.castling_rights[BLACK]
-
-        # Kings can't have moved
-        if not self.kings[WHITE] & BB_E1:
-            white_castling = BB_EMPTY
-        if not self.kings[BLACK] & BB_E8:
-            black_castling = BB_EMPTY
-
-        self.castling_rights = {
-            WHITE: white_castling,
-            BLACK: black_castling,
-        }
-        return self.castling_rights
-
     def make_move(self, move: Move):
         """
         Moves a piece on the board. Warning: moves are not checked for legality in this function, this is for speed.
         The consumer of this API should enforce legality by checking Bitboard.legal_moves.
         """
+        self._save()
         piece = self.piece_at(move.from_square)
         captured_piece = self.piece_at(move.to_square)
 
@@ -774,6 +779,11 @@ class Board:
             self.fullmoves += 1
 
         self.turn = not self.turn
+
+    def undo(self):
+        """Reverses the previous move."""
+        state = self._history.pop()
+        state.load(self)
 
     def place_piece(self, square: Square, piece_type: PieceType, colour: Colour):
         """Place a piece of a given colour on a square of the board."""
@@ -864,3 +874,54 @@ class Board:
                 board_str += '[ ]'
         board_str += '\n   A  B  C  D  E  F  G  H '
         return board_str
+
+
+class _BoardState:
+    """Storage of bitboard integers representing state. Very cheap to copy, even if a bit ugly."""
+    def __init__(self, board: Board):
+        self.turn = board.turn
+        self.en_passant_sq = board.en_passant_sq
+        self.halfmove_clock = board.halfmove_clock
+        self.fullmoves = board.fullmoves
+
+        self.b_pawns = board.pawns[BLACK]
+        self.w_pawns = board.pawns[WHITE]
+        self.b_rooks = board.rooks[BLACK]
+        self.w_rooks = board.rooks[WHITE]
+        self.b_knights = board.knights[BLACK]
+        self.w_knights = board.knights[WHITE]
+        self.b_bishops = board.bishops[BLACK]
+        self.w_bishops = board.bishops[WHITE]
+        self.b_queens = board.queens[BLACK]
+        self.w_queens = board.queens[WHITE]
+        self.b_kings = board.kings[BLACK]
+        self.w_kings = board.kings[WHITE]
+
+        self.occupied = board.occupied
+        self.occupied_colour_w = board.occupied_colour[WHITE]
+        self.occupied_colour_b = board.occupied_colour[BLACK]
+        self.castling_rights = board.castling_rights
+
+    def load(self, board: Board):
+        board.turn = self.turn
+        board.en_passant_sq = self.en_passant_sq
+        board.halfmove_clock = self.halfmove_clock
+        board.fullmoves = self.fullmoves
+
+        board.pawns[BLACK] = self.b_pawns
+        board.pawns[WHITE] = self.w_pawns
+        board.rooks[BLACK] = self.b_rooks
+        board.rooks[WHITE] = self.w_rooks
+        board.knights[BLACK] = self.b_knights
+        board.knights[WHITE] = self.w_knights
+        board.bishops[BLACK] = self.b_bishops
+        board.bishops[WHITE] = self.w_bishops
+        board.queens[BLACK] = self.b_queens
+        board.queens[WHITE] = self.w_queens
+        board.kings[BLACK] = self.b_kings
+        board.kings[WHITE] = self.w_kings
+
+        board.occupied = self.occupied
+        board.occupied_colour[WHITE] = self.occupied_colour_w
+        board.occupied_colour[BLACK] = self.occupied_colour_b
+        board.castling_rights = self.castling_rights
