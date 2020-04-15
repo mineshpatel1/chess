@@ -4,7 +4,7 @@ from flask import request
 import log
 from ai import dumb
 from engine.constants import WHITE, BLACK
-from engine.board import Board, Move, SQUARES, SQUARES_VFLIP
+from engine.board import Board, Move, SQUARES_VFLIP
 from engine.exceptions import IllegalMove, Checkmate, Draw
 from web.server import app
 
@@ -13,7 +13,7 @@ cache = {
 }
 
 
-def json_board(board: Board, params: Optional[Dict[str, Any]] = None):
+def json_board(board: Board, params: Optional[Dict] = None):
     by_rank = {}
     for sq in SQUARES_VFLIP:
         rank = sq.rank

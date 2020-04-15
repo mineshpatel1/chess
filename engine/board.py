@@ -616,14 +616,6 @@ class Board:
         state = self._history.pop()
         state.load(self)
 
-    def push(self, move: Move):
-        """Alias for make_move, useful for benchmarking against python-chess."""
-        self.make_move(move)
-
-    def pop(self):
-        """Alias for unmake_move, useful for benchmarking against python-chess."""
-        self.unmake_move()
-
     def place_piece(self, square: Square, piece_type: PieceType, colour: Colour):
         """Place a piece of a given colour on a square of the board."""
         self.remove_piece(square)  # Remove the existing piece if it exists
@@ -726,6 +718,10 @@ class Board:
                 board_str += '[ ]'
         board_str += '\n   A  B  C  D  E  F  G  H '
         return board_str
+
+    # Aliases for benchmarking
+    push = make_move
+    pop = unmake_move
 
 
 class _BoardState:

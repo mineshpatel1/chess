@@ -21,6 +21,7 @@ def _traverse_moves(board: Union[chess.Board, Board], depth: int, counter: int):
 def traverse_moves(board: Union[chess.Board, Board], depth: int):
     counter = 0
     start_time = time.time()
+
     for move in board.legal_moves:
         board.push(move)
         counter = _traverse_moves(board, depth - 1, counter)
