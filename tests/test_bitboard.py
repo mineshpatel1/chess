@@ -1,6 +1,6 @@
 import unittest
 
-from engine.bitboard import *
+from engine.board import *
 
 
 class TestBitboard(unittest.TestCase):

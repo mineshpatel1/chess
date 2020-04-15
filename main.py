@@ -1,7 +1,7 @@
 import time
 import log
 
-from engine.bitboard import *
+from engine.board import *
 
 
 def main():

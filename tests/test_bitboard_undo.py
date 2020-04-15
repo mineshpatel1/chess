@@ -1,7 +1,7 @@
 import unittest
 
 from engine.constants import STARTING_STATE
-from engine.bitboard import Board, Move
+from engine.board import Board, Move
 
 
 class TestBBUndo(unittest.TestCase):

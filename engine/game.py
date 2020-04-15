@@ -10,7 +10,7 @@ from engine.exceptions import (
     Stalemate,
     Checkmate,
 )
-from engine.pieces import Piece, Rook, Knight, Bishop, Queen, King, Pawn
+from engine.pieces_legacy import Piece, Rook, Knight, Bishop, Queen, King, Pawn
 from engine.position import Position
 
 from engine.constants import (

@@ -1,7 +1,7 @@
 import random
 from typing import Tuple
 
-from engine.game import Game
+from engine.board import Game
 from engine.position import Position
 
 def first_possible_move(board: Game) -> Tuple[Position, Position]:
