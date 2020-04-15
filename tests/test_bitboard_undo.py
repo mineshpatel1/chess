@@ -88,7 +88,7 @@ class TestBBUndo(unittest.TestCase):
         i = 0
         fens = [m[1] for m in moves]
         while len(board._history) > 0:
-            board.undo()
+            board.unmake_move()
             self.assertEqual(board.fen, fens[-1 * (i + 1)])
             i += 1
         self.assertEqual(board.fen, STARTING_STATE)  # Check we have the initial game board
@@ -179,7 +179,7 @@ class TestBBUndo(unittest.TestCase):
         i = 0
         fens = [m[1] for m in moves]
         while len(board._history) > 0:
-            board.undo()
+            board.unmake_move()
             self.assertEqual(board.fen, fens[-1 * (i + 1)])
             i += 1
         self.assertEqual(board.fen, STARTING_STATE)  # Check we have the initial game board

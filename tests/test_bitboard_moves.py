@@ -151,6 +151,37 @@ class TestMoves(unittest.TestCase):
             _board = Board(fen)
             self.assertEqual(_board.has_insufficient_material, result)
 
+    def test_threefold_repetition(self):
+        _board = Board(track_repetitions=True)
+        for move in (
+            'B2B3',
+            'C7C6',
+            'B3B4',
+            'C6C5',
+            'B4C5',
+            'B8C6',
+            'C2C4',
+            'A8B8',
+            'D1B3',
+            'B8A8',
+            'B3D3',
+            'A8B8',
+            'D3B3',
+            'B8A8',
+            'B3D3',
+            'A8B8',
+            'D3B3',
+        ):
+            m = Move.from_uci(move)
+            self.assertTrue(m in _board.legal_moves)
+            _board.make_move(m)
+
+        self.assertTrue(_board.has_threefold_repetition)
+        _board.unmake_move()
+        _board.make_move(Move.from_uci('h2h3'))
+        self.assertFalse(_board.has_threefold_repetition)
+
+
 def main():
     unittest.main()
 

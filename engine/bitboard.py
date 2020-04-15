@@ -3,7 +3,14 @@ from typing import List, Tuple, Optional, Iterable
 
 import log
 from engine.position import char_to_file, file_rank_to_index
-from engine.exceptions import IllegalMove
+from engine.exceptions import (
+    Checkmate,
+    Stalemate,
+    IllegalMove,
+    FiftyMoveDraw,
+    ThreefoldRepetition,
+    InsufficientMaterial,
+)
 from engine.constants import (
     Colour,
     WHITE,
@@ -394,7 +401,7 @@ class Move:
 
 
 class Board:
-    def __init__(self, fen: str = STARTING_STATE, check_repetitions: bool = False):
+    def __init__(self, fen: str = STARTING_STATE, track_repetitions: bool = False):
         """
         Represents the chess board and game state as a bitboard.
 
@@ -403,13 +410,15 @@ class Board:
                 (https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation).
             check_repetitions: If specified as True, will store game states every move to verify if the same board
                 position has been reached 3 times for a threefold repetition draw
-                (https://en.wikipedia.org/wiki/Threefold_repetition).
+                (https://en.wikipedia.org/wiki/Threefold_repetition). Note that this will impact performance but
+                is required for a strictly true game state.
         """
         self.turn = WHITE
         self.en_passant_sq = None
         self.halfmove_clock = 0
         self.fullmoves = 0
-        self.check_repetitions = check_repetitions
+        self.track_repetitions = track_repetitions
+        self.repetitions = []
 
         self._history = []
         self._clear()
@@ -418,6 +427,10 @@ class Board:
     @property
     def _bb_en_passant(self):
         return BB_SQUARES[self.en_passant_sq] if self.en_passant_sq else BB_EMPTY
+
+    @property
+    def _short_fen(self):
+        return ' '.join(self.fen.split(' ')[:4])
 
     def _save(self):
         self._history.append(_BoardState(self))
@@ -464,6 +477,7 @@ class Board:
         self.en_passant_sq = None
         self.halfmove_clock = 0
         self.fullmoves = 0
+        self.repetitions = []
 
     def _set_from_fen(self, fen: str):
         rank = 7
@@ -749,6 +763,19 @@ class Board:
             return bishops_are_same_colour and only_bishops_and_kings
 
     @property
+    def has_threefold_repetition(self):
+        if not self.track_repetitions:  # Never true if we are not keeping track
+            return False
+
+        count_reps = {}
+        for rep in self.repetitions:
+            count_reps[rep] = count_reps.get(rep, 0)
+            count_reps[rep] += 1
+            if count_reps[rep] >= 3:
+                return True
+        return False
+
+    @property
     def is_game_over(self):
         has_legal_move = any(self.legal_moves)
 
@@ -760,6 +787,19 @@ class Board:
             return True
         else:
             return False
+
+    def raise_if_game_over(self):
+        """Raises an exception if the board is in an end state."""
+        if self.halfmove_clock >= 50:
+            raise FiftyMoveDraw
+        elif self.has_insufficient_material:
+            raise InsufficientMaterial
+        elif self.has_threefold_repetition:
+            raise ThreefoldRepetition
+        elif self.is_checkmate:
+            raise Checkmate
+        elif self.is_stalemate:
+            raise Stalemate
 
     @property
     def legal_moves(self) -> Iterable[Move]:
@@ -850,6 +890,8 @@ class Board:
                 ROOK,
                 piece.colour,
             )
+
+            self.repetitions = []  # Reset repetitions when castling
         elif piece.type == PAWN and move.to_square == self.en_passant_sq:  # Take piece by en_passant
             shift = -8 if piece.colour == WHITE else 8
             capture_sq = self.en_passant_sq + shift
@@ -884,15 +926,18 @@ class Board:
         # Reset halfmove clock if a pawn moved or a piece was captured
         if piece.type == PAWN or captured_piece:
             self.halfmove_clock = 0
+            self.repetitions = []
         else:
             self.halfmove_clock += 1
+            if self.track_repetitions:
+                self.repetitions.append(self._short_fen)  # Imperfect repetition tracking
 
         if self.turn == BLACK:  # Increment full moves after Black's turn
             self.fullmoves += 1
 
         self.turn = not self.turn
 
-    def undo(self):
+    def unmake_move(self):
         """Reverses the previous move."""
         state = self._history.pop()
         state.load(self)
@@ -995,6 +1040,7 @@ class _BoardState:
         self.en_passant_sq = board.en_passant_sq
         self.halfmove_clock = board.halfmove_clock
         self.fullmoves = board.fullmoves
+        self.repetitions = tuple(board.repetitions)
 
         self.b_pawns = board.pawns[BLACK]
         self.w_pawns = board.pawns[WHITE]
@@ -1019,6 +1065,7 @@ class _BoardState:
         board.en_passant_sq = self.en_passant_sq
         board.halfmove_clock = self.halfmove_clock
         board.fullmoves = self.fullmoves
+        board.repetitions = list(self.repetitions)
 
         board.pawns[BLACK] = self.b_pawns
         board.pawns[WHITE] = self.w_pawns

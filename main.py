@@ -10,9 +10,7 @@ from engine.constants import WHITE, BLACK
 
 
 def main():
-    bb = Board('8/3k4/8/8/8/8/3K4/8 w - - 0 1')
-    log.info(bb)
-    log.info(bb.has_insufficient_material)
+    pass
 
 if __name__ == '__main__':
     main()
