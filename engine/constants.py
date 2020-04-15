@@ -41,7 +41,7 @@ PIECE_ICONS = {
     KING: '♚',
 }
 
-PIECE_POINTS = {
+PIECE_VALUES = {
     PAWN: 1,
     KNIGHT: 3,
     BISHOP: 3,

@@ -30,7 +30,7 @@ from engine.constants import (
     PIECE_ICONS,
     PIECE_NAMES,
     PIECE_TYPES,
-    PIECE_POINTS,
+    PIECE_VALUES,
 
     Direction,
     NORTH,
@@ -354,7 +354,7 @@ class Piece:
     @property
     def value(self) -> int:
         modifier = 1 if self.colour == WHITE else -1
-        return modifier * PIECE_POINTS[self.type]
+        return modifier * PIECE_VALUES[self.type]
 
     def __str__(self) -> str:
         return f'{self.icon}'
@@ -788,18 +788,35 @@ class Board:
         else:
             return False
 
-    def raise_if_game_over(self):
-        """Raises an exception if the board is in an end state."""
-        if self.halfmove_clock >= 50:
-            raise FiftyMoveDraw
-        elif self.has_insufficient_material:
-            raise InsufficientMaterial
-        elif self.has_threefold_repetition:
-            raise ThreefoldRepetition
-        elif self.is_checkmate:
-            raise Checkmate
-        elif self.is_stalemate:
-            raise Stalemate
+    @property
+    def board_value(self):
+        """Evaluation of the board, positive for white, negative for black."""
+        def _count_value(_piece_type, _pieces, _modifier):
+            return PIECE_VALUES[_piece_type] * bit_count(_pieces) * _modifier
+
+        total = 0
+        for colour in (WHITE, BLACK):
+            for piece_type in (PAWN, ROOK, BISHOP, KNIGHT, QUEEN, KING):
+                modifier = 1 if colour == WHITE else -1
+                if piece_type == PAWN:
+                    total += _count_value(piece_type, self.pawns[colour], modifier)
+                elif piece_type == ROOK:
+                    total += _count_value(piece_type, self.rooks[colour], modifier)
+                elif piece_type == KNIGHT:
+                    total += _count_value(piece_type, self.knights[colour], modifier)
+                elif piece_type == BISHOP:
+                    total += _count_value(piece_type, self.bishops[colour], modifier)
+                elif piece_type == QUEEN:
+                    total += _count_value(piece_type, self.queens[colour], modifier)
+                elif piece_type == KING:
+                    total += _count_value(piece_type, self.kings[colour], modifier)
+        return total
+
+    @property
+    def relative_value(self):
+        """Board value normalised for the given player. All players should look to maximise this value."""
+        modifier = 1 if self.turn == WHITE else -1
+        return modifier * self.board_value
 
     @property
     def legal_moves(self) -> Iterable[Move]:
@@ -1015,6 +1032,19 @@ class Board:
                 return Piece(QUEEN, colour)
             elif self.kings[colour] & mask:
                 return Piece(KING, colour)
+
+    def raise_if_game_over(self):
+        """Raises an exception if the board is in an end state."""
+        if self.halfmove_clock >= 50:
+            raise FiftyMoveDraw
+        elif self.has_insufficient_material:
+            raise InsufficientMaterial
+        elif self.has_threefold_repetition:
+            raise ThreefoldRepetition
+        elif self.is_checkmate:
+            raise Checkmate
+        elif self.is_stalemate:
+            raise Stalemate
 
     def __str__(self):
         board_str = ''

@@ -3,9 +3,10 @@ from typing import Tuple
 import log
 from engine.game import Game
 from engine.position import Position
-from engine.constants import WHITE, BLACK, PIECE_POINTS
+from engine.constants import WHITE, BLACK, PIECE_VALUES
 
 LOW_BOUND = -9999
+
 
 def evaluate_piece(board: Game) -> Tuple[Position, Position]:
     """Really basic algorithm that just looks at the possible moves on show and takes the best piece."""
@@ -21,20 +22,20 @@ def evaluate_piece(board: Game) -> Tuple[Position, Position]:
     return best_move
 
 
-def _negamax(board: Game, depth: int) -> int:
+def _negamax(board: Game, depth: int, counter: int) -> Tuple[int, int]:
     if depth == 0:
-        board.counter += 1
-        log.info(board.counter)
-        return board.relative_value
+        counter += 1
+        return board.relative_value, counter
 
     score = LOW_BOUND
     for move in board.possible_moves(board.turn):
         board.player_move(*move)
-        value = -1 * _negamax(board, depth - 1)
+        value, counter = _negamax(board, depth - 1, counter)
+        value *= -1
         board.undo_move()
         if value > score:
             score = value
-    return score
+    return score, counter
 
 
 def negamax(board: Game, depth: int = 1) -> Tuple[Position, Position]:
@@ -53,58 +54,95 @@ def negamax(board: Game, depth: int = 1) -> Tuple[Position, Position]:
 
     score = LOW_BOUND
     best_move = None
+    counter = 0
 
     for move in possible_moves:
         board.player_move(*move)
-        value = _negamax(board, depth - 1)
+        value, counter = _negamax(board, depth - 1, counter)
         board.undo_move()
 
         if value > score:
             score = value
             best_move = move
 
+    log.info(f"Evaluations: {counter}")
     return best_move
 
 
-def evaluation_fast(board):
+def evaluation_superfast(board):
     total = 0
     for square, piece in board.piece_map().items():
         if piece.color:
-            total += PIECE_POINTS[piece.symbol().lower()]
+            total += PIECE_VALUES[piece.symbol().lower()]
         else:
-            total -= PIECE_POINTS[piece.symbol().lower()]
+            total -= PIECE_VALUES[piece.symbol().lower()]
     modifier = 1 if board.turn else -1
     return total * modifier
 
 
-def _negamax_fast(board, depth, mutable):
+def _negamax_superfast(board, depth, counter):
     if depth == 0:
-        mutable.append(0)
-        return evaluation_fast(board)
+        counter += 1
+        return evaluation_superfast(board), counter
 
     score = LOW_BOUND
     for move in board.legal_moves:
         board.push_uci(move.uci())
-        value = -1 * _negamax_fast(board, depth - 1, mutable)
+        value, counter = _negamax_superfast(board, depth - 1, counter)
+        value *= -1
         board.pop()
         if value > score:
             score = value
-    return score
+    return score, counter
 
 
-def negamax_fast(board, depth):
+def negamax_superfast(board, depth):
     score = LOW_BOUND
     best_move = None
-    mutable = []
+    counter = 0
 
     for move in board.legal_moves:
         board.push_uci(move.uci())
-        value = _negamax_fast(board, depth - 1, mutable)
+        value, counter = _negamax_superfast(board, depth - 1, counter)
         board.pop()
 
         if value > score:
             score = value
             best_move = move
 
-    log.info(len(mutable))
+    log.info(f"Evaluations: {counter}")
+    return best_move
+
+
+def _negamax_bitboard(board, depth, counter):
+    if depth == 0:
+        counter += 1
+        return board.relative_value, counter
+
+    score = LOW_BOUND
+    for move in board.legal_moves:
+        board.make_move(move)
+        value, counter = _negamax_bitboard(board, depth - 1, counter)
+        value *= -1
+        board.unmake_move()
+        if value > score:
+            score = value
+    return score, counter
+
+
+def negamax_bitboard(board, depth):
+    score = LOW_BOUND
+    best_move = None
+    counter = 0
+
+    for move in board.legal_moves:
+        board.make_move(move)
+        value, counter = _negamax_bitboard(board, depth - 1, counter)
+        board.unmake_move()
+
+        if value > score:
+            score = value
+            best_move = move
+
+    log.info(f"Evaluations: {counter}")
     return best_move

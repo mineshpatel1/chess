@@ -9,7 +9,7 @@ from engine.constants import (
     BLACK,
     PIECE_ICONS,
     PIECE_NAMES,
-    PIECE_POINTS,
+    PIECE_VALUES,
     PAWN,
     ROOK,
     KNIGHT,
@@ -113,7 +113,7 @@ class Piece:
     @property
     def value(self) -> int:
         modifier = 1 if self.colour == WHITE else -1
-        return modifier * PIECE_POINTS[self.type]
+        return modifier * PIECE_VALUES[self.type]
 
     @property
     def rook_type(self) -> Optional[str]:
