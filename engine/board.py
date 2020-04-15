@@ -233,12 +233,17 @@ class Board:
         return attack_moves
 
     def _attackers(self, target: Square, colour) -> Bitboard:
+        """Returns the slide attackers of a given square."""
         cardinal_movers = self.rooks[colour] | self.queens[colour]
         diagonal_movers = self.bishops[colour] | self.queens[colour]
 
         return (
             (BB_CARDINALS[target] & cardinal_movers) |
-            (BB_DIAGONALS[target] & diagonal_movers)
+            (BB_DIAGONALS[target] & diagonal_movers) |
+            (BB_KNIGHT_MOVES[target] & self.knights[colour]) |
+
+            # We actually want the reverse colour for the pawn, because the target square is the point of view
+            (BB_PAWN_ATTACKS[not colour][target] & self.pawns[colour])
         )
 
     def _protectors(self, target: Square, colour: Colour) -> Bitboard:
@@ -479,9 +484,6 @@ class Board:
             # If we are moving the king we should be careful
             if move.from_square == king_pos:
                 if attacks & BB_SQUARES[move.to_square]:  # New position is under attack
-                    if move.uci == 'e7d6':
-                        log.warning('Why')
-                        # log.info(bitboard_to_str(attacks))
                     continue
 
                 if move.is_castling:
@@ -498,19 +500,24 @@ class Board:
             if in_check:
                 if move.from_square != king_pos:
                     attackers = self._attackers(king_pos, not self.turn)
+                    num_attackers = bit_count(attackers)
 
                     # If there is more than one attacking piece, we can't protect
-                    if bit_count(attackers) > 1:
+                    if num_attackers > 1:
                         continue
-
-                    attacker_sq = list(bitboard_to_squares(attackers))[0]
-                    if not (  # Deem illegal unless the move is one of these two caveats:
-                        BB_BETWEEN[attacker_sq][king_pos] & BB_SQUARES[move.to_square] or  # Piece blocks danger
-                        move.to_square == attacker_sq  # Piece takes attacker
-                    ):
-                        continue
+                    elif bit_count(attackers) == 1:
+                        attacker_sq = list(bitboard_to_squares(attackers))[0]
+                        if not (  # Deem illegal unless the move is one of these two caveats:
+                            BB_BETWEEN[attacker_sq][king_pos] & BB_SQUARES[move.to_square] or  # Piece blocks danger
+                            move.to_square == attacker_sq  # Piece takes attacker
+                        ):
+                            continue
 
             yield move
+
+    @property
+    def turn_name(self) -> str:
+        return 'white' if self.turn else 'black'
 
     def make_safe_move(self, move: Move):
         """

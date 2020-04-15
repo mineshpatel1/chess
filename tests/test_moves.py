@@ -122,6 +122,7 @@ class TestMoves(unittest.TestCase):
             ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR b', False),
             ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1 w', False),
             ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1 b', True),
+            ('R7/3pkppr/5P1p/2p5/8/4P3/3P2PP/1NBQKBNR b K - 0 19', False),
         ):
             _board = Board(fen=fen)
             self.assertEqual(_board.is_checkmate, result)

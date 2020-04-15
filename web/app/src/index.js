@@ -115,13 +115,11 @@ class Game extends React.Component {
             error: null,
             message: null,
             loading: false,
-            twoPlayer: true,
+            twoPlayer: false,
         };
     }
 
     processBoard(data, humanMove) {
-        console.log(data, humanMove);
-
         if (data.end) {
             this.setState({
                 'board': data.board,

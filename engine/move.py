@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Union
 
 from engine.square import Square, file_rank_to_index, char_to_file
 
@@ -11,12 +12,12 @@ class Move:
         from_sq = file_rank_to_index(char_to_file(pos_1[0]), int(pos_1[1]) - 1)
         pos_2 = uci[2:4]
         to_sq = file_rank_to_index(char_to_file(pos_2[0]), int(pos_2[1]) - 1)
-        return Move(Square(from_sq), Square(to_sq))
+        return Move(from_sq, to_sq)
 
     def __init__(
             self,
-            from_square: Square,
-            to_square: Square,
+            from_square: Union[Square, int],
+            to_square: Union[Square, int],
             is_castling: bool = False,
     ):
         self.from_square = Square(from_square)

@@ -1,56 +1,61 @@
+from typing import Optional, Dict, Any
 from flask import request
 
 import log
-from ai import dumb, algo
+from ai import dumb
 from engine.constants import WHITE, BLACK
-from engine.game import Game
+from engine.board import Board, Move, SQUARES, SQUARES_VFLIP
 from engine.exceptions import IllegalMove, Checkmate, Draw
-from engine import position
 from web.server import app
 
 cache = {
-    'board': None,
+    'board': Board(),
 }
 
-def json_board(board, params=None):
-    _by_rank = {}
-    for square in board.squares:
-        rank = square.pos.rank
-        _by_rank[rank] = _by_rank.get(rank, [])
+
+def json_board(board: Board, params: Optional[Dict[str, Any]] = None):
+    by_rank = {}
+    for sq in SQUARES_VFLIP:
+        rank = sq.rank
+        by_rank[rank] = by_rank.get(rank, [])
 
         _square = {
-            'rank': square.pos.rank,
-            'file': square.pos.file,
-            'index': square.pos.index,
+            'rank': sq.rank,
+            'file': sq.file,
+            'index': int(sq),
         }
 
-        if square.piece:
-            _square['piece'] = square.piece.type
-            _square['piece_colour'] = square.piece.colour
+        piece = board.piece_at(sq)
+        if piece:
+            _square['piece'] = piece.type
+            _square['piece_colour'] = 'white' if piece.colour else 'black'
 
-        _by_rank[rank].append(_square)
+        by_rank[rank].append(_square)
 
-    by_rank = {}
-    for i, rank in enumerate(sorted(_by_rank.keys(), reverse=True)):
-        by_rank[i] = _by_rank[rank]
+    by_rank_reverse = {}
+    for i, rank in enumerate(sorted(by_rank.keys(), reverse=True)):
+        by_rank_reverse[i] = by_rank[rank]
 
-    payload = {'board': by_rank, 'turn': board.turn, 'fen': board.fen}
+    payload = {'board': by_rank_reverse, 'turn': board.turn_name, 'fen': board.fen}
     if params:
         payload.update(params)
     return payload
 
+
 @app.route('/newGame')
 def new_game():
-    board = Game()
+    board = Board()
     cache['board'] = board
     return json_board(board)
+
 
 @app.route('/loadGame', methods=['POST'])
 def load_game():
     data = request.get_json()
-    board = Game(state=data['state'])
+    board = Board(fen=data['state'])
     cache['board'] = board
     return json_board(board)
+
 
 @app.route('/makeMove', methods=['POST'])
 def make_move():
@@ -59,21 +64,20 @@ def make_move():
     board = cache['board']
 
     try:
-        board.player_move(
-            position.from_index(data['start_pos']),
-            position.from_index(data['end_pos']),
-        )
+        board.make_safe_move(Move(data['start_pos'], data['end_pos']))
         board.raise_if_game_over()
         return json_board(board)
     except IllegalMove as err:
         return {'error': str(err)}
     except Checkmate:
-        for move in board.move_history:
-            log.info(move)
         winner = BLACK if board.turn == WHITE else WHITE
         return json_board(board, {'end': f"Checkmate: {winner} wins!"})
     except Draw as err:
         return json_board(board, {'end': str(err)})
+    except Exception as e:
+        for move in board.move_history:
+            log.info(move)
+        raise Exception(e)
 
 
 @app.route('/makeMoveAi')
@@ -82,16 +86,13 @@ def make_move_ai():
     board = cache['board']
     try:
         board.raise_if_game_over()
-
-        # from_pos, to_pos = dumb.random_move(board)
-        from_pos, to_pos = algo.evaluate_piece(board)
-
-        board.player_move(from_pos, to_pos)
+        move = dumb.random_move(board)
+        board.make_move(move)
         return json_board(board)
     except IllegalMove as err:
         return {'error': str(err)}
     except Checkmate:
-        winner = BLACK if board.turn == WHITE else WHITE
+        winner = board.turn_name
         return json_board(board, {'end': f"Checkmate: {winner} wins!"})
     except Draw as err:
         return json_board(board, {'end': err.MESSAGE})

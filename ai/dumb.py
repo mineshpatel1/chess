@@ -1,14 +1,14 @@
 import random
-from typing import Tuple
 
-from engine.board import Game
-from engine.position import Position
+from engine.board import Board, Move
 
-def first_possible_move(board: Game) -> Tuple[Position, Position]:
+
+def first_possible_move(board: Board) -> Move:
     """Ultra fast, ultra terrible and predictable."""
-    for move in board.possible_moves(board.turn):
+    for move in board.legal_moves:
         return move
 
-def random_move(board: Game) -> Tuple[Position, Position]:
+
+def random_move(board: Board) -> Move:
     """Ultra terrible, but less predictable."""
-    return random.choice(list(board.possible_moves(board.turn)))
+    return random.choice(list(board.legal_moves))

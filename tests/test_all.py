@@ -1,8 +1,9 @@
 import unittest
 
-from tests.test_bitboard import TestBitboard
-from tests.test_bitboard_moves import TestMoves
-from tests.test_bitboard_undo import TestBBUndo
+from tests.test_board import TestBitboard
+from tests.test_moves import TestMoves
+from tests.test_undo import TestBBUndo
+
 
 def main():
     unittest.main()
