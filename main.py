@@ -10,13 +10,7 @@ from engine.constants import WHITE, BLACK
 
 
 def main():
-    bb = Board('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1 b')
-    log.info(bb)
-    for move in bb.legal_moves:
-        log.info(move)
-    # log.info(bitboard_to_str(bb._attack_bitboard(WHITE, ignore=KING)))
-    # log.info(any(bb.legal_moves))
-    # log.info(bb.is_checkmate)
+    pass
 
 if __name__ == '__main__':
     main()

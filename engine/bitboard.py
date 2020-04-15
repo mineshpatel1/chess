@@ -494,10 +494,15 @@ class Board:
             self, square: Square, directions: Iterable[Direction], ignore: Bitboard = BB_EMPTY,
     ) -> Bitboard:
         moves = BB_EMPTY
+
         for direction in directions:
             possible = BB_RAYS[direction][square]
-            blockers = (possible & self.occupied) ^ ignore
-            blocked_paths = BB_RAYS[direction][lsb(blockers)] | BB_RAYS[direction][msb(blockers)]
+            blockers = (possible & self.occupied) & ~ignore
+
+            if blockers:
+                blocked_paths = BB_RAYS[direction][lsb(blockers)] | BB_RAYS[direction][msb(blockers)]
+            else:
+                blocked_paths = BB_EMPTY
             moves |= possible & ~blocked_paths
         return moves
 
@@ -533,7 +538,7 @@ class Board:
             )
             return _filter_occupied(moves)
         elif self.queens[colour] & bb_sq:
-            moves =  self._attack_rays_from_square(
+            moves = self._attack_rays_from_square(
                 square,
                 (NORTH, EAST, WEST, SOUTH, NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),
                 ignore=ignore,
@@ -657,6 +662,9 @@ class Board:
             else:
                 blank_counter += 1
 
+            if sq == H1 and piece is None:
+                fen_str += str(blank_counter)
+
         _turn = 'w' if self.turn == WHITE else 'b'
         _en_passant = '-' if not self.en_passant_sq else str(self.en_passant_sq).lower()
         fen_str += f' {_turn} {self.castle_flags} {_en_passant} {self.halfmove_clock} {self.fullmoves}'
@@ -687,6 +695,9 @@ class Board:
             # If we are moving the king we should be careful
             if move.from_square == king_pos:
                 if attacks & BB_SQUARES[move.to_square]:  # New position is under attack
+                    if move.uci == 'e7d6':
+                        log.warning('Why')
+                        # log.info(bitboard_to_str(attacks))
                     continue
 
                 if move.is_castling:
@@ -732,6 +743,8 @@ class Board:
         if piece.colour != self.turn:
             raise IllegalMove(f"Can't move that piece, it's not your turn.")
 
+        backrank = 7 if self.turn == WHITE else 0
+
         # Castling if a king is moving more than 1 square
         if piece.type == KING and abs(move.from_square.file - move.to_square.file) > 1:
             # Move King
@@ -756,6 +769,9 @@ class Board:
             captured_piece = self.remove_piece(capture_sq)
             self.remove_piece(move.from_square)
             self.place_piece(move.to_square, piece.type, piece.colour)
+        elif piece.type == PAWN and move.to_square.rank == backrank:  # Promotion
+            self.remove_piece(move.from_square)
+            self.place_piece(move.to_square, QUEEN, piece.colour)  # Assume queen for now
         else:
             # Regular piece move
             self.remove_piece(move.from_square)
