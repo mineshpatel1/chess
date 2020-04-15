@@ -8,8 +8,8 @@ class TestMoves(unittest.TestCase):
         match = {
             'h4h5', 'e4e7', 'e4e6', 'e4e5', 'e4g4', 'e4f4', 'e4d4', 'e4c4', 'e4e3', 'b4e7', 'b4d6', 'b4c5', 'b4a5',
             'b4c3', 'b4a3', 'g3c7', 'g3d6', 'g3e5', 'g3f4', 'g3h2', 'g3f2', 'f3f4', 'd3d8', 'd3d7', 'd3d6', 'd3d5',
-            'd3d4', 'd3c4', 'd3e3', 'd3c3', 'b3c4', 'g2g4', 'e2e3', 'd2d4', 'c2c3', 'a2a4', 'a2a3', 'g1h3', 'e1f2',
-            'e1f1', 'e1d1', 'b1c3', 'b1a3',
+            'd3d4', 'd3c4', 'd3e3', 'd3c3', 'b3c4', 'e2e3', 'c2c3', 'a2a4', 'a2a3', 'g1h3', 'e1f2', 'b1a3', 'b1c3',
+            'e1f1', 'e1d1',
         }
         bb = Board('rnbqkbnr/ppp1pppp/8/8/1Bp1R2P/1P1Q1PB1/P1PPP1P1/RN2K1N1 w Qkq - 0 1')
         white_moves = {m.uci for m in bb._pseudo_legal_moves(WHITE)}

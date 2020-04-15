@@ -83,7 +83,7 @@ def evaluation_superfast(board):
 def _negamax_superfast(board, depth, counter):
     if depth == 0:
         counter += 1
-        return evaluation_superfast(board), counter
+        return 1, counter
 
     score = LOW_BOUND
     for move in board.legal_moves:
@@ -117,7 +117,7 @@ def negamax_superfast(board, depth):
 def _negamax_bitboard(board, depth, counter):
     if depth == 0:
         counter += 1
-        return board.relative_value, counter
+        return 1, counter
 
     score = LOW_BOUND
     for move in board.legal_moves:
@@ -146,3 +146,26 @@ def negamax_bitboard(board, depth):
 
     log.info(f"Evaluations: {counter}")
     return best_move
+
+
+def _traverse_moves(board, depth, counter):
+    if depth == 0:
+        counter += 1
+        return counter
+
+    for move in board.legal_moves:
+        board.make_move(move)
+        counter = _traverse_moves(board, depth - 1, counter)
+        board.unmake_move()
+    return counter
+
+
+def traverse_moves(board, depth):
+    counter = 0
+    for move in board.legal_moves:
+        board.make_move(move)
+        counter = _traverse_moves(board, depth - 1, counter)
+        board.unmake_move()
+
+    log.info(f"Evaluations: {counter}")
+    return counter

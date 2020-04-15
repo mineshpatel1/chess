@@ -262,19 +262,25 @@ BB_PAWN_ATTACKS = {
     BLACK: _gen_moves(((1, -1), (-1, -1))),
 }
 BB_PAWN_MOVES = {
-    WHITE: _gen_moves(((0, 1),)),  # Single advance
-    BLACK: _gen_moves(((0, -1),)),
+    WHITE: {
+        'single': _gen_moves(((0, 1),)),  # Single advance
+        'double': [0] * 64,
+    },
+    BLACK: {
+        'single': _gen_moves(((0, -1),)),
+        'double': [0] * 64,
+    },
 }
 
 for _rank in (1, 6):
     for _file in range(8):
         i = file_rank_to_index(_file, _rank)
         if _rank == 1:  # White pawns
-            single_move = BB_PAWN_MOVES[WHITE][i]
-            BB_PAWN_MOVES[WHITE][i] = single_move << 8 | single_move
+            single_move = BB_PAWN_MOVES[WHITE]['single'][i]
+            BB_PAWN_MOVES[WHITE]['double'][i] = single_move << 8  # Double move
         else:
-            single_move = BB_PAWN_MOVES[BLACK][i]
-            BB_PAWN_MOVES[BLACK][i] = single_move >> 8 | single_move
+            single_move = BB_PAWN_MOVES[BLACK]['single'][i]
+            BB_PAWN_MOVES[BLACK]['double'][i] = single_move >> 8  # Double move
 
 BB_RAYS = {
     NORTH: _gen_rays(0, 1),
@@ -393,6 +399,12 @@ class Move:
     def __repr__(self):
         return f"'{str(self)}'"
 
+    def __hash__(self):
+        return hash((
+            self.from_square,
+            self.to_square
+        ))
+
     def __eq__(self, other):
         return (
             other.from_square == self.from_square and
@@ -419,6 +431,7 @@ class Board:
         self.fullmoves = 0
         self.track_repetitions = track_repetitions
         self.repetitions = []
+        self.move_history = []
 
         self._history = []
         self._clear()
@@ -548,7 +561,10 @@ class Board:
             # If actually moving the piece, need to restrict pawn diagonal moves to captures
             if not attacks_only:
                 moves &= (self.occupied_colour[not colour] | self._bb_en_passant)
-                moves |= BB_PAWN_MOVES[colour][square] & ~self.occupied  # Cannot move forward onto occupied square
+                advances = BB_PAWN_MOVES[colour]['single'][square] & ~self.occupied  # Single move (unless occupied)
+                if advances:  # Conditionally allow a double advance
+                    advances |= BB_PAWN_MOVES[colour]['double'][square] & ~self.occupied
+                moves |= advances
             return moves
         elif self.rooks[colour] & bb_sq:
             moves = self._attack_rays_from_square(square, (NORTH, EAST, WEST, SOUTH), ignore=ignore)
@@ -952,6 +968,7 @@ class Board:
         if self.turn == BLACK:  # Increment full moves after Black's turn
             self.fullmoves += 1
 
+        self.move_history.append(move)
         self.turn = not self.turn
 
     def unmake_move(self):
@@ -1071,6 +1088,7 @@ class _BoardState:
         self.halfmove_clock = board.halfmove_clock
         self.fullmoves = board.fullmoves
         self.repetitions = tuple(board.repetitions)
+        self.move_history = tuple(board.move_history)
 
         self.b_pawns = board.pawns[BLACK]
         self.w_pawns = board.pawns[WHITE]
@@ -1096,6 +1114,7 @@ class _BoardState:
         board.halfmove_clock = self.halfmove_clock
         board.fullmoves = self.fullmoves
         board.repetitions = list(self.repetitions)
+        board.move_history = list(self.move_history)
 
         board.pawns[BLACK] = self.b_pawns
         board.pawns[WHITE] = self.w_pawns
