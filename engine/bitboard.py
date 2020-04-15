@@ -394,11 +394,22 @@ class Move:
 
 
 class Board:
-    def __init__(self, fen: str = STARTING_STATE):
+    def __init__(self, fen: str = STARTING_STATE, check_repetitions: bool = False):
+        """
+        Represents the chess board and game state as a bitboard.
+
+        Args:
+            fen: Forsyth–Edwards Notation string to load the board state from
+                (https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation).
+            check_repetitions: If specified as True, will store game states every move to verify if the same board
+                position has been reached 3 times for a threefold repetition draw
+                (https://en.wikipedia.org/wiki/Threefold_repetition).
+        """
         self.turn = WHITE
         self.en_passant_sq = None
         self.halfmove_clock = 0
         self.fullmoves = 0
+        self.check_repetitions = check_repetitions
 
         self._history = []
         self._clear()
@@ -672,6 +683,30 @@ class Board:
         return fen_str
 
     @property
+    def all_pawns(self):
+        return self.pawns[WHITE] | self.pawns[BLACK]
+
+    @property
+    def all_rooks(self):
+        return self.rooks[WHITE] | self.rooks[BLACK]
+
+    @property
+    def all_knights(self):
+        return self.knights[WHITE] | self.knights[BLACK]
+
+    @property
+    def all_bishops(self):
+        return self.bishops[WHITE] | self.bishops[BLACK]
+
+    @property
+    def all_queens(self):
+        return self.queens[WHITE] | self.queens[BLACK]
+
+    @property
+    def all_kings(self):
+        return self.kings[WHITE] | self.kings[BLACK]
+
+    @property
     def is_in_check(self):
         return bool(self.kings[self.turn] & self._attack_bitboard(not self.turn))
 
@@ -682,6 +717,49 @@ class Board:
     @property
     def is_stalemate(self):
         return not self.is_in_check and not any(self.legal_moves)
+
+    @property
+    def has_insufficient_material(self):
+        # If the player has any pawns, rooks or queens the game can be won
+        if self.occupied & (self.all_pawns | self.all_rooks | self.all_queens):
+            return False
+
+        # If it is king vs king
+        if self.occupied == self.all_kings:
+            return True
+
+        total_pieces = bit_count(self.occupied)
+        if total_pieces > 4:  # Checkmate can be achieved if there are more than 4 pieces
+            return False
+
+        # If it is king + knight vs king
+        if self.occupied & self.all_knights:
+            return total_pieces <= 3  # Insufficient if it is only King + Knight vs King
+        elif self.occupied & self.all_bishops:  # Player has at least one bishop
+            if total_pieces < 4:
+                return True
+
+            # All remaining bishops are on the same colour squares
+
+            only_bishops_and_kings = self.occupied == (self.all_bishops | self.all_kings)
+            bishops_are_same_colour = (
+                    (not self.all_bishops & BB_WHITE_SQUARES) or  # No bishops on white squares
+                    (not self.all_bishops & BB_BLACK_SQUARES)  # No bishops on black squares
+            )
+            return bishops_are_same_colour and only_bishops_and_kings
+
+    @property
+    def is_game_over(self):
+        has_legal_move = any(self.legal_moves)
+
+        if self.halfmove_clock >= 50:  # 50 move draw
+            return True
+        elif self.has_insufficient_material:
+            return True
+        elif not has_legal_move:  # Check/stalemate
+            return True
+        else:
+            return False
 
     @property
     def legal_moves(self) -> Iterable[Move]:
@@ -727,6 +805,15 @@ class Board:
                         continue
 
             yield move
+
+    def make_safe_move(self, move: Move):
+        """
+        Same as Board.make_move, but validates if the move is legal first (slower).
+        """
+        if move in self.legal_moves:
+            self.make_move(move)
+        else:
+            raise IllegalMove(f"Move {move} is illegal.")
 
     def make_move(self, move: Move):
         """

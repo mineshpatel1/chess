@@ -138,6 +138,18 @@ class TestMoves(unittest.TestCase):
             _board = Board(fen=fen)
             self.assertEqual(_board.is_stalemate, result)
 
+    def test_insufficient_material(self):
+        for fen, result in (
+            ('5k2/5P2/5K2/8/8/8/8/8 b - - 0 1', False),
+            ('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w', False),
+            ('8/8/3K4/8/1k6/8/8/8 w - - 0 1', True),
+            ('8/8/3K4/8/1k6/8/3b4/8 w - - 0 1', True),
+            ('8/8/3n4/8/1k6/8/3K4/8 b - - 0 1', True),
+            ('8/8/3bb3/8/1k6/8/3K4/8 b - - 0 1', False),
+            ('8/8/3b4/8/1k6/4B3/3K4/8 b - - 0 1', True),
+        ):
+            _board = Board(fen)
+            self.assertEqual(_board.has_insufficient_material, result)
 
 def main():
     unittest.main()
