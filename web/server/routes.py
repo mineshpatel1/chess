@@ -2,7 +2,7 @@ from typing import Optional, Dict, Any
 from flask import request
 
 import log
-from ai import dumb
+from ai import dumb, algo
 from engine.constants import WHITE, BLACK
 from engine.board import Board, Move, SQUARES_VFLIP
 from engine.exceptions import IllegalMove, Checkmate, Draw
@@ -11,6 +11,15 @@ from web.server import app
 cache = {
     'board': Board(),
 }
+
+
+def log_exception(board: Board, e: Exception):
+    log.error(str(e))
+    log.info(f"Board state: {board.fen}")
+    log.info('Move history:')
+    for move in board.move_history:
+        log.info(f"    {move.uci}")
+    raise Exception(e)
 
 
 def json_board(board: Board, params: Optional[Dict] = None):
@@ -64,20 +73,18 @@ def make_move():
     board = cache['board']
 
     try:
-        board.make_safe_move(Move(data['start_pos'], data['end_pos']))
         board.raise_if_game_over()
+        board.make_safe_move(Move(data['start_pos'], data['end_pos']))
         return json_board(board)
     except IllegalMove as err:
         return {'error': str(err)}
     except Checkmate:
-        winner = BLACK if board.turn == WHITE else WHITE
+        winner = 'Black' if board.turn == WHITE else 'White'
         return json_board(board, {'end': f"Checkmate: {winner} wins!"})
     except Draw as err:
-        return json_board(board, {'end': str(err)})
+        return json_board(board, {'end': err.MESSAGE})
     except Exception as e:
-        for move in board.move_history:
-            log.info(move)
-        raise Exception(e)
+        log_exception(board, e)
 
 
 @app.route('/makeMoveAi')
@@ -86,13 +93,19 @@ def make_move_ai():
     board = cache['board']
     try:
         board.raise_if_game_over()
-        move = dumb.random_move(board)
+
+        # move = dumb.random_move(board)
+        move = algo.negamax(board, depth=3)
+        
         board.make_move(move)
+        board.raise_if_game_over()
         return json_board(board)
     except IllegalMove as err:
         return {'error': str(err)}
     except Checkmate:
-        winner = board.turn_name
+        winner = 'Black' if board.turn == WHITE else 'White'
         return json_board(board, {'end': f"Checkmate: {winner} wins!"})
     except Draw as err:
         return json_board(board, {'end': err.MESSAGE})
+    except Exception as e:
+        log_exception(board, e)

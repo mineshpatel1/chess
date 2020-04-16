@@ -93,7 +93,7 @@ class TestBitboard(unittest.TestCase):
             ('rnbqkbnr/pppp1ppp/8/8/3q4/8/P2P1PPP/4KBNR w - - 0 1', -31),
         ):
             _board = Board(fen=fen)
-            self.assertEqual(_board.board_value, val)
+            self.assertEqual(_board.value, val)
 
 
 def main():

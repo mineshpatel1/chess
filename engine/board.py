@@ -232,12 +232,12 @@ class Board:
                 attack_moves |= moves
         return attack_moves
 
-    def _attackers(self, target: Square, colour) -> Bitboard:
+    def _attackers(self, target: Square, colour, filter_blockers: bool = False) -> Bitboard:
         """Returns the slide attackers of a given square."""
         cardinal_movers = self.rooks[colour] | self.queens[colour]
         diagonal_movers = self.bishops[colour] | self.queens[colour]
 
-        return (
+        attackers = (
             (BB_CARDINALS[target] & cardinal_movers) |
             (BB_DIAGONALS[target] & diagonal_movers) |
             (BB_KNIGHT_MOVES[target] & self.knights[colour]) |
@@ -245,6 +245,13 @@ class Board:
             # We actually want the reverse colour for the pawn, because the target square is the point of view
             (BB_PAWN_ATTACKS[not colour][target] & self.pawns[colour])
         )
+
+        if filter_blockers:
+            for attacker_sq in bitboard_to_squares(attackers):
+                if BB_BETWEEN[attacker_sq][target] & self.occupied:
+                    attackers &= ~BB_SQUARES[attacker_sq]
+
+        return attackers
 
     def _protectors(self, target: Square, colour: Colour) -> Bitboard:
         """
@@ -443,7 +450,7 @@ class Board:
             return False
 
     @property
-    def board_value(self):
+    def value(self):
         """Evaluation of the board, positive for white, negative for black."""
         def _count_value(_piece_type, _pieces, _modifier):
             return PIECE_VALUES[_piece_type] * bit_count(_pieces) * _modifier
@@ -470,7 +477,7 @@ class Board:
     def relative_value(self):
         """Board value normalised for the given player. All players should look to maximise this value."""
         modifier = 1 if self.turn == WHITE else -1
-        return modifier * self.board_value
+        return modifier * self.value
 
     @property
     def legal_moves(self) -> Iterable[Move]:
@@ -499,7 +506,7 @@ class Board:
             # If in check and we are not moving the king, we must protect it
             if in_check:
                 if move.from_square != king_pos:
-                    attackers = self._attackers(king_pos, not self.turn)
+                    attackers = self._attackers(king_pos, not self.turn, filter_blockers=True)
                     num_attackers = bit_count(attackers)
 
                     # If there is more than one attacking piece, we can't protect

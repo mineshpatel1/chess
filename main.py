@@ -1,5 +1,6 @@
 import log
 
+import chess
 from engine.board import *
 
 
