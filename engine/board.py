@@ -251,6 +251,7 @@ class Board:
                 if BB_BETWEEN[attacker_sq][target] & self.occupied:
                     attackers &= ~BB_SQUARES[attacker_sq]
 
+
         return attackers
 
     def _protectors(self, target: Square, colour: Colour) -> Bitboard:
@@ -482,6 +483,20 @@ class Board:
     @property
     def legal_moves(self) -> Iterable[Move]:
         """Yields legal moves for the turn player."""
+
+        def _is_safe(_attackers, _king_pos, _move):
+            _num_attackers = bit_count(_attackers)
+            if _num_attackers > 1:
+                return False
+            elif bit_count(_attackers) == 1:
+                _attacker_sq = list(bitboard_to_squares(_attackers))[0]
+                if not (  # Deem illegal unless the move is one of these two caveats:
+                        BB_BETWEEN[_attacker_sq][_king_pos] & BB_SQUARES[_move.to_square] or  # Piece blocks danger
+                        _move.to_square == _attacker_sq  # Piece takes attacker
+                ):
+                    return False
+            return True
+
         king = self.kings[self.turn]
         king_pos = Square(msb(king))
         protectors = self._protectors(king_pos, self.turn)
@@ -501,24 +516,16 @@ class Board:
 
             # Cannot move this piece, it's protecting the King
             if protectors & BB_SQUARES[move.from_square]:
-                continue
+                attackers = self._attackers(king_pos, not self.turn)
+                if not _is_safe(attackers, king_pos, move):
+                    continue
 
             # If in check and we are not moving the king, we must protect it
             if in_check:
                 if move.from_square != king_pos:
                     attackers = self._attackers(king_pos, not self.turn, filter_blockers=True)
-                    num_attackers = bit_count(attackers)
-
-                    # If there is more than one attacking piece, we can't protect
-                    if num_attackers > 1:
+                    if not _is_safe(attackers, king_pos, move):
                         continue
-                    elif bit_count(attackers) == 1:
-                        attacker_sq = list(bitboard_to_squares(attackers))[0]
-                        if not (  # Deem illegal unless the move is one of these two caveats:
-                            BB_BETWEEN[attacker_sq][king_pos] & BB_SQUARES[move.to_square] or  # Piece blocks danger
-                            move.to_square == attacker_sq  # Piece takes attacker
-                        ):
-                            continue
 
             yield move
 
