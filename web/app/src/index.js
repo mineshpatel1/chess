@@ -179,7 +179,7 @@ class Game extends React.Component {
     }
 
     loadGame() {
-        const requestOptions = post_req({ 'state': '8/3n2p1/1q4P1/3K4/1q6/8/8/8 w - - 0 1' });
+        const requestOptions = post_req({ 'state': '1rb2k2/pp1p1p1p/n7/2p5/P1Pp4/1P6/8/RN1KQ2q w - - 1 28' });
         fetch('/loadGame', requestOptions).then(res => res.json())
             .then(data => {
                 this.setState({

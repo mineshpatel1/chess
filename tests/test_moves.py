@@ -37,7 +37,11 @@ class TestMoves(unittest.TestCase):
             }),
             ('rnb1k3/pppp1p2/4p1p1/2P1qPN1/1P2Q1P1/4P3/P5B1/R1B1K2r w Qq - 2 25', {
                 'e1f2', 'e1e2', 'e1d2', 'g2h1', 'g2f1',
-            })
+            }),
+            ('1rb2k2/pp1p1p1p/n7/2p5/P1Pp4/1P6/8/RN1KQ2q w - - 1 28', {
+                'a4a5', 'b3b4', 'e1h1', 'e1g1', 'e1f1', 'd1e2', 'd1d2', 'd1c2', 'd1c1', 'b1c3', 'b1a3', 'b1d2', 'a1a3',
+                'a1a2',
+            }),
         ):
             _board = Board(fen=fen)
             _moves = {m.uci for m in _board.legal_moves}

@@ -2,8 +2,8 @@ from typing import Optional, Dict, Any
 from flask import request
 
 import log
-from ai import dumb, algo
-from engine.constants import WHITE, BLACK
+from ai import algorithms
+from engine.constants import WHITE
 from engine.board import Board, Move, SQUARES_VFLIP
 from engine.exceptions import IllegalMove, Checkmate, Draw
 from web.server import app
@@ -94,9 +94,10 @@ def make_move_ai():
     try:
         board.raise_if_game_over()
 
-        # move = dumb.random_move(board)
-        move = algo.negamax(board, depth=3)
-        
+        # move = algorithms.random_move(board)
+        # move = algorithms.negamax(board, depth=3)
+        move = algorithms.alpha_beta(board, depth=4)
+
         board.make_move(move)
         board.raise_if_game_over()
         return json_board(board)
