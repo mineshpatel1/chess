@@ -89,12 +89,20 @@ class TestBitboard(unittest.TestCase):
     def test_value(self):
         for fen, val in (
             (STARTING_STATE, 0),
-            ('rn1qk3/p1p1p3/8/3Q4/8/8/PPPPPP1P/RNBQKBNR b - - 0 1', 27),
-            ('rnbqkbnr/pppp1ppp/8/8/3q4/8/P2P1PPP/4KBNR w - - 0 1', -31),
+            ('rn1qk3/p1p1p3/8/3Q4/8/8/PPPPPP1P/RNBQKBNR b - - 0 1', 2780),
+            ('rnbqkbnr/pppp1ppp/8/8/3q4/8/P2P1PPP/4KBNR w - - 0 1', -3150),
         ):
             _board = Board(fen=fen)
             self.assertEqual(_board.value, val)
 
+    def test_weighted_value(self):
+        for fen, val in (
+            (STARTING_STATE, 0),
+            ('rn1qk3/p1p1p3/8/3Q4/8/8/PPPPPP1P/RNBQKBNR b - - 0 1', 2730),
+            ('rnbqkbnr/pppp1ppp/8/8/3q4/8/P2P1PPP/4KBNR w - - 0 1', -3120),
+        ):
+            _board = Board(fen=fen)
+            self.assertEqual(_board.weighted_value, val)
 
 def main():
     unittest.main()

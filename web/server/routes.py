@@ -103,7 +103,7 @@ def make_move_ai():
 
         # move = algorithms.random_move(board)
         # move = algorithms.negamax(board, depth=3)
-        move = algorithms.alpha_beta(board, depth=4)
+        move = algorithms.alpha_beta(board, depth=3, board_eval=lambda b: b.weighted_value)
 
         board.make_move(move)
         board.raise_if_game_over()

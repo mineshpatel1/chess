@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Dict, Optional
 
 import log
 from engine.bitboard import *
@@ -38,6 +38,14 @@ from engine.constants import (
     SOUTHWEST,
     WEST,
     NORTHWEST,
+)
+from engine.square import (
+    PAWN_POSITION_VALUES,
+    ROOK_POSITION_VALUES,
+    KNIGHT_POSITION_VALUES,
+    BISHOP_POSITION_VALUES,
+    QUEEN_POSITION_VALUES,
+    KING_POSITION_VALUES,
 )
 
 
@@ -451,8 +459,8 @@ class Board:
             return False
 
     @property
-    def value(self):
-        """Evaluation of the board, positive for white, negative for black."""
+    def value(self) -> int:
+        """Simple evaluation of the board, positive for white, negative for black."""
         def _count_value(_piece_type, _pieces, _modifier):
             return PIECE_VALUES[_piece_type] * bit_count(_pieces) * _modifier
 
@@ -472,6 +480,36 @@ class Board:
                     total += _count_value(piece_type, self.queens[colour], modifier)
                 elif piece_type == KING:
                     total += _count_value(piece_type, self.kings[colour], modifier)
+        return total
+
+    @property
+    def weighted_value(self) -> int:
+        """
+        Weighted evaluation of the board, positive for white, negative for black. Adjusts piece values depending on the
+        positions on the board. More expensive to calcualte than Board.value.
+        """
+        total = 0
+        for colour in (WHITE, BLACK):
+            modifier = 1 if colour == WHITE else -1
+            for piece_type in (PAWN, ROOK, BISHOP, KNIGHT, QUEEN, KING):
+                if piece_type == PAWN:
+                    for sq in bitboard_to_squares(self.pawns[colour]):
+                        total += ((PIECE_VALUES[piece_type] + PAWN_POSITION_VALUES[colour][sq]) * modifier)
+                elif piece_type == ROOK:
+                    for sq in bitboard_to_squares(self.rooks[colour]):
+                        total += ((PIECE_VALUES[piece_type] + ROOK_POSITION_VALUES[colour][sq]) * modifier)
+                elif piece_type == KNIGHT:
+                    for sq in bitboard_to_squares(self.knights[colour]):
+                        total += ((PIECE_VALUES[piece_type] + KNIGHT_POSITION_VALUES[colour][sq]) * modifier)
+                elif piece_type == BISHOP:
+                    for sq in bitboard_to_squares(self.bishops[colour]):
+                        total += ((PIECE_VALUES[piece_type] + BISHOP_POSITION_VALUES[colour][sq]) * modifier)
+                elif piece_type == QUEEN:
+                    for sq in bitboard_to_squares(self.queens[colour]):
+                        total += ((PIECE_VALUES[piece_type] + QUEEN_POSITION_VALUES[colour][sq]) * modifier)
+                elif piece_type == KING:
+                    for sq in bitboard_to_squares(self.kings[colour]):
+                        total += ((PIECE_VALUES[piece_type] + KING_POSITION_VALUES[colour][sq]) * modifier)
         return total
 
     @property
@@ -532,6 +570,17 @@ class Board:
     @property
     def turn_name(self) -> str:
         return 'white' if self.turn else 'black'
+
+    @property
+    def pieces(self) -> Dict[PieceType, Dict[str, int]]:
+        return {
+            PAWN: self.pawns,
+            ROOK: self.rooks,
+            KNIGHT: self.knights,
+            BISHOP: self.bishops,
+            QUEEN: self.queens,
+            KING: self.kings,
+        }
 
     def make_safe_move(self, move: Move):
         """

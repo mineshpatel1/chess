@@ -5,6 +5,13 @@ from engine.constants import (
     BLACK,
     FILE_NAMES,
     RANK_NAMES,
+
+    PAWN_POSITION_BASE_VALUES,
+    KNIGHT_POSITION_BASE_VALUES,
+    BISHOP_POSITION_BASE_VALUES,
+    ROOK_POSITION_BASE_VALUES,
+    QUEEN_POSITION_BASE_VALUES,
+    KING_POSITION_BASE_VALUES,
 )
 
 
@@ -84,3 +91,55 @@ def mirror_square(square: Square, vertical: bool = True) -> Square:
         return Square(square ^ 56)
     else:
         return Square(square ^ 7)
+
+
+def _mirror_list(_list):
+    """Returns a list of 64 elements representing the board as if the board were mirrored vertically."""
+    _new_list = [0] * len(_list)
+    for i, val in enumerate(_list):
+        _new_list[SQUARES_VFLIP[i]] = _list[i]
+    return _new_list
+
+
+SQUARES = [
+    A1, B1, C1, D1, E1, F1, G1, H1,
+    A2, B2, C2, D2, E2, F2, G2, H2,
+    A3, B3, C3, D3, E3, F3, G3, H3,
+    A4, B4, C4, D4, E4, F4, G4, H4,
+    A5, B5, C5, D5, E5, F5, G5, H5,
+    A6, B6, C6, D6, E6, F6, G6, H6,
+    A7, B7, C7, D7, E7, F7, G7, H7,
+    A8, B8, C8, D8, E8, F8, G8, H8,
+] = [Square(i) for i in range(64)]
+
+SQUARES_VFLIP = [mirror_square(sq, True) for sq in SQUARES]
+
+PAWN_POSITION_VALUES = {
+    WHITE: _mirror_list(PAWN_POSITION_BASE_VALUES),
+    BLACK: PAWN_POSITION_BASE_VALUES,
+}
+
+KNIGHT_POSITION_VALUES = {
+    WHITE: _mirror_list(KNIGHT_POSITION_BASE_VALUES),
+    BLACK: KNIGHT_POSITION_BASE_VALUES,
+}
+
+BISHOP_POSITION_VALUES = {
+    WHITE: _mirror_list(BISHOP_POSITION_BASE_VALUES),
+    BLACK: BISHOP_POSITION_BASE_VALUES,
+}
+
+ROOK_POSITION_VALUES = {
+    WHITE: _mirror_list(ROOK_POSITION_BASE_VALUES),
+    BLACK: ROOK_POSITION_BASE_VALUES,
+}
+
+QUEEN_POSITION_VALUES = {
+    WHITE: _mirror_list(QUEEN_POSITION_BASE_VALUES),
+    BLACK: QUEEN_POSITION_BASE_VALUES,
+}
+
+KING_POSITION_VALUES = {
+    WHITE: _mirror_list(KING_POSITION_BASE_VALUES),
+    BLACK: KING_POSITION_BASE_VALUES,
+}

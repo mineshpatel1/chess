@@ -1,11 +1,20 @@
 import time
 import random
+from typing import Callable
 
 import log
 from engine.board import Board, Move
 
-LOW_BOUND = -9999
-HIGH_BOUND = 9999
+LOW_BOUND = -9999999
+HIGH_BOUND = 9999999
+
+
+def simple_eval(board: Board) -> int:
+    return board.value
+
+
+def weighted_eval(board: Board) -> int:
+    return board.weighted_value
 
 
 def first_possible_move(board: Board) -> Move:
@@ -109,17 +118,17 @@ def negamax(board: Board, depth: int, print_count: bool = False):
     return best_move
 
 
-def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, player: bool, counter: int):
+def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, player: bool, board_eval: Callable, counter: int):
     if depth == 0:
         counter += 1
-        value = board.value if not player else board.value * -1
+        value = board_eval(board) if not player else board_eval(board) * -1
         return value, counter
 
     best = HIGH_BOUND
     i = 0
     for move in board.legal_moves:
         board.make_move(move)
-        score, counter = _alpha_beta_max(board, depth - 1, alpha, beta, player, counter)
+        score, counter = _alpha_beta_max(board, depth - 1, alpha, beta, player, board_eval, counter)
         board.unmake_move()
 
         best = min([score, best])
@@ -136,17 +145,17 @@ def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, player: boo
     return beta, counter
 
 
-def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, player: bool, counter: int):
+def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, player: bool, board_eval: Callable, counter: int):
     if depth == 0:
         counter += 1
-        value = board.value if not player else board.value * -1
+        value = board_eval(board) if not player else board_eval(board) * -1
         return value, counter
 
     best = LOW_BOUND
     i = 0
     for move in board.legal_moves:
         board.make_move(move)
-        score, counter = _alpha_beta_min(board, depth - 1, alpha, beta, player, counter)
+        score, counter = _alpha_beta_min(board, depth - 1, alpha, beta, player, board_eval, counter)
         board.unmake_move()
 
         best = max([score, best])
@@ -163,7 +172,7 @@ def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, player: boo
     return alpha, counter
 
 
-def alpha_beta(board: Board, depth: int, print_count: bool = False):
+def alpha_beta(board: Board, depth: int, board_eval: Callable = simple_eval, print_count: bool = False):
     """
     Implementation of Alpha-Beta pruning to optimise the MiniMax algorithm. This stops evaluating a move when at least
     one possibility has been found that proves the move to be worse than a previously examined move. Should play
@@ -183,13 +192,14 @@ def alpha_beta(board: Board, depth: int, print_count: bool = False):
 
     for move in board.legal_moves:
         board.make_move(move)
-        value, counter = _alpha_beta_max(board, depth - 1, alpha, beta, player, counter)
+        value, counter = _alpha_beta_max(board, depth - 1, alpha, beta, player, board_eval, counter)
         value *= -1
         board.unmake_move()
 
         if value > score:
             score = value
             best_move = move
+
     if print_count:
         elapsed = time.time() - start_time
         log.info(
