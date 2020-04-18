@@ -15,6 +15,14 @@ from engine.constants import (
 )
 
 
+def index_to_coord(idx: int) -> str:
+    file = idx % 8
+    file = file_to_char(file)
+
+    rank = int(idx / 8)
+    return file + str(rank + 1)
+
+
 def index_to_file_rank(idx: int) -> Tuple[int, int]:
     """Converts an integer position into the corresponding file and rank (in that order)."""
     assert 0 <= idx < 64, "Board index must be between 0 and 63."

@@ -582,6 +582,19 @@ class Board:
             KING: self.kings,
         }
 
+    @property
+    def pgn_uci(self) -> str:
+        """
+        Prints a pseudo Portable Game Notation with moves in UCI format.
+        Can be loaded by https://www.chess.com/analysis
+        """
+        pgn = ''
+        for i, move in enumerate(self.move_history):
+            if i % 2 == 0:
+                pgn += f'{int(i / 2) + 1}. '
+            pgn += f'{index_to_coord(move.from_square).lower()}{index_to_coord(move.to_square).lower()} '
+        return pgn
+
     def make_safe_move(self, move: Move):
         """
         Same as Board.make_move, but validates if the move is legal first (slower).

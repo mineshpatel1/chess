@@ -25,22 +25,34 @@ class Move:
         self.is_castling = is_castling
 
     @property
-    def uci(self):
+    def uci(self) -> str:
         return f'{str(self.from_square).lower()}{str(self.to_square).lower()}'
 
-    def __str__(self):
+    @property
+    def san(self) -> str:
+        if self.is_castling:
+            if self.to_square.file < self.from_square.file:
+                return "O-O-O"
+            else:
+                return "O-O"
+
+
+
+        return ''
+
+    def __str__(self) -> str:
         return f'{self.uci}'
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"'{str(self)}'"
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((
             self.from_square,
             self.to_square
         ))
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return (
             other.from_square == self.from_square and
             other.to_square == self.to_square
