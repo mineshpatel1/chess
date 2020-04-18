@@ -111,6 +111,7 @@ body {
     font: 24px "Lobster";
     display: inline-block;
     margin-right: 15px;
+    -webkit-user-select: none;
 }
 
 .button:hover {

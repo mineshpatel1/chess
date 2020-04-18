@@ -51,18 +51,25 @@ def json_board(board: Board, params: Optional[Dict] = None):
     return payload
 
 
-@app.route('/newGame')
+@app.route('/newGame', methods=['POST'])
 def new_game():
+    data = request.get_json()
     board = Board()
     cache['board'] = board
+
+    if not data['player']:
+        return make_move_ai()  # Make first move
     return json_board(board)
 
 
 @app.route('/loadGame', methods=['POST'])
 def load_game():
     data = request.get_json()
-    board = Board(fen=data['state'])
-    cache['board'] = board
+    if 'state' in data:
+        board = Board(fen=data['state'])
+        cache['board'] = board
+    else:
+        board = cache['board']
     return json_board(board)
 
 

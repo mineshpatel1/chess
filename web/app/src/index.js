@@ -115,6 +115,7 @@ class Game extends React.Component {
             error: null,
             message: null,
             loading: false,
+            player: true,
             twoPlayer: false,
         };
     }
@@ -179,7 +180,8 @@ class Game extends React.Component {
     }
 
     loadGame() {
-        const requestOptions = post_req({ 'state': '1rb2k2/pp1p1p1p/n7/2p5/P1Pp4/1P6/8/RN1KQ2q w - - 1 28' });
+        // let payload = { 'state': '1rb2k2/pp1p1p1p/n7/2p5/P1Pp4/1P6/8/RN1KQ2q w - - 1 28' }
+        const requestOptions = post_req({});
         fetch('/loadGame', requestOptions).then(res => res.json())
             .then(data => {
                 this.setState({
@@ -198,7 +200,8 @@ class Game extends React.Component {
     }
 
     newGame() {
-        fetch('/newGame').then(res => res.json())
+        const requestOptions = post_req({ 'player': this.state.player });
+        fetch('/newGame', requestOptions).then(res => res.json())
             .then(data => {
                 this.setState({
                     'board': data.board,
@@ -215,8 +218,13 @@ class Game extends React.Component {
             });
     }
 
+    togglePlayer() {
+        this.setState({'player': !this.state.player})
+    }
+
     render() {
         let {board, mode, turn, fen, message} = this.state;
+        let player = this.state.player ? 'White' : 'Black';
         let rows = [];
         for (let i = 0; i < 8; i++) {
             let squares = [];
@@ -252,6 +260,7 @@ class Game extends React.Component {
                 <div className="panel">
                     <Button label="New Game" onClick={() => { this.newGame(); }}/>
                     <Button label="Load Game" onClick={() => { this.loadGame(); }}/>
+                    <Button label={"Player: " + player} onClick={() => { this.togglePlayer(); }}/>
                 </div>
                 <div className="reactive_square">
                     <div className="board">
