@@ -116,6 +116,7 @@ def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, player: boo
         return value, counter
 
     best = HIGH_BOUND
+    i = 0
     for move in board.legal_moves:
         board.make_move(move)
         score, counter = _alpha_beta_max(board, depth - 1, alpha, beta, player, counter)
@@ -125,6 +126,13 @@ def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, player: boo
         beta = min([beta, best])
         if beta <= alpha:
             return score, counter
+        i += 1
+
+    if i == 0:  # Game is over
+        if board.is_checkmate and board.turn != player:
+            return HIGH_BOUND + 1, counter  # Value checkmate above all else
+        else:
+            return LOW_BOUND - 1, counter   # Any other end game state is the worst case scenario
     return beta, counter
 
 
@@ -135,6 +143,7 @@ def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, player: boo
         return value, counter
 
     best = LOW_BOUND
+    i = 0
     for move in board.legal_moves:
         board.make_move(move)
         score, counter = _alpha_beta_min(board, depth - 1, alpha, beta, player, counter)
@@ -144,6 +153,13 @@ def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, player: boo
         alpha = max([alpha, best])
         if beta <= alpha:
             return best, counter
+        i += 1
+
+    if i == 0:  # Game is over
+        if board.is_checkmate and board.turn != player:
+            return LOW_BOUND - 1, counter  # Value checkmate above all else
+        else:
+            return HIGH_BOUND + 1, counter   # Any other end game state is the worst case scenario
     return alpha, counter
 
 

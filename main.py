@@ -6,7 +6,9 @@ from ai.algorithms import negamax, minimax, alpha_beta
 
 
 def main():
-    pass
+    b = Board()
+
+
 
 if __name__ == '__main__':
     main()

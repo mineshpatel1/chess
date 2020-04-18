@@ -42,12 +42,12 @@ PIECE_ICONS = {
 }
 
 PIECE_VALUES = {
-    PAWN: 1,
-    KNIGHT: 3,
-    BISHOP: 3,
-    ROOK: 5,
-    QUEEN: 9,
-    KING: 90,
+    PAWN: 10,
+    KNIGHT: 32,
+    BISHOP: 33,
+    ROOK: 50,
+    QUEEN: 90,
+    KING: 2000,
 }
 
 Direction = str
