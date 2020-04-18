@@ -19,6 +19,47 @@ def random_move(board: Board) -> Move:
     return random.choice(list(board.legal_moves))
 
 
+def _minimax(board: Board, depth: int, is_maximising_player: bool, player: bool):
+    if depth == 0:
+        return board.value if player else board.value * -1  # Opposing player has the current turn
+
+    if is_maximising_player:
+        score = LOW_BOUND
+        for move in board.legal_moves:
+            board.make_move(move)
+            score = max([_minimax(board, depth - 1, not is_maximising_player, player), score])
+            board.unmake_move()
+    else:
+        score = HIGH_BOUND
+        for move in board.legal_moves:
+            board.make_move(move)
+            score = min([_minimax(board, depth - 1, not is_maximising_player, player), score])
+            board.unmake_move()
+    return score
+
+
+def minimax(board: Board, depth: int):
+    """
+    Implementation of MiniMax algorithm using the standard formulation. This should play identically to negamax,
+    but is a bit easier to understand how the algorithm works.
+
+    https://www.chessprogramming.org/Minimax
+    """
+    score = LOW_BOUND
+    best_move = None
+    player = board.turn  # Current player is the AI player
+
+    for move in board.legal_moves:
+        board.make_move(move)
+        value = _minimax(board, depth - 1, False, player)
+        board.unmake_move()
+
+        if value > score:
+            score = value
+            best_move = move
+    return best_move
+
+
 def _negamax(board: Board, depth: int, counter: int):
     if depth == 0:
         counter += 1
@@ -68,15 +109,16 @@ def negamax(board: Board, depth: int, print_count: bool = False):
     return best_move
 
 
-def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, counter: int):
+def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, player: bool, counter: int):
     if depth == 0:
         counter += 1
-        return board.value, counter
+        value = board.value if not player else board.value * -1
+        return value, counter
 
     best = HIGH_BOUND
     for move in board.legal_moves:
         board.make_move(move)
-        score, counter = _alpha_beta_max(board, depth - 1, alpha, beta, counter)
+        score, counter = _alpha_beta_max(board, depth - 1, alpha, beta, player, counter)
         board.unmake_move()
 
         best = min([score, best])
@@ -86,15 +128,16 @@ def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, counter: in
     return beta, counter
 
 
-def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, counter: int):
+def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, player: bool, counter: int):
     if depth == 0:
         counter += 1
-        return board.value, counter
+        value = board.value if not player else board.value * -1
+        return value, counter
 
     best = LOW_BOUND
     for move in board.legal_moves:
         board.make_move(move)
-        score, counter = _alpha_beta_min(board, depth - 1, alpha, beta, counter)
+        score, counter = _alpha_beta_min(board, depth - 1, alpha, beta, player, counter)
         board.unmake_move()
 
         best = max([score, best])
@@ -107,7 +150,8 @@ def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, counter: in
 def alpha_beta(board: Board, depth: int, print_count: bool = False):
     """
     Implementation of Alpha-Beta pruning to optimise the MiniMax algorithm. This stops evaluating a move when at least
-    one possibility has been found that proves the move to be worse than a previously examined move.
+    one possibility has been found that proves the move to be worse than a previously examined move. Should play
+    identically to negamax for the same search depth.
 
     https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
     """
@@ -118,11 +162,12 @@ def alpha_beta(board: Board, depth: int, print_count: bool = False):
     best_move = None
     counter = 0
     start_time = time.time()
+    player = board.turn
     assert depth > 0
 
     for move in board.legal_moves:
         board.make_move(move)
-        value, counter = _alpha_beta_max(board, depth - 1, alpha, beta, counter)
+        value, counter = _alpha_beta_max(board, depth - 1, alpha, beta, player, counter)
         value *= -1
         board.unmake_move()
 
