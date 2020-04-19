@@ -1,40 +1,10 @@
 import time
-import queue
 import inspect
-import threading
 from typing import Tuple, Union, Callable
 
 import log
 import chess
 from game.board import Board
-
-
-def batch(_func):
-    """
-    Decorator to wrap a function so that it can run in multiple threads.
-    Takes a list of tuples with the inputs of the child function.
-    """
-    def batch_wrap(
-        _lst, num_threads=25,
-    ):
-        def worker():
-            while True:
-                item = q.get()
-                _func(**item)
-                q.task_done()
-
-        q = queue.Queue()
-
-        for _i in range(num_threads):
-            t = threading.Thread(target=worker)
-            t.daemon = True
-            t.start()
-
-        for _item in _lst:
-            q.put(_item)
-        q.join()  # Wait for all operations to complete
-
-    return batch_wrap
 
 
 def _traverse_moves(board: Union[chess.Board, Board], depth: int, counter: int):
@@ -93,13 +63,14 @@ def simulate_game(
     b = Board()
     log.info('Simulating game...')
     while not b.is_game_over:
+        start_time = time.time()
         if b.turn:
             move = white(b)  # White player
         else:
             move = black(b)  # Black player
 
         if print_moves:
-            log.info(move)
+            log.info(f'{b.fullmoves}. {move} ({time.time() - start_time}s)')
         b.make_move(move)
     return _process_results(b, print_summary)
 
@@ -127,16 +98,4 @@ async def simulate_game_async(white, black, print_moves=True, print_summary=True
         b.make_move(move)
 
     return _process_results(b, print_summary)
-
-
-def batch_simulate(white: Callable, black: Callable, n=2, num_threads=5):
-    @batch
-    def _simulate(_results):
-        result = simulate_game(white, black, False, False)
-        _results.append(result)
-
-    results = []
-    jobs = [{'_results': results}] * n
-    _simulate(jobs, num_threads)
-    return results
 

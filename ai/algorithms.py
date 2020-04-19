@@ -1,5 +1,6 @@
 import time
 import random
+import multiprocessing
 from typing import Callable
 
 import log
@@ -169,7 +170,26 @@ def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, player: boo
             return LOW_BOUND - 1, counter  # Value checkmate above all else
         else:
             return HIGH_BOUND + 1, counter   # Any other end game state is the worst case scenario
+
     return alpha, counter
+
+
+def _get_best_move(_board: Board, _depth: int, _base_move: Move, _board_eval: Callable):
+    """Helper function for running alpha_beta on multiple threads."""
+
+    alpha = LOW_BOUND
+    beta = HIGH_BOUND
+    _counter = 0
+    _player = _board.turn
+
+    _board.make_move(_base_move)
+
+    _value, _counter = _alpha_beta_max(_board, _depth - 1, alpha, beta, _player, _board_eval, _counter)
+    _value *= -1
+
+    _board.unmake_move()
+
+    return _base_move, _value, _counter
 
 
 def alpha_beta(board: Board, depth: int = 3, board_eval: Callable = weighted_eval, print_count: bool = False):
@@ -181,21 +201,24 @@ def alpha_beta(board: Board, depth: int = 3, board_eval: Callable = weighted_eva
     https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
     """
 
-    alpha = LOW_BOUND
-    beta = HIGH_BOUND
-    score = LOW_BOUND
     best_move = None
-    counter = 0
     start_time = time.time()
-    player = board.turn
     assert depth > 0
 
-    for move in board.legal_moves:
-        board.make_move(move)
-        value, counter = _alpha_beta_max(board, depth - 1, alpha, beta, player, board_eval, counter)
-        value *= -1
-        board.unmake_move()
+    legal_moves = list(board.legal_moves)
 
+    jobs = []
+    for move in legal_moves:
+        new_board = Board(board.fen)
+        jobs.append((new_board, depth, move, board_eval))
+
+    pool = multiprocessing.Pool(multiprocessing.cpu_count())
+    result = pool.starmap(_get_best_move, jobs)
+
+    counter = 0
+    score = LOW_BOUND
+    for move, value, sub_counter in result:
+        counter += sub_counter
         if value > score:
             score = value
             best_move = move
