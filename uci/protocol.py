@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import enum
+import time
 import asyncio
 from typing import Any, Optional, List, Tuple
 
 import log
+from game.board import Board
 
 
 class CommandState(enum.Enum):
@@ -40,15 +42,20 @@ class BaseCommand:
 
 
 class UciProtocol(asyncio.SubprocessProtocol):
-    def __init__(self):
+    def __init__(self, limit: int = 0.5):
         self.transport = None
         self.command: Optional[BaseCommand] = None
         self.loop = asyncio.get_event_loop()
         self.return_code: asyncio.Future[int] = asyncio.Future()
+        self.limit = limit
         self.all_output = {
             1: bytearray(),  # stdout
             2: bytearray(),  # stderr
         }
+
+    def stop_command(self):
+        if self.command.state != CommandState.Done:
+            self.send_line('stop')
 
     def connection_made(self, transport: asyncio.BaseTransport):
         self.transport = transport
@@ -58,7 +65,7 @@ class UciProtocol(asyncio.SubprocessProtocol):
         self.return_code.set_result(code)
 
     def process_exited(self):
-        log.info('Process Exited')
+        pass
 
     def pipe_data_received(self, file_descriptor: int, data: bytes):
         self.all_output[file_descriptor].extend(data)
@@ -80,20 +87,26 @@ class UciProtocol(asyncio.SubprocessProtocol):
         """Communicates a command to the engine with custom functions to capture the result."""
         command = command_factory()
 
+        # Wait for any previously unfinished jobs
         if self.command and not self.command.result.done():
             await self.command.result
 
         self.command = command
         command.start(self)
+        # Send a stop command after the time limit has been reached
+        self.loop.call_later(self.limit, self.stop_command)
         return await self.command.result
 
     async def quit(self):
         """Quits the engine"""
+        self.send_line('stop')
         self.send_line('quit')
         await self.return_code
 
-    async def uci(self):
-        self.send_line('uci')
+    async def new_game(self):
+        self.send_line('ucinewgame')
+        await self.ping()
+        await self.set_position()
 
     async def ping(self):
         """Pings to see if the system is ready to recieve a command."""
@@ -127,6 +140,9 @@ class UciProtocol(asyncio.SubprocessProtocol):
         self.send_line(' '.join(command))
         await self.ping()
 
+    async def set_position_from_board(self, board: Board):
+        await self.set_position(board.fen)
+
     async def get_best_move(self):
         """Runs the go function and gets the best move for a given board position."""
 
@@ -142,9 +158,14 @@ class UciProtocol(asyncio.SubprocessProtocol):
         return await self.communicate(Command)
 
 
-async def start_engine(path, protocol: UciProtocol = asyncio.BaseProtocol) -> Tuple[asyncio.BaseTransport, UciProtocol]:
+async def start_engine(
+    path,
+    protocol: UciProtocol = UciProtocol,
+    limit: int = 0.5,
+) -> Tuple[asyncio.BaseTransport, UciProtocol]:
     """Starts a UCI protocol chess engine"""
     loop = asyncio.get_event_loop()
     transport, eng = await loop.subprocess_exec(protocol, path)
-    await eng.ping()  # Make sure the engine is ready
+    eng.limit = limit
+    await eng.new_game()
     return transport, eng

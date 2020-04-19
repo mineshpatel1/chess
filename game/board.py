@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import log
 from game.bitboard import *
@@ -630,11 +630,15 @@ class Board:
         else:
             raise IllegalMove(f"Move {move} is illegal.")
 
-    def make_move(self, move: Move):
+    def make_move(self, move: Union[Move, str]):
         """
         Moves a piece on the game. Warning: moves are not checked for legality in this function, this is for speed.
         The consumer of this API should enforce legality by checking Bitboard.legal_moves.
         """
+
+        if isinstance(move, str):
+            move = Move.from_uci(move)
+
         self._save()
         piece = self.piece_at(move.from_square)
         captured_piece = self.piece_at(move.to_square)

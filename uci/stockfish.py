@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Optional, List, Tuple
+from typing import Tuple
 
 from uci.protocol import BaseCommand, UciProtocol
 
@@ -18,6 +18,10 @@ class StockfishProtocol(UciProtocol):
                     self.done(_fen)
 
         return await self.communicate(Command)
+
+    async def set_skill(self, level: int):
+        assert 0 <= level <= 20
+        await self.set_option('Skill Level', level)
 
 
 async def start_engine(path) -> Tuple[asyncio.BaseTransport, StockfishProtocol]:
