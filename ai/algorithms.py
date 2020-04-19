@@ -3,7 +3,7 @@ import random
 from typing import Callable
 
 import log
-from engine.board import Board, Move
+from game.board import Board, Move
 
 LOW_BOUND = -9999999
 HIGH_BOUND = 9999999
@@ -88,7 +88,7 @@ def _negamax(board: Board, depth: int, counter: int):
 def negamax(board: Board, depth: int, print_count: bool = False):
     """
     Implementation of MiniMax algorithm using the negamax formulation. This is a search tree that searches all possible
-    moves making optimal choices for each player in accordance to optimising the cost function (in this case board
+    moves making optimal choices for each player in accordance to optimising the cost function (in this case game
     value). Then the original move that could lead the best score is chosen.
 
     https://www.chessprogramming.org/Minimax

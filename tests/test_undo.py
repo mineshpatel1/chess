@@ -1,7 +1,7 @@
 import unittest
 
-from engine.constants import STARTING_STATE
-from engine.board import Board, Move
+from game.constants import STARTING_STATE
+from game.board import Board, Move
 
 
 class TestUndo(unittest.TestCase):
@@ -84,14 +84,14 @@ class TestUndo(unittest.TestCase):
         self.assertEqual(board.fen, '3k1R2/6p1/4P3/2Q4P/8/3B4/1B6/1N2K2R b K - 0 31')
         self.assertTrue(board.is_checkmate)
 
-        # Undo the moves and validate the board states match as the game played out
+        # Undo the moves and validate the game states match as the game played out
         i = 0
         fens = [m[1] for m in moves]
         while len(board._history) > 0:
             board.unmake_move()
             self.assertEqual(board.fen, fens[-1 * (i + 1)])
             i += 1
-        self.assertEqual(board.fen, STARTING_STATE)  # Check we have the initial game board
+        self.assertEqual(board.fen, STARTING_STATE)  # Check we have the initial game game
 
     def test_complex(self):
         moves = (
@@ -175,14 +175,14 @@ class TestUndo(unittest.TestCase):
         self.assertEqual(board.fen, '8/2Q5/1R6/4p3/1k2P2P/8/2P2K2/R1B5 b - - 2 33')
         self.assertTrue(board.is_checkmate)
 
-        # Undo the moves and validate the board states match as the game played out
+        # Undo the moves and validate the game states match as the game played out
         i = 0
         fens = [m[1] for m in moves]
         while len(board._history) > 0:
             board.unmake_move()
             self.assertEqual(board.fen, fens[-1 * (i + 1)])
             i += 1
-        self.assertEqual(board.fen, STARTING_STATE)  # Check we have the initial game board
+        self.assertEqual(board.fen, STARTING_STATE)  # Check we have the initial game game
 
 def main():
     unittest.main()

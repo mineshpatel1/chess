@@ -1,10 +1,10 @@
 from typing import Dict, Optional
 
 import log
-from engine.bitboard import *
-from engine.move import Move
-from engine.piece import Piece
-from engine.exceptions import (
+from game.bitboard import *
+from game.move import Move
+from game.piece import Piece
+from game.exceptions import (
     Checkmate,
     Stalemate,
     IllegalMove,
@@ -12,7 +12,7 @@ from engine.exceptions import (
     ThreefoldRepetition,
     InsufficientMaterial,
 )
-from engine.constants import (
+from game.constants import (
     Colour,
     WHITE,
     BLACK,
@@ -39,7 +39,7 @@ from engine.constants import (
     WEST,
     NORTHWEST,
 )
-from engine.square import (
+from game.square import (
     PAWN_POSITION_VALUES,
     ROOK_POSITION_VALUES,
     KNIGHT_POSITION_VALUES,
@@ -53,12 +53,12 @@ from engine.square import (
 class Board:
     def __init__(self, fen: str = STARTING_STATE, track_repetitions: bool = False):
         """
-        Represents the chess board and game state as a bitboard.
+        Represents the chess game and game state as a bitboard.
 
         Args:
-            fen: Forsyth–Edwards Notation string to load the board state from
+            fen: Forsyth–Edwards Notation string to load the game state from
                 (https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation).
-            track_repetitions: If specified as True, will store game states every move to verify if the same board
+            track_repetitions: If specified as True, will store game states every move to verify if the same game
                 position has been reached 3 times for a threefold repetition draw
                 (https://en.wikipedia.org/wiki/Threefold_repetition). Note that this will impact performance but
                 is required for a strictly true game state.
@@ -232,7 +232,7 @@ class Board:
 
         Args:
             colour: Colour of the player attacking
-            ignore: Filters out any pieces included in the mask: calculates the attack board as if they weren't there.
+            ignore: Filters out any pieces included in the mask: calculates the attack game as if they weren't there.
         """
         attack_moves = BB_EMPTY
         for from_square in bitboard_to_squares(self.occupied_colour[colour]):
@@ -309,7 +309,7 @@ class Board:
                     yield Move(from_square, castle_sq, is_castling=True)
 
     def _update_castling_rights(self):
-        """Sets the castling rights of the board based on the positions of the kings and rooks."""
+        """Sets the castling rights of the game based on the positions of the kings and rooks."""
 
         # Can never get castling rights back, so if we've removed them all, return quickly
         if not (self.castling_rights[WHITE] | self.castling_rights[BLACK]):
@@ -348,7 +348,7 @@ class Board:
     @property
     def fen(self) -> str:
         """
-        Returns the board's current state in FE Notation.
+        Returns the game's current state in FE Notation.
         (https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation)
         """
         fen_str = ''
@@ -474,7 +474,7 @@ class Board:
 
     @property
     def value(self) -> int:
-        """Simple evaluation of the board, positive for white, negative for black."""
+        """Simple evaluation of the game, positive for white, negative for black."""
         def _count_value(_piece_type, _pieces, _modifier):
             return PIECE_VALUES[_piece_type] * bit_count(_pieces) * _modifier
 
@@ -499,8 +499,8 @@ class Board:
     @property
     def weighted_value(self) -> int:
         """
-        Weighted evaluation of the board, positive for white, negative for black. Adjusts piece values depending on the
-        positions on the board. More expensive to calcualte than Board.value.
+        Weighted evaluation of the game, positive for white, negative for black. Adjusts piece values depending on the
+        positions on the game. More expensive to calcualte than Board.value.
         """
         total = 0
         for colour in (WHITE, BLACK):
@@ -632,7 +632,7 @@ class Board:
 
     def make_move(self, move: Move):
         """
-        Moves a piece on the board. Warning: moves are not checked for legality in this function, this is for speed.
+        Moves a piece on the game. Warning: moves are not checked for legality in this function, this is for speed.
         The consumer of this API should enforce legality by checking Bitboard.legal_moves.
         """
         self._save()
@@ -719,7 +719,7 @@ class Board:
         state.load(self)
 
     def place_piece(self, square: Square, piece_type: PieceType, colour: Colour):
-        """Place a piece of a given colour on a square of the board."""
+        """Place a piece of a given colour on a square of the game."""
         self.remove_piece(square)  # Remove the existing piece if it exists
 
         mask = BB_SQUARES[square]
@@ -742,7 +742,7 @@ class Board:
 
     def remove_piece(self, square: Square) -> Optional[Piece]:
         """
-        Removes a piece, if possible, from a square on the board.
+        Removes a piece, if possible, from a square on the game.
 
         Returns:
             Returns the piece that existed at the square, if applicable.
@@ -793,7 +793,7 @@ class Board:
                 return Piece(KING, colour)
 
     def raise_if_game_over(self):
-        """Raises an exception if the board is in an end state."""
+        """Raises an exception if the game is in an end state."""
         if self.halfmove_clock >= 50:
             raise FiftyMoveDraw
         elif self.has_insufficient_material:
@@ -806,6 +806,7 @@ class Board:
             raise Stalemate
 
     def __str__(self):
+        """Board representation using Unicode piece characters."""
         board_str = ''
         rank = 8
         for sq in SQUARES_VFLIP:

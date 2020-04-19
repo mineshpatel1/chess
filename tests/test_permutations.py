@@ -1,7 +1,7 @@
 import unittest
 
 from ai.benchmark import traverse_moves
-from engine.board import *
+from game.board import *
 
 
 class TestPermutations(unittest.TestCase):

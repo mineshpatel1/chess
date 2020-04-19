@@ -1,6 +1,6 @@
 from typing import Tuple
 
-from engine.constants import (
+from game.constants import (
     WHITE,
     BLACK,
     FILE_NAMES,
@@ -95,7 +95,7 @@ def square_distance(a: Square, b: Square) -> int:
 
 
 def mirror_square(square: Square, vertical: bool = True) -> Square:
-    """Returns a square position as if the board was mirrored vertically."""
+    """Returns a square position as if the game was mirrored vertically."""
     if vertical:
         return Square(square ^ 56)
     else:
@@ -103,7 +103,7 @@ def mirror_square(square: Square, vertical: bool = True) -> Square:
 
 
 def _mirror_list(_list):
-    """Returns a list of 64 elements representing the board as if the board were mirrored vertically."""
+    """Returns a list of 64 elements representing the game as if the game were mirrored vertically."""
     _new_list = [0] * len(_list)
     for i, val in enumerate(_list):
         _new_list[SQUARES_VFLIP[i]] = _list[i]

@@ -3,13 +3,13 @@ from flask import request
 
 import log
 from ai import algorithms
-from engine.constants import WHITE
-from engine.board import Board, Move, SQUARES_VFLIP
-from engine.exceptions import IllegalMove, Checkmate, Draw
+from game.constants import WHITE
+from game.board import Board, Move, SQUARES_VFLIP
+from game.exceptions import IllegalMove, Checkmate, Draw
 from web.server import app
 
 cache = {
-    'board': Board(),
+    'game': Board(),
 }
 
 
@@ -45,7 +45,7 @@ def json_board(board: Board, params: Optional[Dict] = None):
     for i, rank in enumerate(sorted(by_rank.keys(), reverse=True)):
         by_rank_reverse[i] = by_rank[rank]
 
-    payload = {'board': by_rank_reverse, 'turn': board.turn_name, 'fen': board.fen}
+    payload = {'game': by_rank_reverse, 'turn': board.turn_name, 'fen': board.fen}
     if params:
         payload.update(params)
     return payload
@@ -55,7 +55,7 @@ def json_board(board: Board, params: Optional[Dict] = None):
 def new_game():
     data = request.get_json()
     board = Board()
-    cache['board'] = board
+    cache['game'] = board
 
     if not data['player']:
         return make_move_ai()  # Make first move
@@ -67,9 +67,9 @@ def load_game():
     data = request.get_json()
     if 'state' in data:
         board = Board(fen=data['state'])
-        cache['board'] = board
+        cache['game'] = board
     else:
-        board = cache['board']
+        board = cache['game']
     return json_board(board)
 
 
@@ -77,7 +77,7 @@ def load_game():
 def make_move():
     """Both white and black players are human."""
     data = request.get_json()
-    board = cache['board']
+    board = cache['game']
 
     try:
         board.raise_if_game_over()
@@ -97,12 +97,12 @@ def make_move():
 @app.route('/makeMoveAi')
 def make_move_ai():
     """Randomly choose a possible move."""
-    board = cache['board']
+    board = cache['game']
     try:
         board.raise_if_game_over()
 
-        # move = algorithms.random_move(board)
-        # move = algorithms.negamax(board, depth=3)
+        # move = algorithms.random_move(game)
+        # move = algorithms.negamax(game, depth=3)
         move = algorithms.alpha_beta(board, depth=3, board_eval=lambda b: b.weighted_value)
 
         board.make_move(move)

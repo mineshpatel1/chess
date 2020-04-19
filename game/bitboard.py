@@ -1,7 +1,7 @@
 from typing import List, Iterable
 
-from engine.square import *
-from engine.constants import (
+from game.square import *
+from game.constants import (
     BLACK,
     WHITE,
 
@@ -81,7 +81,7 @@ BB_DIRECTIONS = {
     NORTHWEST: 7,
 }
 
-# 64-bit representations of board positions
+# 64-bit representations of game positions
 BB_EMPTY = 0
 BB_BOARD = (2 ** 64) - 1
 BB_WHITE_SQUARES = 6172840429334713770
@@ -136,7 +136,7 @@ def _gen_moves(intervals: Iterable[Tuple[int, int]]) -> List[Bitboard]:
         for i, j in intervals:
             _file = sq.file + i
             _rank = sq.rank + j
-            if 0 <= _file < 8 and 0 <= _rank < 8:  # Checks within the board
+            if 0 <= _file < 8 and 0 <= _rank < 8:  # Checks within the game
                 _sq = file_rank_to_index(sq.file + i, sq.rank + j)
                 moves |= BB_SQUARES[_sq]
         bbs.append(moves)
@@ -152,7 +152,7 @@ def _gen_rays(file_adjust, rank_adjust) -> List[Bitboard]:
         moves = BB_EMPTY
         _file = sq.file
         _rank = sq.rank
-        while _in_board(_file, _rank):  # Still in board
+        while _in_board(_file, _rank):  # Still in game
             _file = _file + file_adjust
             _rank = _rank + rank_adjust
             if _in_board(_file, _rank):

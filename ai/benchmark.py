@@ -5,7 +5,7 @@ from typing import Union, Callable
 
 import log
 import chess
-from engine.board import Board
+from game.board import Board
 
 
 def batch(_func):

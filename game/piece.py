@@ -1,4 +1,4 @@
-from engine.constants import (
+from game.constants import (
     WHITE,
     BLACK,
     PieceType,

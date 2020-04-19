@@ -23,4 +23,4 @@ class InsufficientMaterial(Draw):
 
 
 class ThreefoldRepetition(Draw):
-    MESSAGE = "Same board position has occurred 3 times."
+    MESSAGE = "Same game position has occurred 3 times."
