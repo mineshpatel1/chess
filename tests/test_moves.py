@@ -121,6 +121,21 @@ class TestMoves(unittest.TestCase):
             bb.make_move(move)
         self.assertEqual(bb.fen, 'rnbqkbnr/pppppp1p/8/8/P7/5p2/1PPPP1PP/RNBQKBNR w KQkq - 0 4')
 
+    def test_promotion(self):
+        b = Board('rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1')
+        promotion_moves = set()
+        for m in b.legal_moves:
+            if m.from_square == G7:
+                promotion_moves.add(m.uci)
+        self.assertEqual(promotion_moves, {f'g7g8{p}' for p in ['q', 'r', 'b', 'n']})
+
+        b.make_move(Move.from_uci('g7g8r'))
+        self.assertEqual(b.fen, 'rnbqr1R1/pppp4/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR b KQ - 0 1')
+        b.unmake_move()
+        b.make_move(Move.from_uci('g7g8q'))
+        self.assertEqual(b.fen, 'rnbqr1Q1/pppp4/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR b KQ - 0 1')
+
+
     def test_checkmate(self):
         for fen, result in (
             ('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w', False),

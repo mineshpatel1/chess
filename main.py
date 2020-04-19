@@ -3,7 +3,7 @@ import chess
 import log
 from engine.board import *
 from engine.square import index_to_coord
-from ai.benchmark import simulate_game
+from ai.benchmark import simulate_game, traverse_moves
 from ai.algorithms import random_move, negamax, minimax, alpha_beta
 
 

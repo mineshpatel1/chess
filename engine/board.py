@@ -259,8 +259,6 @@ class Board:
             for attacker_sq in bitboard_to_squares(attackers):
                 if BB_BETWEEN[attacker_sq][target] & self.occupied:
                     attackers &= ~BB_SQUARES[attacker_sq]
-
-
         return attackers
 
     def _protectors(self, target: Square, colour: Colour) -> Bitboard:
@@ -279,13 +277,28 @@ class Board:
     def _pseudo_legal_moves(self, colour: Colour) -> Iterable[Move]:
         """Generates possible moves without taking into account check and the safety of the King."""
 
-        # Generic moves
-        for from_square in bitboard_to_squares(self.occupied_colour[colour]):
+        # Generic piece moves
+        non_pawns = self.occupied_colour[colour] & ~self.pawns[colour]
+        for from_square in bitboard_to_squares(non_pawns):
             moves = self._moves_from_square(from_square, colour)
             if moves:
                 moves &= ~self.occupied_colour[colour]  # Cannot take our own pieces
                 for to_square in bitboard_to_squares(moves):
                     yield Move(from_square, to_square)
+
+        # Handle pawns specifically so we can assign promotions to moves
+        pawns = self.pawns[colour]
+        for from_square in bitboard_to_squares(pawns):
+            moves = self._moves_from_square(from_square, colour)
+            if moves:
+                moves &= ~self.occupied_colour[colour]
+                bb_sq = BB_SQUARES[from_square]
+                for to_square in bitboard_to_squares(moves):
+                    if self.pawns[colour] & bb_sq and to_square.rank in (0, 7):  # Promotion
+                        for piece_type in (QUEEN, ROOK, BISHOP, KNIGHT):
+                            yield Move(from_square, to_square, promotion=piece_type)
+                    else:
+                        yield Move(from_square, to_square)
 
         # Castling moves
         if self.castling_rights:
@@ -662,7 +675,7 @@ class Board:
             self.place_piece(move.to_square, piece.type, piece.colour)
         elif piece.type == PAWN and move.to_square.rank == backrank:  # Promotion
             self.remove_piece(move.from_square)
-            self.place_piece(move.to_square, QUEEN, piece.colour)  # Assume queen for now
+            self.place_piece(move.to_square, move.promotion, piece.colour)  # Assume queen for now
         else:
             # Regular piece move
             self.remove_piece(move.from_square)

@@ -125,7 +125,7 @@ class TestUndo(unittest.TestCase):
             ('E7E6', 'r1bqk3/1ppppp1P/2n5/p7/2BNP1r1/8/PPPBQK1P/RN3R2 b q - 0 14'),
             ('E2G4', 'r1bqk3/1ppp1p1P/2n1p3/p7/2BNP1r1/8/PPPBQK1P/RN3R2 w q - 0 15'),
             ('E8E7', 'r1bqk3/1ppp1p1P/2n1p3/p7/2BNP1Q1/8/PPPB1K1P/RN3R2 b q - 0 15'),
-            ('H7H8', 'r1bq4/1pppkp1P/2n1p3/p7/2BNP1Q1/8/PPPB1K1P/RN3R2 w - - 1 16'),
+            ('H7H8q', 'r1bq4/1pppkp1P/2n1p3/p7/2BNP1Q1/8/PPPB1K1P/RN3R2 w - - 1 16'),
             ('A5A4', 'r1bq3Q/1pppkp2/2n1p3/p7/2BNP1Q1/8/PPPB1K1P/RN3R2 b - - 0 16'),
             ('H8D8', 'r1bq3Q/1pppkp2/2n1p3/8/p1BNP1Q1/8/PPPB1K1P/RN3R2 w - - 0 17'),
             ('E7D6', 'r1bQ4/1pppkp2/2n1p3/8/p1BNP1Q1/8/PPPB1K1P/RN3R2 b - - 0 17'),
