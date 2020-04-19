@@ -46,6 +46,7 @@ from engine.square import (
     BISHOP_POSITION_VALUES,
     QUEEN_POSITION_VALUES,
     KING_POSITION_VALUES,
+    KING_LATE_GAME_POSITION_VALUES,
 )
 
 
@@ -508,8 +509,20 @@ class Board:
                     for sq in bitboard_to_squares(self.queens[colour]):
                         total += ((PIECE_VALUES[piece_type] + QUEEN_POSITION_VALUES[colour][sq]) * modifier)
                 elif piece_type == KING:
+                    if (
+                        not (self.queens[WHITE] | self.queens[BLACK]) or
+                        bit_count(
+                            self.queens[WHITE] | self.queens[BLACK] |
+                            self.rooks[WHITE] | self.rooks[BLACK] |
+                            self.bishops[WHITE] | self.bishops[BLACK] |
+                            self.knights[WHITE] | self.knights[BLACK]
+                        ) <= 4
+                    ):
+                        pos_values = KING_POSITION_VALUES
+                    else:
+                        pos_values = KING_LATE_GAME_POSITION_VALUES
                     for sq in bitboard_to_squares(self.kings[colour]):
-                        total += ((PIECE_VALUES[piece_type] + KING_POSITION_VALUES[colour][sq]) * modifier)
+                        total += ((PIECE_VALUES[piece_type] + pos_values[colour][sq]) * modifier)
         return total
 
     @property

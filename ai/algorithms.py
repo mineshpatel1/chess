@@ -172,7 +172,7 @@ def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, player: boo
     return alpha, counter
 
 
-def alpha_beta(board: Board, depth: int, board_eval: Callable = weighted_eval, print_count: bool = False):
+def alpha_beta(board: Board, depth: int = 3, board_eval: Callable = weighted_eval, print_count: bool = False):
     """
     Implementation of Alpha-Beta pruning to optimise the MiniMax algorithm. This stops evaluating a move when at least
     one possibility has been found that proves the move to be worse than a previously examined move. Should play

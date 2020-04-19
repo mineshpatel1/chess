@@ -4,7 +4,7 @@ from engine.constants import STARTING_STATE
 from engine.board import Board, Move
 
 
-class TestBBUndo(unittest.TestCase):
+class TestUndo(unittest.TestCase):
     def test_basic_undo(self):
         """Runs full game in reverse but there wasn't any castling, promotions or en passant takes."""
         moves = (
