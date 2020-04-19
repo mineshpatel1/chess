@@ -1,18 +1,10 @@
-import asyncio
-import time
-from datetime import datetime
-import chess
+from __future__ import annotations
 
 import log
-from game.board import *
-from uci.engine import UciEngine
-# from ai.benchmark import simulate_game, traverse_moves
-# from ai.algorithms import random_move, negamax, minimax, alpha_beta
 
 
 def main():
-    engine = UciEngine()
-    engine.run()
+    pass
 
 
 if __name__ == '__main__':

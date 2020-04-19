@@ -1,8 +1,17 @@
 import re
+import sys
 from typing import Any, Optional, List
 
 from game.board import Board, Move
 from ai.algorithms import random_move, alpha_beta
+
+
+def out(line):
+    print(line, file=sys.stdout)
+
+
+def err(line):
+    print(line, file=sys.stderr)
 
 
 class Parameter:
@@ -62,7 +71,7 @@ class UciEngine:
 
     @staticmethod
     def isready():
-        print('readyok')
+        out('readyok')
 
     def __init__(self):
         self.board = Board()
@@ -87,21 +96,22 @@ class UciEngine:
             move = random_move(self.board)
         else:
             move = alpha_beta(self.board, depth=self.params['skill'].value, print_count=False)
-        print(f'bestmove {move.uci}')
+        out(f'bestmove {move.uci}')
 
     def about(self):
-        print(f'id name {NAME}')
-        print(f'id name {AUTHOR}')
+        output = [f'id name {NAME}', f'id name {AUTHOR}']
         for name, param in self.params.items():
             opt = f'option name {name} type {param.uci_type} default {param.default_value}'
             if param.min_value is not None:
                 opt += f' min {param.min_value}'
             if param.max_value is not None:
                 opt += f' max {param.max_value}'
-            print(opt)
+            output.append(opt)
+        output.append('uciok')
+        out('\n'.join(output))
 
     def display(self):
-        print(str(self.board) + '\n')
+        out(str(self.board) + '\n')
 
     def run(self):
         while True:
@@ -125,12 +135,12 @@ class UciEngine:
                     name = match.group('name')
                     value = match.group('value')
                     if name not in self.params:
-                        print(f'No such option: {name}')
+                        err(f'No such option: {name}')
                     else:
                         if not self.params[name].set_value(value):
-                            print('Could not set value')
+                            err('Could not set value')
                 else:
-                    print('Invalid setoption instruction')
+                    err('Invalid setoption instruction')
             elif cmd.lower().startswith('position'):
                 fen_flag, move_flag, start_pos = False, False, False
                 fen = []
