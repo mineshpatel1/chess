@@ -161,7 +161,7 @@ class UciProtocol(asyncio.SubprocessProtocol):
 async def start_engine(
     path,
     protocol: UciProtocol = UciProtocol,
-    limit: int = 0.5,
+    limit: float = 0.5,
 ) -> Tuple[asyncio.BaseTransport, UciProtocol]:
     """Starts a UCI protocol chess engine"""
     loop = asyncio.get_event_loop()
