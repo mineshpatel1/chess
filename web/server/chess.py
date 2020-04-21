@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 from flask import request
 
 import log
@@ -45,13 +45,13 @@ def json_board(board: Board, params: Optional[Dict] = None):
     for i, rank in enumerate(sorted(by_rank.keys(), reverse=True)):
         by_rank_reverse[i] = by_rank[rank]
 
-    payload = {'game': by_rank_reverse, 'turn': board.turn_name, 'fen': board.fen}
+    payload = {'board': by_rank_reverse, 'turn': board.turn_name, 'fen': board.fen}
     if params:
         payload.update(params)
     return payload
 
 
-@app.route('/newGame', methods=['POST'])
+@app.route('/chess/newGame', methods=['POST'])
 def new_game():
     data = request.get_json()
     board = Board()
@@ -62,7 +62,7 @@ def new_game():
     return json_board(board)
 
 
-@app.route('/loadGame', methods=['POST'])
+@app.route('/chess/loadGame', methods=['POST'])
 def load_game():
     data = request.get_json()
     if 'state' in data:
@@ -73,7 +73,7 @@ def load_game():
     return json_board(board)
 
 
-@app.route('/makeMove', methods=['POST'])
+@app.route('/chess/makeMove', methods=['POST'])
 def make_move():
     """Both white and black players are human."""
     data = request.get_json()
@@ -94,7 +94,7 @@ def make_move():
         log_exception(board, e)
 
 
-@app.route('/makeMoveAi')
+@app.route('/chess/makeMoveAi')
 def make_move_ai():
     """Randomly choose a possible move."""
     board = cache['game']
@@ -102,8 +102,7 @@ def make_move_ai():
         board.raise_if_game_over()
 
         # move = algorithms.random_move(game)
-        # move = algorithms.negamax(game, depth=3)
-        move = algorithms.alpha_beta(board, depth=3, board_eval=lambda b: b.weighted_value)
+        move = algorithms.alpha_beta(board, depth=3)
 
         board.make_move(move)
         board.raise_if_game_over()
