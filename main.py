@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import log
-from game.board import Board
-from ai.benchmark import simulate_game
-from ai.algorithms import alpha_beta
+from connect4.blue_peter import Game
+from connect4.game import *
 
 
 def main():
     pass
 
+
 if __name__ == '__main__':
     main()
+
