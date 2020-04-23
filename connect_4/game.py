@@ -8,6 +8,9 @@ from game.exceptions import IllegalMove
 RED = True
 YELLOW = False
 
+LOW_BOUND = -9999999
+HIGH_BOUND = 9999999
+
 GRID_SIZE = 7 * 6
 
 WINS = (
@@ -181,7 +184,7 @@ class Piece:
 
 
 class Connect4:
-    def __init__(self):
+    def __init__(self, mhn: Optional[str] = None):
         self.turn = None
         self.state = None
         self.occupied = None
@@ -190,6 +193,9 @@ class Connect4:
         self._history = None
 
         self.reset()
+
+        if mhn:
+            self._set_from_mhn(mhn)
 
     def _save(self):
         self._history.append(GameState(self))
@@ -205,6 +211,10 @@ class Connect4:
             RED: BB_EMPTY,
             YELLOW: BB_EMPTY,
         }
+
+    def _set_from_mhn(self, mhn: str):
+        for m in mhn:
+            self.make_move(self.file_to_move(int(m)))
 
     def file_to_move(self, file: int):
         """Returns the true move index for a move based on a file index."""
@@ -294,6 +304,30 @@ class Connect4:
             out += str((move % 7))
         return out
 
+    @property
+    def value(self) -> int:
+        """Evaluation based on number of possible victories left remaining."""
+        result = self.end_result
+        if result is not None:
+            if result == 0:
+                return 0
+            elif result == 1:
+                return HIGH_BOUND
+            elif result == -1:
+                return LOW_BOUND
+            else:
+                raise Exception
+
+        red_possible = 0
+        yellow_possible = 0
+        for win in BB_WINS:
+            if not bool(win & self.occupied_colour[YELLOW]):
+                red_possible += 1
+
+            if not bool(win & self.occupied_colour[RED]):
+                yellow_possible += 1
+        return red_possible - yellow_possible
+
     def __str__(self):
         board_str = ''
         rank = 7
@@ -317,11 +351,9 @@ class GameState:
         self.occupied_red = game.occupied_colour[RED]
         self.occupied_yellow = game.occupied_colour[YELLOW]
         self.turn = game.turn
-        # self.move_history = game.move_history.copy()
 
     def load(self, game: Connect4):
         game.occupied_colour[RED] = self.occupied_red
         game.occupied_colour[YELLOW] = self.occupied_yellow
         game.occupied = self.occupied_red | self.occupied_yellow
         game.turn = self.turn
-        # game.move_history = self.move_history

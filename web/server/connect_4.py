@@ -2,6 +2,7 @@ from flask import request
 from typing import Optional, Dict
 
 from connect_4.game import Connect4, IllegalMove, SLOTS_VFLIP
+from connect_4.ai import minimax
 from web.server import app
 
 cache = {
@@ -80,7 +81,10 @@ def c4_make_move():
 def c4_make_move_ai():
     """Randomly choose a possible move."""
     c4 = cache['game']
-    c4.make_random_move()
+    # c4.make_random_move()
+    move = minimax(c4, 4)
+    c4.make_move(move)
+
     end_result = c4.end_result
     if end_result is not None:
         return _json_board(c4, {'end': _end_message(end_result)})
