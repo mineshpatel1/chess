@@ -241,7 +241,17 @@ class Board:
                 attack_moves |= moves
         return attack_moves
 
-    def _attackers(self, target: Square, colour, filter_blockers: bool = False) -> Bitboard:
+    @staticmethod
+    def _filter_blockers(attackers: Bitboard, target: Square, mask: Bitboard) -> Bitboard:
+        for attacker_sq in bitboard_to_squares(attackers):
+            if BB_BETWEEN[attacker_sq][target] & mask:
+                attackers &= ~BB_SQUARES[attacker_sq]
+        return attackers
+
+    def _attackers(
+        self, target: Square, colour,
+        filter_blockers: bool = False,
+    ) -> Bitboard:
         """Returns the slide attackers of a given square."""
         cardinal_movers = self.rooks[colour] | self.queens[colour]
         diagonal_movers = self.bishops[colour] | self.queens[colour]
@@ -256,9 +266,7 @@ class Board:
         )
 
         if filter_blockers:
-            for attacker_sq in bitboard_to_squares(attackers):
-                if BB_BETWEEN[attacker_sq][target] & self.occupied:
-                    attackers &= ~BB_SQUARES[attacker_sq]
+            attackers = self._filter_blockers(attackers, target, filter_blockers)
         return attackers
 
     def _protectors(self, target: Square, colour: Colour) -> Bitboard:
@@ -555,8 +563,8 @@ class Board:
             elif bit_count(_attackers) == 1:
                 _attacker_sq = list(bitboard_to_squares(_attackers))[0]
                 if not (  # Deem illegal unless the move is one of these two caveats:
-                        BB_BETWEEN[_attacker_sq][_king_pos] & BB_SQUARES[_move.to_square] or  # Piece blocks danger
-                        _move.to_square == _attacker_sq  # Piece takes attacker
+                    BB_BETWEEN[_attacker_sq][_king_pos] & BB_SQUARES[_move.to_square] or  # Piece blocks danger
+                    _move.to_square == _attacker_sq  # Piece takes attacker
                 ):
                     return False
             return True
@@ -580,14 +588,17 @@ class Board:
 
             # Cannot move this piece, it's protecting the King
             if protectors & BB_SQUARES[move.from_square]:
-                attackers = self._attackers(king_pos, not self.turn)
-                if not _is_safe(attackers, king_pos, move):
+                all_attackers = self._attackers(king_pos, not self.turn)
+                protected_attacker = self._attackers(
+                    king_pos, not self.turn, filter_blockers=BB_SQUARES[move.from_square],
+                )
+                if not _is_safe(protected_attacker ^ all_attackers, king_pos, move):
                     continue
 
             # If in check and we are not moving the king, we must protect it
             if in_check:
                 if move.from_square != king_pos:
-                    attackers = self._attackers(king_pos, not self.turn, filter_blockers=True)
+                    attackers = self._attackers(king_pos, not self.turn, filter_blockers=self.occupied)
                     if not _is_safe(attackers, king_pos, move):
                         continue
 
