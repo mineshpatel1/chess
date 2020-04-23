@@ -11,8 +11,8 @@ export class Connect4Game extends React.Component {
             mode: 'end',
             message: null,
             error: null,
-            twoPlayer: false,
             loading: false,
+            twoPlayer: false,
         };
     }
 
@@ -28,6 +28,7 @@ export class Connect4Game extends React.Component {
                 'mhn': data.mhn,
                 'message': data.end,
                 'mode': 'end',
+                'loading': false,
             });
         } else if (data.error) {
             this.setState({'error': data.error, 'mode': 'chooseSlot'});
@@ -39,6 +40,11 @@ export class Connect4Game extends React.Component {
                 'error': null,
                 'message': null,
                 'mode': 'chooseSlot',
+                'loading': false,
+            }, () => {
+                if (humanMove && !this.state.twoPlayer) {
+                    this.aiMove();
+                }
             });
         }
     }
@@ -47,11 +53,22 @@ export class Connect4Game extends React.Component {
         const requestOptions = post_req({ 'move': file });
         fetch('/connect4/makeMove', requestOptions).then(res => res.json())
             .then(data => {
-                this.processBoard(data);
+                this.processBoard(data, true);
             })
             .catch(() => {
                 this.setState({'error': "Server error: could not play move."})
             });
+    }
+
+    aiMove() {
+        this.setState({
+            'loading': true,
+        }, () => {
+            fetch('/connect4/makeMoveAi').then(res => res.json())
+                .then(data => {
+                    this.processBoard(data, false)
+                });
+        })
     }
 
     newGame() {
@@ -65,6 +82,7 @@ export class Connect4Game extends React.Component {
                     'error': null,
                     'message': null,
                     'mode': 'chooseSlot',
+                    'loading': false,
                 });
             })
             .catch(() => {

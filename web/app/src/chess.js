@@ -152,7 +152,6 @@ export class ChessGame extends React.Component {
     }
 
     loadGame() {
-        // let payload = { 'state': '1rb2k2/pp1p1p1p/n7/2p5/P1Pp4/1P6/8/RN1KQ2q w - - 1 28' }
         const requestOptions = post_req({});
         fetch('/chess/loadGame', requestOptions).then(res => res.json())
             .then(data => {

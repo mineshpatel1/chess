@@ -50,9 +50,13 @@ def _json_board(board: Connect4, params: Optional[Dict] = None):
 
 @app.route('/connect4/newGame', methods=['POST'])
 def c4_new_game():
-    # data = request.get_json()
+    data = request.get_json()
     c4 = Connect4()
     cache['game'] = c4
+
+    if not data['player']:
+        return c4_make_move_ai()  # Make first move
+
     return _json_board(c4)
 
 
