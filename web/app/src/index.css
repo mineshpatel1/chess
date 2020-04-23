@@ -28,13 +28,51 @@ body {
 .row {
     height: 12.5%;
     width: 100%;
-    background-color: red;
+}
+
+.c4.row {
+    height: 14.25%;
 }
 
 .square {
     height: 100%;
     width: 12.5%;
     float: left;
+}
+
+.c4.square {
+    width: 14.285%;
+}
+
+.c4.selector.row {
+    background-color: #323031;
+}
+
+.selector .circle {
+    background-color: #6f6c6d;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.selector .circle:hover {
+    background-color: #9ba5ad;
+}
+
+.circle {
+    height: 75%;
+    width: 75%;
+    margin-top: 12.5%;
+    margin-left: 12.5%;
+    border-radius: 50%;
+    background-color: #323031;
+}
+
+.circle.red {
+    background-color: #e43a3a;
+}
+
+.circle.yellow {
+    background-color: #ecdd29;
 }
 
 .square.black {
@@ -72,6 +110,7 @@ body {
     text-align: left;
     white-space: nowrap;
     padding-top: 17%;
+    transition: 0.3s;
 }
 
 .piece.black svg {
@@ -82,10 +121,19 @@ body {
     color: #e4eaf2;
 }
 
+.clickable .piece.white svg:hover {
+    color: #fff;
+}
+
+.clickable .piece.black svg:hover {
+    color: #000;
+}
+
 .panel {
     margin: auto;
-    width: 40%;
+    width: 80%;
     margin-top: 25px;
+    text-align: center;
 }
 
 .message {

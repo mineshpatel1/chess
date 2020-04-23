@@ -1,5 +1,5 @@
 import random
-from typing import Iterable, Optional
+from typing import List, Iterable, Optional
 
 import log
 from game.bitboard import lsb, bit_count
@@ -182,24 +182,38 @@ class Piece:
 
 class Connect4:
     def __init__(self):
-        self.player = None
+        self.turn = None
         self.state = None
         self.occupied = None
         self.occupied_colour = None
+        self.move_history = None
+        self._history = None
 
         self.reset()
 
+    def _save(self):
+        self._history.append(GameState(self))
+
     def reset(self):
-        self.player = RED
+        self.turn = RED
         self.state = [0] * GRID_SIZE
         self.state = BB_EMPTY
         self.occupied = BB_EMPTY
+        self.move_history = []
+        self._history = []
         self.occupied_colour = {
             RED: BB_EMPTY,
             YELLOW: BB_EMPTY,
         }
 
+    def file_to_move(self, file: int):
+        """Returns the true move index for a move based on a file index."""
+        for move in self.legal_moves:
+            if move % 7 == file:
+                return move
+
     def make_move(self, move: int):
+        self._save()
         if move not in list(self.legal_moves):
             raise IllegalMove
 
@@ -208,11 +222,19 @@ class Connect4:
 
         bb_move = BB_SLOTS[move]
         self.occupied |= bb_move
-        self.occupied_colour[self.player] |= bb_move
-        self.player = not self.player
+        self.occupied_colour[self.turn] |= bb_move
+        self.turn = not self.turn
+        self.move_history.append(move)
 
-    def make_random_move(self):
-        self.make_move(random.choice(list(self.legal_moves)))
+    def unmake_move(self):
+        self.move_history = self.move_history[:-1]
+        state = self._history.pop()
+        state.load(self)
+
+    def make_random_move(self) -> int:
+        random_move = random.choice(list(self.legal_moves))
+        self.make_move(random_move)
+        return random_move
 
     def piece_at(self, idx: int) -> Optional[Piece]:
         bb_slot = BB_SLOTS[idx]
@@ -260,11 +282,17 @@ class Connect4:
             return 0
         return None
 
-    def player_has_won(self, colour):
-        for win in BB_WINS:
-            if bit_count(win & self.occupied_colour[colour]) == 4:  # Connect 4!
-                return True
-        return False
+    @property
+    def turn_name(self) -> str:
+        return 'red' if self.turn else 'yellow'
+
+    @property
+    def mhn(self) -> str:
+        """Stands for Move History Notation."""
+        out = ''
+        for move in self.move_history:
+            out += str((move % 7))
+        return out
 
     def __str__(self):
         board_str = ''
@@ -282,3 +310,18 @@ class Connect4:
                 board_str += '[ ]'
         board_str += '\n   A  B  C  D  E  F  G '
         return board_str
+
+
+class GameState:
+    def __init__(self, game: Connect4):
+        self.occupied_red = game.occupied_colour[RED]
+        self.occupied_yellow = game.occupied_colour[YELLOW]
+        self.turn = game.turn
+        # self.move_history = game.move_history.copy()
+
+    def load(self, game: Connect4):
+        game.occupied_colour[RED] = self.occupied_red
+        game.occupied_colour[YELLOW] = self.occupied_yellow
+        game.occupied = self.occupied_red | self.occupied_yellow
+        game.turn = self.turn
+        # game.move_history = self.move_history

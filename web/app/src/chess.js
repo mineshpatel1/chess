@@ -2,10 +2,9 @@ import React from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
     faChessRook, faChessKnight, faChessBishop, faChessQueen, faChessKing, faChessPawn,
-    faCircleNotch,
 } from '@fortawesome/free-solid-svg-icons';
 
-import { post_req, capitalise, Button } from './controls';
+import { post_req, capitalise, Button, Loading, Info } from './controls';
 
 export class Cell {
     constructor(rank, file, piece, pieceColour) {
@@ -157,6 +156,7 @@ export class ChessGame extends React.Component {
         const requestOptions = post_req({});
         fetch('/chess/loadGame', requestOptions).then(res => res.json())
             .then(data => {
+                console.log(data.fen);
                 this.setState({
                     'board': data.board,
                     'turn': data.turn,
@@ -196,7 +196,7 @@ export class ChessGame extends React.Component {
     }
 
     render() {
-        let {board, mode, turn, fen, message} = this.state;
+        let {board, mode, turn, message} = this.state;
         let player = this.state.player ? 'White' : 'Black';
         let rows = [];
         for (let i = 0; i < 8; i++) {
@@ -228,8 +228,8 @@ export class ChessGame extends React.Component {
         }
 
         return (
-            <div className="container">
-                <div className="state">{fen}</div>
+            <div>
+                {/* <div className="state">{fen}</div> */}
                 <div className="panel">
                     <Button label="New Game" onClick={() => { this.newGame(); }}/>
                     <Button label="Load Game" onClick={() => { this.loadGame(); }}/>
@@ -237,47 +237,33 @@ export class ChessGame extends React.Component {
                 </div>
                 <div className="reactive_square">
                     <div className="board">
-                        {
-                            rows.map((rank, i) => {
-                                return (
-                                    <div className="row" key={i}>
-                                        {
-                                            rank.map((square, j) => {
-                                                return (
-                                                    <Square 
-                                                        square={square} key={j} mode={mode} turn={turn}
-                                                        onClick={() => {
-                                                            if (mode === 'selectPiece' && square.pieceColour === turn) {
-                                                                this.selectPiece(square.index);
-                                                            } else if (mode === 'selectSquare') {
-                                                                this.selectSquare(square.index);
-                                                            }
-                                                        }} 
-                                                    />
-                                                );
-                                            })
-                                        }
-                                    </div>
-                                );
-                            })
-                        }
+                    {rows.map((rank, i) => {
+                        return (
+                            <div className="row" key={i}>
+                                {rank.map((square, j) => {
+                                    return (
+                                        <Square 
+                                            square={square} key={j} mode={mode} turn={turn}
+                                            onClick={() => {
+                                                if (mode === 'selectPiece' && square.pieceColour === turn) {
+                                                    this.selectPiece(square.index);
+                                                } else if (mode === 'selectSquare') {
+                                                    this.selectSquare(square.index);
+                                                }
+                                            }} 
+                                        />
+                                    );
+                                })}
+                            </div>
+                        );
+                    })}
                     </div>
                 </div>
-                <div className="panel">
-                    <div className="message info">
-                        {info}
-                    </div>
-                </div>
-                <div className="panel">
-                    <div className="message error">
-                        {this.state.error}
-                    </div>
-                </div>
+                <Info message={info} />
+                <Info message={this.state.error} error={true}/>
                 {
                     this.state.loading &&
-                    <div className="loading">
-                        <FontAwesomeIcon icon={faCircleNotch} size="lg" spin />
-                    </div>
+                    <Loading />
                 }
             </div>
         );

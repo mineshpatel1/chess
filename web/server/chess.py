@@ -13,7 +13,7 @@ cache = {
 }
 
 
-def log_exception(board: Board, e: Exception):
+def _log_exception(board: Board, e: Exception):
     log.error(str(e))
     log.info(f"Board state: {board.fen}")
     log.info('Move history:')
@@ -22,7 +22,7 @@ def log_exception(board: Board, e: Exception):
     raise Exception(e)
 
 
-def json_board(board: Board, params: Optional[Dict] = None):
+def _json_board(board: Board, params: Optional[Dict] = None):
     by_rank = {}
     for sq in SQUARES_VFLIP:
         rank = sq.rank
@@ -52,29 +52,29 @@ def json_board(board: Board, params: Optional[Dict] = None):
 
 
 @app.route('/chess/newGame', methods=['POST'])
-def new_game():
+def chess_new_game():
     data = request.get_json()
     board = Board()
     cache['game'] = board
 
     if not data['player']:
-        return make_move_ai()  # Make first move
-    return json_board(board)
+        return chess_make_move_ai()  # Make first move
+    return _json_board(board)
 
 
 @app.route('/chess/loadGame', methods=['POST'])
-def load_game():
+def chess_load_game():
     data = request.get_json()
     if 'state' in data:
         board = Board(fen=data['state'])
         cache['game'] = board
     else:
         board = cache['game']
-    return json_board(board)
+    return _json_board(board)
 
 
 @app.route('/chess/makeMove', methods=['POST'])
-def make_move():
+def chess_make_move():
     """Both white and black players are human."""
     data = request.get_json()
     board = cache['game']
@@ -82,20 +82,20 @@ def make_move():
     try:
         board.raise_if_game_over()
         board.make_safe_move(Move(data['start_pos'], data['end_pos']))
-        return json_board(board)
+        return _json_board(board)
     except IllegalMove as err:
         return {'error': str(err)}
     except Checkmate:
         winner = 'Black' if board.turn == WHITE else 'White'
-        return json_board(board, {'end': f"Checkmate: {winner} wins!"})
+        return _json_board(board, {'end': f"Checkmate: {winner} wins!"})
     except Draw as err:
-        return json_board(board, {'end': err.MESSAGE})
+        return _json_board(board, {'end': err.MESSAGE})
     except Exception as e:
-        log_exception(board, e)
+        _log_exception(board, e)
 
 
 @app.route('/chess/makeMoveAi')
-def make_move_ai():
+def chess_make_move_ai():
     """Randomly choose a possible move."""
     board = cache['game']
     try:
@@ -106,13 +106,13 @@ def make_move_ai():
 
         board.make_move(move)
         board.raise_if_game_over()
-        return json_board(board)
+        return _json_board(board)
     except IllegalMove as err:
         return {'error': str(err)}
     except Checkmate:
         winner = 'Black' if board.turn == WHITE else 'White'
-        return json_board(board, {'end': f"Checkmate: {winner} wins!"})
+        return _json_board(board, {'end': f"Checkmate: {winner} wins!"})
     except Draw as err:
-        return json_board(board, {'end': err.MESSAGE})
+        return _json_board(board, {'end': err.MESSAGE})
     except Exception as e:
-        log_exception(board, e)
+        _log_exception(board, e)
