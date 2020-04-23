@@ -632,10 +632,13 @@ class Board:
             pgn += f'{index_to_coord(move.from_square).lower()}{index_to_coord(move.to_square).lower()} '
         return pgn
 
-    def make_safe_move(self, move: Move):
+    def make_safe_move(self, move: Union[Move, str]):
         """
         Same as Board.make_move, but validates if the move is legal first (slower).
         """
+        if isinstance(move, str):
+            move = Move.from_uci(move)
+
         if move in self.legal_moves:
             self.make_move(move)
         else:
