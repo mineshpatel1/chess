@@ -81,7 +81,7 @@ def c4_make_move():
 def c4_make_move_ai():
     """Randomly choose a possible move."""
     c4 = cache['game']
-    move = alpha_beta(c4, 5)
+    move = alpha_beta(c4, 4)
     c4.make_move(move)
 
     end_result = c4.end_result

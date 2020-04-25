@@ -1,18 +1,12 @@
-import time
-
-import log
 from connect_4.game import Connect4, HIGH_BOUND, LOW_BOUND, IllegalMove
 
 
 def _minimax(board: Connect4, depth: int, is_maximising_player: bool, player: bool):
     if depth == 0:
-        return board.value if player else board.value * -1  # Opposing player has the current turn
+        return board.value
 
     if board.is_game_over:
-        if not player:
-            return (-1 * board.value) + depth
-        else:
-            return board.value - depth
+        return board.value - depth
 
     if is_maximising_player:
         score = LOW_BOUND
@@ -36,27 +30,24 @@ def minimax(board: Connect4, depth: int):
 
     for move in board.legal_moves:
         board.make_move(move)
-        value = _minimax(board, depth - 1, False, player)
+        value = _minimax(board, depth - 1, True, player)
         board.unmake_move()
+
+        if not player:
+            value *= -1
 
         if value >= score:
             score = value
             best_move = move
-
-        log.warning((value, move % 7))
-
     return best_move
 
 
 def _alpha_beta(board: Connect4, depth: int, alpha: int, beta: int, is_maximising_player: bool, player: bool):
     if depth == 0:
-        return board.value if player else board.value * -1  # Opposing player has the current turn
+        return board.value  # Opposing player has the current turn
 
     if board.is_game_over:
-        if not player:
-            return (-1 * board.value) + depth
-        else:
-            return board.value - depth
+        return board.value - depth
 
     if is_maximising_player:
         score = LOW_BOUND
@@ -86,15 +77,15 @@ def alpha_beta(board: Connect4, depth: int):
 
     for move in board.legal_moves:
         board.make_move(move)
-        value = _alpha_beta(board, depth - 1, LOW_BOUND * 2, HIGH_BOUND * 2, False, player)
+        value = _alpha_beta(board, depth - 1, LOW_BOUND * 2, HIGH_BOUND * 2, True, player)
         board.unmake_move()
+
+        if not player:
+            value *= -1
 
         if value >= score:
             score = value
             best_move = move
-
-        log.warning((value, move % 7))
-
     return best_move
 
 
