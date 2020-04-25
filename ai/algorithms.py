@@ -135,7 +135,7 @@ def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, player: boo
         best = min([score, best])
         beta = min([beta, best])
         if beta <= alpha:
-            return score, counter
+            return best, counter
         i += 1
 
     if i == 0:  # Game is over

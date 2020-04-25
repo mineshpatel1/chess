@@ -2,7 +2,7 @@ from flask import request
 from typing import Optional, Dict
 
 from connect_4.game import Connect4, IllegalMove, SLOTS_VFLIP
-from connect_4.ai import minimax
+from connect_4.ai import minimax, alpha_beta
 from web.server import app
 
 cache = {
@@ -81,8 +81,7 @@ def c4_make_move():
 def c4_make_move_ai():
     """Randomly choose a possible move."""
     c4 = cache['game']
-    # c4.make_random_move()
-    move = minimax(c4, 4)
+    move = alpha_beta(c4, 5)
     c4.make_move(move)
 
     end_result = c4.end_result
