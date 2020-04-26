@@ -44,11 +44,13 @@ BB_SQUARES = [
     BB_G, BB_H, BB_I,
 ] = [1 << sq for sq in SQUARES]
 
+
 def _bb_win(_win):
     out = BB_EMPTY
     for w in _win:
         out |= BB_SQUARES[w]
     return out
+
 
 BB_WINS = [_bb_win(w) for w in WINS]
 
@@ -70,24 +72,40 @@ def binary_str(i: int) -> str:
 
 
 class Game:
-    def __init__(self, state: List[int] = None):
+    def __init__(self, from_array: List[int] = None):
         self.state = None
         self.occupied = None
         self.turn = None
         self.occupied_player = None
+        self.move_history = None
+        self._history = None
         self.reset()
 
-        if state:
-            raise NotImplementedError
+        if from_array:
+            self.set_from_array(from_array)
+
+    def _save(self):
+        self._history.append(GameState(self))
 
     def reset(self):
         self.state = BB_EMPTY
         self.occupied = BB_EMPTY
         self.turn = CROSSES
+        self.move_history = []
+        self._history = []
         self.occupied_player = {
             CROSSES: BB_EMPTY,
             NOUGHTS: BB_EMPTY,
         }
+
+    def set_from_array(self, array: List[int]):
+        assert len(array) == 9
+        for i, sq in enumerate(array):
+            if sq == 1:
+                self.occupied_player[CROSSES] |= BB_SQUARES[i]
+            elif sq == -1:
+                self.occupied_player[NOUGHTS] |= BB_SQUARES[i]
+        self.occupied = self.occupied_player[CROSSES] | self.occupied_player[NOUGHTS]
 
     def mark_at(self, square: int):
         bb_slot = BB_SQUARES[square]
@@ -99,6 +117,7 @@ class Game:
             return -1
 
     def make_move(self, move: int):
+        self._save()
         if move not in list(self.legal_moves):
             raise IllegalMove
 
@@ -106,6 +125,12 @@ class Game:
         self.occupied_player[self.turn] |= bb_sq
         self.occupied |= bb_sq
         self.turn = not self.turn
+        self.move_history.append(move)
+
+    def unmake_move(self):
+        self.move_history = self.move_history[:-1]
+        state = self._history.pop()
+        state.load(self)
 
     def make_random_move(self) -> int:
         random_move = random.choice(list(self.legal_moves))
@@ -133,6 +158,17 @@ class Game:
         for move in bitboard_to_squares(BB_ALL & ~self.occupied):
             yield move
 
+    @property
+    def array(self) -> List[int]:
+        out = []
+        for sq in SQUARES:
+            mark = self.mark_at(sq)
+            if mark is None:
+                out.append(0)
+            else:
+                out.append(mark)
+        return out
+
     def __str__(self) -> str:
         board_str = '\n|'
         rank = 0
@@ -149,3 +185,16 @@ class Game:
                 board_str += '   '
             board_str += '|'
         return board_str
+
+
+class GameState:
+    def __init__(self, game: Game):
+        self.occupied_crosses = game.occupied_player[CROSSES]
+        self.occupied_noughts = game.occupied_player[NOUGHTS]
+        self.turn = game.turn
+
+    def load(self, game: Game):
+        game.occupied_player[CROSSES] = self.occupied_crosses
+        game.occupied_player[NOUGHTS] = self.occupied_noughts
+        game.occupied = self.occupied_crosses | self.occupied_noughts
+        game.turn = self.turn
