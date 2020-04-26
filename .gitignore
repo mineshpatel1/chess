@@ -1,3 +1,4 @@
 *.pyc
 web/chess-game/node_modules
 third-party-engines/*
+mnist/models/*
