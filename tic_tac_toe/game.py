@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import random
-from typing import List, Iterable
+from typing import List, Iterable, Tuple
 
 import log
-from game.bitboard import lsb, bit_count
+from game.bitboard import bit_count
 from game.exceptions import IllegalMove
 
 CROSSES = True
@@ -137,6 +139,11 @@ class Game:
         self.make_move(random_move)
         return random_move
 
+    def copy(self) -> Game:
+        _game = Game(from_array=self.array)
+        _game.turn = self.turn
+        return _game
+
     @property
     def is_game_over(self):
         return self.end_result is not None
@@ -146,7 +153,7 @@ class Game:
         for win in BB_WINS:
             for player in [CROSSES, NOUGHTS]:
                 if bit_count(win & self.occupied_player[player]) == 3:
-                    return 1 if player == CROSSES else -1
+                    return player
 
         if bit_count(self.occupied) == 9:
             return 0
@@ -155,8 +162,9 @@ class Game:
 
     @property
     def legal_moves(self) -> Iterable[Square]:
-        for move in bitboard_to_squares(BB_ALL & ~self.occupied):
-            yield move
+        if not self.is_game_over:
+            for move in bitboard_to_squares(BB_ALL & ~self.occupied):
+                yield move
 
     @property
     def array(self) -> List[int]:
@@ -168,6 +176,10 @@ class Game:
             else:
                 out.append(mark)
         return out
+
+    @property
+    def id(self) -> int:
+        return hash((self.occupied_player[CROSSES], self.occupied_player[NOUGHTS]))
 
     def __str__(self) -> str:
         board_str = '\n|'
