@@ -6,7 +6,7 @@ import numpy as np
 from keras.models import Sequential, load_model
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers import Convolution2D, MaxPooling2D
-from keras.utils import np_utils
+from keras.utils import np_utils, plot_model
 from keras.datasets import mnist
 
 import log

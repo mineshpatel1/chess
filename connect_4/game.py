@@ -1,4 +1,5 @@
 import random
+import numpy as np
 from typing import List, Iterable, Optional
 
 import log
@@ -327,6 +328,31 @@ class Connect4:
             if not bool(win & self.occupied_colour[RED]):
                 yellow_possible += 1
         return red_possible - yellow_possible
+
+    @property
+    def model_input(self) -> np.ndarray:
+        """
+        Returns board representation as a NumPy array that can be recognised as input for model training.
+        Is relative to the player who has to play next as opposed to red and yellow objectively.
+        """
+        x = []
+        our_pieces = list(bitboard_to_slots(self.occupied_colour[self.turn]))
+        for i in range(42):
+            if i in our_pieces:
+                x.append(1)
+            else:
+                x.append(0)
+
+        y = []
+        enemy_pieces = list(bitboard_to_slots(self.occupied_colour[not self.turn]))
+        for i in range(42):
+            if i in enemy_pieces:
+                y.append(-1)
+            else:
+                y.append(0)
+
+        position = np.append(x, y)
+        return np.reshape(position, (2, 6, 7))
 
     def __str__(self):
         board_str = ''
