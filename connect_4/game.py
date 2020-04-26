@@ -111,7 +111,6 @@ SLOTS_VFLIP = [mirror_square(slot) for slot in SLOTS]
 Bitboard = int
 
 BB_EMPTY = 0
-
 BB_SLOTS = [
     BB_A1, BB_B1, BB_C1, BB_D1, BB_E1, BB_F1, BB_G1,
     BB_A2, BB_B2, BB_C2, BB_D2, BB_E2, BB_F2, BB_G2,
