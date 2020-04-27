@@ -25,7 +25,7 @@ WINS = (
     [2, 5, 8],
 
     [0, 4, 8],
-    [1, 4, 7],
+    [2, 4, 6],
 )
 
 Square = int
@@ -153,7 +153,7 @@ class Game:
         for win in BB_WINS:
             for player in [CROSSES, NOUGHTS]:
                 if bit_count(win & self.occupied_player[player]) == 3:
-                    return player
+                    return 1 if player else -1
 
         if bit_count(self.occupied) == 9:
             return 0

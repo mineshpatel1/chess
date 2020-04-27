@@ -1,16 +1,15 @@
 import random
 import numpy as np
-from typing import List
 
 import log
 from tic_tac_toe.game import Game
 
-WIN_SCORE = 10
-NUM_ITERATIONS = 20000
+NUM_ITERATIONS = 1000
 DEPTH = 15
-EXPLORATION_CONSTANT = 0.5
+EXPLORATION_CONSTANT = np.sqrt(2)
 LOW_BOUND = -9999999.0
 HIGH_BOUND = 9999999.0
+
 
 class Node:
     def __init__(self, state: Game, parent: int = None):
@@ -18,6 +17,7 @@ class Node:
         self.children = []
         self.parent = parent
         self.visit_count = 0
+        self.depth = 0
         self.win_score = 0
 
     @property
@@ -32,7 +32,7 @@ class MCTS:
     ):
         self.iterations = iterations
         self.depth = depth
-        self.exploration_constant = exploration_constant,
+        self.exploration_constant = exploration_constant
         self.total_n = 0
         self.player = board.turn  # Player we want a move for
 
@@ -54,15 +54,16 @@ class MCTS:
                 leaf_node_found = True
             else:
                 max_uct_value = LOW_BOUND
-                for child_id in self.tree[node_id].children:
+                for i, child_id in enumerate(self.tree[node_id].children):
                     w = self.tree[child_id].win_score
                     n = self.tree[child_id].visit_count
                     N = self.total_n
+                    c = self.exploration_constant
 
                     if n == 0:
                         uct_value = HIGH_BOUND
                     else:
-                        uct_value = (w / n) * np.sqrt(np.log(N) / n)  # Upper Confidence Bound applied to trees
+                        uct_value = (w / n) * (c * np.sqrt(np.log(N) / n))  # Upper Confidence Bound applied to trees
 
                     if uct_value > max_uct_value:
                         max_uct_value = uct_value
@@ -72,7 +73,7 @@ class MCTS:
 
     def expansion(self, leaf_node_id):
         state = self.tree[leaf_node_id].state
-        child_node_id = leaf_node_id  # Default value if the game is ovre
+        child_node_id = leaf_node_id  # Default value if the game is over
 
         if not state.is_game_over:
             # Make each possible move
@@ -99,9 +100,11 @@ class MCTS:
         return _state.end_result
 
     def backpropagation(self, child_node_id, winner):
+        _player = 1 if self.player else -1
+
         if winner == 0:
             reward = 0
-        elif winner == self.player:
+        elif winner == _player:
             reward = 1
         else:
             reward = -1
@@ -133,7 +136,9 @@ class MCTS:
         best_move = None
         for child_node_id in self.tree[self.root_node_id].children:
             score = self.tree[child_node_id].win_score / self.tree[child_node_id].visit_count
+            move = self.tree[child_node_id].state.move_history[-1]
+
             if score > best_score:
                 best_score = score
-                best_move = self.tree[child_node_id].state.move_history[-1]
+                best_move = move
         return best_move
