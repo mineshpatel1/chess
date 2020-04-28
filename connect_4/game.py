@@ -255,6 +255,11 @@ class Connect4:
         elif self.occupied_colour[YELLOW] & bb_slot:
             return Piece(YELLOW)
 
+    def copy(self):
+        _game = Connect4(mhn=self.mhn)
+        _game.turn = self.turn
+        return _game
+
     @property
     def legal_moves(self):
         free_files = []
@@ -352,6 +357,10 @@ class Connect4:
 
         position = np.append(x, y)
         return np.reshape(position, (2, 6, 7))
+
+    @property
+    def id(self) -> int:
+        return hash((self.occupied_colour[RED], self.occupied_colour[YELLOW]))
 
     def __str__(self):
         board_str = ''

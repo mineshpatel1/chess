@@ -2,9 +2,11 @@ import random
 import numpy as np
 
 import log
-from tic_tac_toe.game import Game
+from connect_4.game import Connect4
+from connect_4.learning.model import NeuralNet
 
-NUM_ITERATIONS = 1000
+
+NUM_ITERATIONS = 50
 DEPTH = 15
 EXPLORATION_CONSTANT = np.sqrt(2)
 LOW_BOUND = -9999999.0
@@ -12,13 +14,14 @@ HIGH_BOUND = 9999999.0
 
 
 class Node:
-    def __init__(self, state: Game, parent: int = None):
+    def __init__(self, state: Connect4, parent: int = None, move: int = None):
         self.state = state
         self.children = []
         self.parent = parent
         self.visit_count = 0
         self.depth = 0
         self.win_score = 0
+        self.move = move
 
     @property
     def id(self):
@@ -27,12 +30,13 @@ class Node:
 
 class MCTS:
     def __init__(
-        self, board: Game, iterations: int = NUM_ITERATIONS, depth: int = DEPTH,
-        exploration_constant: float = EXPLORATION_CONSTANT,
+        self, board: Connect4, iterations: int = NUM_ITERATIONS, depth: int = DEPTH,
+        exploration_constant: float = EXPLORATION_CONSTANT, net: NeuralNet = None,
     ):
         self.iterations = iterations
         self.depth = depth
         self.exploration_constant = exploration_constant
+        self.neural_net = net
         self.total_n = 0
         self.player = board.turn  # Player we want a move for
 
@@ -63,12 +67,11 @@ class MCTS:
                     if n == 0:
                         uct_value = HIGH_BOUND
                     else:
-                        uct_value = (w / n) + (c * np.sqrt(np.log(N) / n))  # Upper Confidence Bound applied to trees
+                        uct_value = (w / n) + (c * (np.sqrt(N) / (1 + n)))  # Upper Confidence Bound applied to trees
 
                     if uct_value > max_uct_value:
                         max_uct_value = uct_value
                         leaf_node_id = child_id
-
         return leaf_node_id
 
     def expansion(self, leaf_node_id):
@@ -83,7 +86,7 @@ class MCTS:
                 _state.make_move(move)
 
                 children.append(_state.id)
-                self.tree[_state.id] = Node(_state, parent=leaf_node_id)
+                self.tree[_state.id] = Node(_state, parent=leaf_node_id, move=move)
                 self.tree[leaf_node_id].children.append(_state.id)
 
             # Choose random child node
@@ -125,6 +128,7 @@ class MCTS:
         # Run Monte Carlo Tree Search and build tree
         for i in range(self.iterations):
             leaf_node_id = self.selection()
+
             child_node_id = self.expansion(leaf_node_id)
             result = self.simulation(child_node_id)
             self.backpropagation(child_node_id, result)
@@ -139,3 +143,7 @@ class MCTS:
                 best_score = score
                 best_move = move
         return best_move
+
+    @property
+    def root(self):
+        return self.tree[self.root_node_id]

@@ -1,10 +1,15 @@
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
+
+import numpy as np
 import tensorflow as tf
-from keras.models import Sequential, load_model, Model
+from keras.models import load_model, Model
 from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, Activation, LeakyReLU, add
 from keras.optimizers import SGD
 from keras import regularizers
 
 import log
+from connect_4.game import Connect4
 
 REGULARISATION_CONSTANT = 0.0001
 GRID_SHAPE = (6, 7)
@@ -25,7 +30,7 @@ def softmax_cross_entropy_with_logits(y_true, y_pred):
     negatives = tf.fill(tf.shape(p_i), -100.0)
     p = tf.where(where, negatives, p)
 
-    loss = tf.nn.softmax_cross_entropy_with_logits(labels=p_i, logits=p)
+    loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=p_i, logits=p)
     return loss
 
 
@@ -144,7 +149,7 @@ def build_model():
         x = residual_layer(x, layer['filters'], layer['kernel_size'])
 
     vh = value_head(x)
-    ph = value_head(x)
+    ph = policy_head(x)
 
     model = Model(inputs=[main_input], outputs=[vh, ph])
     model.compile(
@@ -152,12 +157,12 @@ def build_model():
         optimizer=SGD(lr=LEARNING_RATE, momentum=MOMENTUM),
         loss_weights={'value_head': 0.5, 'policy_head': 0.5},
     )
+    return model
 
 
-def main():
-    pass
+class NeuralNet:
+    def __init__(self):
+        self.model = build_model()
 
-
-if __name__ == '__main__':
-    main()
-
+    def predict(self, board: Connect4):
+        return self.model.predict(np.array([board.model_input]))
