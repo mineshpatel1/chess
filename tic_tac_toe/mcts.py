@@ -4,7 +4,7 @@ import numpy as np
 import log
 from tic_tac_toe.game import Game
 
-NUM_ITERATIONS = 1000
+NUM_ITERATIONS = 100
 DEPTH = 15
 EXPLORATION_CONSTANT = np.sqrt(2)
 LOW_BOUND = -9999999.0

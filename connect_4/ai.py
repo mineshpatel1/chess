@@ -29,7 +29,7 @@ def _minimax(board: Connect4, depth: int, is_maximising_player: bool):
 
 
 def minimax(board: Connect4, depth: int):
-    score = LOW_BOUND
+    score = LOW_BOUND * 2
     best_move = None
     player = board.turn  # Current player is the AI player
 
@@ -80,7 +80,7 @@ def _alpha_beta(board: Connect4, depth: int, alpha: int, beta: int, is_maximisin
 
 
 def alpha_beta(board: Connect4, depth: int):
-    score = LOW_BOUND
+    score = LOW_BOUND * 2
     best_move = None
     player = board.turn  # Current player is the AI player
 

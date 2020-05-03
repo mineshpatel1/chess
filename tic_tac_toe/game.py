@@ -178,6 +178,30 @@ class Game:
         return out
 
     @property
+    def value(self) -> int:
+        """Evaluation based on number of possible victories left remaining."""
+        result = self.end_result
+        if result is not None:
+            if result == 0:
+                return 0
+            elif result == 1:
+                return HIGH_BOUND
+            elif result == -1:
+                return LOW_BOUND
+            else:
+                raise Exception
+
+        noughts_possible = 0
+        crosses_possible = 0
+        for win in BB_WINS:
+            if not bool(win & self.occupied_player[NOUGHTS]):
+                noughts_possible += 1
+
+            if not bool(win & self.occupied_player[CROSSES]):
+                crosses_possible += 1
+        return noughts_possible - crosses_possible
+
+    @property
     def id(self) -> int:
         return hash((self.occupied_player[CROSSES], self.occupied_player[NOUGHTS]))
 
