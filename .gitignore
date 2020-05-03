@@ -3,3 +3,4 @@ web/chess-game/node_modules
 third-party-engines/*
 mnist/models/*
 connect_4/learning/datasets/*
+connect_4/learning/models/*

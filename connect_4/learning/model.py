@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
 
+import os
 import numpy as np
 import tensorflow as tf
 from keras.models import load_model, Model
-from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, Activation, LeakyReLU, add
+from keras.layers import Input, Dense, Conv2D, Flatten, BatchNormalization, LeakyReLU, add
 from keras.optimizers import SGD
 from keras import regularizers
 
@@ -17,6 +20,8 @@ INPUT_SHAPE = (2, 6, 7)
 NUM_ACTIONS = 42
 LEARNING_RATE = 0.1
 MOMENTUM = 0.9
+BATCH_SIZE = 32
+EPOCHS = 1
 HIDDEN_CNN_LAYERS = [{'filters': 75, 'kernel_size': (4, 4)}] * 6
 
 
@@ -166,3 +171,47 @@ class NeuralNet:
 
     def predict(self, board: Connect4):
         return self.model.predict(np.array([board.model_input]))
+
+    def predict_move(self, state: Connect4):
+        """Predicts a move the agent can make based solely off its neural network."""
+        nn_prediction = self.predict(state)
+        allowed = np.array(list(state.legal_moves))
+
+        logits = nn_prediction[1][0]
+        if not state.turn:
+            logits *= -1
+        mask = np.ones(logits.shape, dtype=bool)  # Filter out illegal moves
+        mask[allowed] = False
+        logits[mask] = -100
+
+        # Softmax to get best move
+        odds = np.exp(logits)
+        probs = odds / np.sum(odds)
+        return np.argmax(probs)
+
+    def train(self, states, policies, values):
+        training_states = np.array(states)
+        training_targets = {
+            'policy_head': np.array(policies),
+            'value_head': np.array(values),
+        }
+
+        self.model.fit(
+            training_states, training_targets, epochs=EPOCHS, verbose=1, validation_split=0,
+            batch_size=BATCH_SIZE,
+        )
+
+    def copy(self, other_model: NeuralNet):
+        self.model.set_weights(other_model.model.get_weights())
+
+    def save(self, filepath: str):
+        self.model.save(filepath)
+
+    def load(self, filepath: str):
+        if os.path.exists(filepath):
+            self.model = load_model(
+                filepath,
+                custom_objects={
+                    'softmax_cross_entropy_with_logits': softmax_cross_entropy_with_logits
+                },
+            )

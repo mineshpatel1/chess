@@ -6,8 +6,7 @@ from connect_4.game import Connect4
 from connect_4.learning.model import NeuralNet
 
 
-NUM_ITERATIONS = 50
-DEPTH = 15
+NUM_ITERATIONS = 100
 EXPLORATION_CONSTANT = np.sqrt(2)
 LOW_BOUND = -9999999.0
 HIGH_BOUND = 9999999.0
@@ -30,13 +29,14 @@ class Node:
 
 class MCTS:
     def __init__(
-        self, board: Connect4, iterations: int = NUM_ITERATIONS, depth: int = DEPTH,
-        exploration_constant: float = EXPLORATION_CONSTANT, net: NeuralNet = None,
+        self, board: Connect4,
+        iterations: int = NUM_ITERATIONS,
+        exploration_constant: float = EXPLORATION_CONSTANT,
+        neural_net: NeuralNet = None,
     ):
         self.iterations = iterations
-        self.depth = depth
         self.exploration_constant = exploration_constant
-        self.neural_net = net
+        self.neural_net = neural_net
         self.total_n = 0
         self.player = board.turn  # Player we want a move for
 
@@ -98,7 +98,10 @@ class MCTS:
         _state = self.tree[child_node_id].state.copy()
 
         while not _state.is_game_over:
-            _state.make_random_move()  # Choose random move for simulation
+            if self.neural_net:
+                _state.make_move(self.neural_net.predict_move(_state))
+            else:
+                _state.make_random_move()  # Choose random move for simulation
 
         return _state.end_result
 
@@ -138,6 +141,9 @@ class MCTS:
         for child_node_id in self.tree[self.root_node_id].children:
             score = self.tree[child_node_id].win_score / self.tree[child_node_id].visit_count
             move = self.tree[child_node_id].state.move_history[-1]
+
+            if not self.player:
+                score = -score
 
             if score > best_score:
                 best_score = score
