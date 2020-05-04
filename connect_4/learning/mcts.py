@@ -18,7 +18,6 @@ class Node:
         self.children = []
         self.parent = parent
         self.visit_count = 0
-        self.depth = 0
         self.win_score = 0
         self.move = move
 
@@ -131,7 +130,6 @@ class MCTS:
         # Run Monte Carlo Tree Search and build tree
         for i in range(self.iterations):
             leaf_node_id = self.selection()
-
             child_node_id = self.expansion(leaf_node_id)
             result = self.simulation(child_node_id)
             self.backpropagation(child_node_id, result)

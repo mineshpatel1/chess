@@ -4,3 +4,5 @@ third-party-engines/*
 mnist/models/*
 connect_4/learning/datasets/*
 connect_4/learning/models/*
+tic_tac_toe/learning/datasets/*
+tic_tac_toe/learning/models/*

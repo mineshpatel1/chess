@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import random
-from typing import List, Iterable, Tuple
+import numpy as np
+from typing import List, Iterable
 
 import log
 from game.bitboard import bit_count
@@ -74,7 +75,7 @@ def binary_str(i: int) -> str:
 
 
 class Game:
-    def __init__(self, from_array: List[int] = None):
+    def __init__(self, from_array: List[int] = None, mhn: str = None):
         self.state = None
         self.occupied = None
         self.turn = None
@@ -85,6 +86,9 @@ class Game:
 
         if from_array:
             self.set_from_array(from_array)
+
+        if mhn:
+            self.set_from_mhn(mhn)
 
     def _save(self):
         self._history.append(GameState(self))
@@ -108,6 +112,10 @@ class Game:
             elif sq == -1:
                 self.occupied_player[NOUGHTS] |= BB_SQUARES[i]
         self.occupied = self.occupied_player[CROSSES] | self.occupied_player[NOUGHTS]
+
+    def set_from_mhn(self, mhn: str):
+        for move in mhn:
+            self.make_move(int(move))
 
     def mark_at(self, square: int):
         bb_slot = BB_SQUARES[square]
@@ -205,6 +213,13 @@ class Game:
     def id(self) -> int:
         return hash((self.occupied_player[CROSSES], self.occupied_player[NOUGHTS]))
 
+    @property
+    def mhn(self) -> str:
+        out = ''
+        for move in self.move_history:
+            out += str(move)
+        return out
+
     def __str__(self) -> str:
         board_str = '\n|'
         rank = 0
@@ -221,6 +236,31 @@ class Game:
                 board_str += '   '
             board_str += '|'
         return board_str
+
+    @property
+    def model_input(self) -> np.ndarray:
+        """
+        Returns board representation as a NumPy array that can be recognised as input for model training.
+        Is relative to the player who has to play next as opposed to noughts and crosses objectively.
+        """
+        x = []
+        our_pieces = list(bitboard_to_squares(self.occupied_player[self.turn]))
+        for i in range(9):
+            if i in our_pieces:
+                x.append(1)
+            else:
+                x.append(0)
+
+        y = []
+        enemy_pieces = list(bitboard_to_squares(self.occupied_player[not self.turn]))
+        for i in range(9):
+            if i in enemy_pieces:
+                y.append(-1)
+            else:
+                y.append(0)
+
+        position = np.append(x, y)
+        return np.reshape(position, (2, 3, 3))
 
 
 class GameState:

@@ -3,6 +3,7 @@ import numpy as np
 
 import log
 from tic_tac_toe.game import Game
+from tic_tac_toe.learning.model import NeuralNet
 
 NUM_ITERATIONS = 100
 DEPTH = 15
@@ -12,13 +13,13 @@ HIGH_BOUND = 9999999.0
 
 
 class Node:
-    def __init__(self, state: Game, parent: int = None):
+    def __init__(self, state: Game, parent: int = None, move: int = None):
         self.state = state
         self.children = []
         self.parent = parent
         self.visit_count = 0
-        self.depth = 0
         self.win_score = 0
+        self.move = move
 
     @property
     def id(self):
@@ -27,12 +28,15 @@ class Node:
 
 class MCTS:
     def __init__(
-        self, board: Game, iterations: int = NUM_ITERATIONS, depth: int = DEPTH,
+        self,
+        board: Game,
+        iterations: int = NUM_ITERATIONS,
         exploration_constant: float = EXPLORATION_CONSTANT,
+        neural_net: NeuralNet = None,
     ):
         self.iterations = iterations
-        self.depth = depth
         self.exploration_constant = exploration_constant
+        self.neural_net = neural_net
         self.total_n = 0
         self.player = board.turn  # Player we want a move for
 
@@ -68,7 +72,6 @@ class MCTS:
                     if uct_value > max_uct_value:
                         max_uct_value = uct_value
                         leaf_node_id = child_id
-
         return leaf_node_id
 
     def expansion(self, leaf_node_id):
@@ -83,7 +86,7 @@ class MCTS:
                 _state.make_move(move)
 
                 children.append(_state.id)
-                self.tree[_state.id] = Node(_state, parent=leaf_node_id)
+                self.tree[_state.id] = Node(_state, parent=leaf_node_id, move=move)
                 self.tree[leaf_node_id].children.append(_state.id)
 
             # Choose random child node
@@ -95,7 +98,10 @@ class MCTS:
         _state = self.tree[child_node_id].state.copy()
 
         while not _state.is_game_over:
-            _state.make_random_move()  # Choose random move for simulation
+            if self.neural_net:
+                _state.make_move(self.neural_net.predict_move(_state))
+            else:
+                _state.make_random_move()  # Choose random move for simulation
 
         return _state.end_result
 
@@ -135,7 +141,14 @@ class MCTS:
             score = self.tree[child_node_id].win_score / self.tree[child_node_id].visit_count
             move = self.tree[child_node_id].state.move_history[-1]
 
+            if not self.player:
+                score = -score
+
             if score > best_score:
                 best_score = score
                 best_move = move
         return best_move
+
+    @property
+    def root(self):
+        return self.tree[self.root_node_id]
