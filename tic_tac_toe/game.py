@@ -255,7 +255,7 @@ class Game:
         enemy_pieces = list(bitboard_to_squares(self.occupied_player[not self.turn]))
         for i in range(9):
             if i in enemy_pieces:
-                y.append(-1)
+                y.append(1)
             else:
                 y.append(0)
 

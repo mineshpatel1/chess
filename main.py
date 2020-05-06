@@ -1,4 +1,5 @@
 import numpy as np
+import multiprocessing
 
 import log
 from tic_tac_toe.game import Game
@@ -8,21 +9,7 @@ from tic_tac_toe.minimax import alpha_beta
 
 def main():
     current = Agent('current')
-    # current.self_play()
-
-    # g = Game()
-    # while not g.is_game_over:
-    #     if g.turn:
-    #         log.info(g)
-    #         move = input("Play [1-9]: ")
-    #         g.make_move(int(move) - 1)
-    #     else:
-    #         move = current.predict(g)
-    #         # move = alpha_beta(g, 4)
-    #         g.make_move(move)
-    #         # g.make_random_move()
-    # log.info(g)
-
+    # current.self_play(2000)
 
     losses = 0
     draws = 0
@@ -31,7 +18,7 @@ def main():
     for i in range(num_games):
         g = Game()
         while not g.is_game_over:
-            if not g.turn:
+            if g.turn:
                 # move = alpha_beta(g, 4)
                 # move = current.predict(g)
                 # g.make_move(move)

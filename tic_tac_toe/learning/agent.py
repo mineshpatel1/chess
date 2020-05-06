@@ -1,6 +1,7 @@
 import os
 import pickle
 import numpy as np
+import multiprocessing
 from typing import Tuple
 
 import log
@@ -9,16 +10,38 @@ from tic_tac_toe.learning.mcts import MCTS, NUM_ITERATIONS
 from tic_tac_toe.learning.model import NUM_ACTIONS
 from tic_tac_toe.learning.model import NeuralNet
 
-SELF_PLAY_ITERATIONS = 1000
-TRAINING_ITERATIONS = 10
+SELF_PLAY_ITERATIONS = 100
+TRAINING_ITERATIONS = 5
 MODEL_DIR = os.path.join(os.path.dirname(__file__), 'models')
 DATASET_DIR = os.path.join(os.path.dirname(__file__), 'datasets')
 
 
+def _self_play(iteration: int):
+    """Play a game against itself, saving board states and policy values."""
+
+    log.info(f'Playing game...')
+    g = Game()
+    sub_dataset = []
+    while not g.is_game_over:
+        mcts = MCTS(g, iterations=NUM_ITERATIONS, neural_net=None)
+        move = mcts.get_best_move()
+        p_i, values = get_policy(mcts)
+        sub_dataset.append([g.copy(), p_i])
+        g.make_move(move)
+
+    end_player = g.turn
+    for datum in sub_dataset:
+        if end_player == datum[0].turn:
+            datum.append(1)
+        else:
+            datum.append(-1)
+    return sub_dataset
+
+
 class Agent:
-    def __init__(self, name: str, model: NeuralNet = None):
+    def __init__(self, name: str):
         self.name = name
-        self.model = model or NeuralNet()
+        self.model = NeuralNet()
         self.self_play_iterations: int = SELF_PLAY_ITERATIONS
         self.training_iterations: int = TRAINING_ITERATIONS
         self.model.load(self.model_file)
@@ -27,31 +50,43 @@ class Agent:
     def model_file(self):
         return os.path.join(MODEL_DIR, self.name + '.h5')
 
-    def self_play(self):
+    def self_play(self, iterations: int = None):
+        iterations = iterations or self.self_play_iterations
+
+        pool = multiprocessing.Pool(4)
+        jobs = []
+        for i in range(iterations):
+            jobs.append((i,))
+
+        result = pool.starmap(_self_play, jobs)
+
         dataset = []
-
-        # Play a game against itself, saving board states and policy values
-        for i in range(self.self_play_iterations):
-            log.info(f'Playing game {i + 1} / {self.self_play_iterations}...')
-
-            g = Game()
-            sub_dataset = []
-            while not g.is_game_over:
-                mcts = MCTS(g, iterations=NUM_ITERATIONS, neural_net=self.model)
-                move = mcts.get_best_move()
-                p_i, values = get_policy(mcts)
-                sub_dataset.append([g.copy(), p_i])
-
-                g.make_move(move)
-
-            end_player = g.turn
-            for datum in sub_dataset:
-                if end_player == datum[0].turn:
-                    datum.append(1)
-                else:
-                    datum.append(-1)
-
+        for sub_dataset in result:
             dataset.extend(sub_dataset)
+
+        # for i in range(iterations):
+        #     log.info(f'Playing game {i + 1} / {iterations}...')
+        #
+        #     g = Game()
+        #     sub_dataset = []
+        #     while not g.is_game_over:
+        #         mcts = MCTS(g, iterations=NUM_ITERATIONS, neural_net=self.model)
+        #         move = mcts.get_best_move()
+        #         p_i, values = get_policy(mcts)
+        #         sub_dataset.append([g.copy(), p_i])
+        #
+        #         g.make_move(move)
+        #
+        #     end_player = g.turn
+        #     for datum in sub_dataset:
+        #         if end_player == datum[0].turn:
+        #             datum.append(1)
+        #         else:
+        #             datum.append(-1)
+        #
+        #     dataset.extend(sub_dataset)
+
+
         log.info(f"Boards generated from self play: {len(dataset)}")
         save_as_pickle('self_play', dataset)
         self.train()
@@ -59,6 +94,8 @@ class Agent:
     def train(self):
         dataset = load_pickle(os.path.join(DATASET_DIR, 'self_play'))
         for i in range(self.training_iterations):
+            log.newline()
+            log.info(f'Training cycle {i + 1}...')
             self.model.train(
                 [row[0].model_input for row in dataset],
                 [row[1] for row in dataset],

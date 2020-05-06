@@ -17,7 +17,7 @@ from tic_tac_toe.game import Game
 REGULARISATION_CONSTANT = 0.0001
 GRID_SHAPE = (3, 3)
 INPUT_SHAPE = (2, 3, 3)
-NUM_ACTIONS = 9
+NUM_ACTIONS = 18
 LEARNING_RATE = 0.1
 MOMENTUM = 0.9
 BATCH_SIZE = 32
@@ -170,16 +170,19 @@ class NeuralNet:
         self.model = build_model()
 
     def predict(self, board: Game):
-        return self.model.predict(np.array([board.model_input]))
+        x = np.array([board.model_input])
+        return self.model.predict(x)
 
-    def predict_move(self, state: Game):
-        """Predicts a move the agent can make based solely off its neural network."""
+    def probabilities(self, state: Game):
+        """Success probabilities ascribed to each legal move from the network."""
         nn_prediction = self.predict(state)
-        allowed = np.array(list(state.legal_moves))
 
+        allowed = np.array(list(state.legal_moves))
         logits = nn_prediction[1][0]
+
         if not state.turn:
-            logits *= -1
+            allowed += 9
+
         mask = np.ones(logits.shape, dtype=bool)  # Filter out illegal moves
         mask[allowed] = False
         logits[mask] = -100
@@ -187,8 +190,15 @@ class NeuralNet:
         # Softmax to get best move
         odds = np.exp(logits)
         probs = odds / np.sum(odds)
+        return probs
 
-        return np.argmax(probs)
+    def predict_move(self, state: Game):
+        """Predicts a move the agent can make based solely off its neural network."""
+        probs = self.probabilities(state)
+        move = np.argmax(probs)
+        if not state.turn:
+            move -= 9
+        return move
 
     def train(self, states, policies, values):
         training_states = np.array(states)

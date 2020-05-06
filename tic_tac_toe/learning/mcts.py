@@ -5,6 +5,8 @@ import log
 from tic_tac_toe.game import Game
 from tic_tac_toe.learning.model import NeuralNet
 
+DIRICHLET_ALPHA = 0.8
+DIRICHLET_EPSILON = 0.75
 NUM_ITERATIONS = 100
 DEPTH = 15
 EXPLORATION_CONSTANT = np.sqrt(2)
@@ -13,13 +15,20 @@ HIGH_BOUND = 9999999.0
 
 
 class Node:
-    def __init__(self, state: Game, parent: int = None, move: int = None):
+    def __init__(
+        self,
+        state: Game,
+        parent: int = None,
+        move: int = None,
+        prior_probability: float = None,
+    ):
         self.state = state
         self.children = []
         self.parent = parent
         self.visit_count = 0
         self.win_score = 0
         self.move = move
+        self.prior_probability = prior_probability or 1
 
     @property
     def id(self):
@@ -58,16 +67,29 @@ class MCTS:
                 leaf_node_found = True
             else:
                 max_uct_value = LOW_BOUND
+                # if node_id == self.root_node_id:
+                #     epsilon = DIRICHLET_EPSILON
+                #     nu = np.random.dirichlet([DIRICHLET_ALPHA] * len(self.tree[node_id].children))
+                # else:
+                #     epsilon = 0
+                #     nu = [0] * len(self.tree[node_id].children)
+
                 for i, child_id in enumerate(self.tree[node_id].children):
                     w = self.tree[child_id].win_score
                     n = self.tree[child_id].visit_count
                     N = self.total_n
                     c = self.exploration_constant
+                    # P = self.tree[child_id].prior_probability
 
                     if n == 0:
                         uct_value = HIGH_BOUND
                     else:
-                        uct_value = (w / n) + (c * np.sqrt(np.log(N) / n))  # Upper Confidence Bound applied to trees
+                        # Using Neural Network and Dirichlet noise
+                        # uct_value = (w / n) + (c * ((epsilon * P) + ((1 - epsilon) * nu[i])) * np.sqrt(np.log(N) / n))
+
+                        # Classic uct_value without neural network
+                        uct_value = (w / n) + (c * np.sqrt(np.log(N) / n))
+
 
                     if uct_value > max_uct_value:
                         max_uct_value = uct_value
@@ -81,12 +103,21 @@ class MCTS:
         if not state.is_game_over:
             # Make each possible move
             children = []
-            for move in state.legal_moves:
+            probs = None
+            # if self.neural_net:
+            #     probs = self.neural_net.probabilities(state)
+
+            for i, move in enumerate(state.legal_moves):
                 _state = state.copy()
                 _state.make_move(move)
 
                 children.append(_state.id)
-                self.tree[_state.id] = Node(_state, parent=leaf_node_id, move=move)
+                self.tree[_state.id] = Node(
+                    _state,
+                    parent=leaf_node_id,
+                    move=move,
+                    # prior_probability=probs[i],
+                )
                 self.tree[leaf_node_id].children.append(_state.id)
 
             # Choose random child node
