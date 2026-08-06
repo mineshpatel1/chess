@@ -100,7 +100,8 @@ Verified against the [reference results](https://www.chessprogramming.org/Perft_
 | Position 4 | 3 | 9,467 | ✅ |
 | Position 5 | 3 | 62,379 | ✅ |
 
-Move generation matches the reference counts on every position in the standard suite.
+All five run as part of the test suite (`tests/test_permutations.py`), so move generation is
+pinned to the reference counts rather than merely known to have matched them once.
 
 ## Playing against other engines
 

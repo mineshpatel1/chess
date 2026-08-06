@@ -111,6 +111,47 @@ class TestMoves(unittest.TestCase):
         self.assertEqual(bb.fen, '2kr1bnr/1bp1pppp/1pnq4/p2p4/7P/P2P1NP1/1PP1PPB1/RNBQ1RK1 w - - 3 8')
         self.assertEqual(bb.castle_flags, '-')
 
+    def test_fen_castling_field_round_trip(self):
+        """Every castling availability field survives a load and a re-render of the FEN."""
+        for flags in ('KQkq', 'KQk', 'KQ', 'Kkq', 'Kq', 'K', 'Qkq', 'Q', 'kq', 'k', 'q', '-'):
+            fen = f'r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w {flags} - 0 1'
+            _board = Board(fen=fen)
+            self.assertEqual(_board.castle_flags, flags)
+            self.assertEqual(_board.fen, fen)
+
+    def test_fen_castling_field_is_honoured(self):
+        """
+        Castling rights come from the FEN, not from where the pieces happen to stand. Every
+        King and Rook here is on its original square, but the FEN says the rights are gone.
+        """
+        _board = Board(fen='r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w - - 0 1')
+        self.assertEqual(_board.castle_flags, '-')
+        self.assertEqual({m.uci for m in _board.legal_moves if m.is_castling}, set())
+
+    def test_fen_castling_field_narrowed_to_the_board(self):
+        """A FEN claiming rights that the pieces cannot support is narrowed to reality."""
+        _board = Board(fen='4k3/8/8/8/8/8/8/4K3 w KQkq - 0 1')  # No Rooks anywhere
+        self.assertEqual(_board.castle_flags, '-')
+
+    def test_fen_without_castling_field_infers_from_position(self):
+        """Short FENs carry no castling field, so rights fall back to piece placement."""
+        self.assertEqual(Board(fen='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w').castle_flags, 'KQkq')
+        self.assertEqual(Board(fen='4k3/8/8/8/8/8/8/4K3 w').castle_flags, '-')
+
+    def test_fen_does_not_resurrect_lost_castling_rights(self):
+        """
+        A round trip through FEN must not hand back rights the game has already forfeited.
+        ai.algorithms.alpha_beta rebuilds a Board from board.fen for every root move, so the
+        search would otherwise plan castles the real game can no longer play.
+        """
+        bb = Board('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1')
+        for uci in ('e1e2', 'e8e7', 'e2e1', 'e7e8'):  # Both Kings step out and back
+            bb.make_move(Move.from_uci(uci))
+
+        self.assertEqual(bb.castle_flags, '-')
+        self.assertEqual(Board(bb.fen).castle_flags, '-')
+        self.assertEqual({m.uci for m in Board(bb.fen).legal_moves if m.is_castling}, set())
+
     def test_castling_rights_lost_when_rook_captured(self):
         """
         A Rook captured on its original square takes its castling right with it, even though
