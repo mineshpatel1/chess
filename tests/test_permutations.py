@@ -20,9 +20,30 @@ class TestPermutations(unittest.TestCase):
             )
 
     def test_perft_starting_position(self):
-        self._assert_perft(STARTING_STATE, {1: 20, 2: 400, 3: 8902})
+        self._assert_perft(STARTING_STATE, {1: 20, 2: 400, 3: 8902, 4: 197281})
 
-        # Verified, but too slow for the suite: depth 4 = 197281, depth 5 = 4865609
+        # Verified, but too slow for the suite: depth 5 = 4865609
+
+    def test_perft_kiwipete(self):
+        """
+        The standard second position: castling available to both colours on both sides, with
+        pins, discovered attacks and en passant all reachable within a few plies.
+        """
+        self._assert_perft(
+            'r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1',
+            {1: 48, 2: 2039, 3: 97862},
+        )
+
+    def test_perft_position_4(self):
+        """
+        Promotion heavy, and White has already castled while Black has not, so the position
+        is only enumerated correctly if the castling field of the FEN is honoured rather
+        than inferred from where the pieces happen to stand.
+        """
+        self._assert_perft(
+            'r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1',
+            {1: 6, 2: 264, 3: 9467},
+        )
 
     def test_perft_position_3(self):
         """

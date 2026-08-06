@@ -179,6 +179,14 @@ BB_ORIGINAL_ROOKS = {
     WHITE: (BB_A1 | BB_H1),
     BLACK: (BB_A8 | BB_H8),
 }
+
+# Castling availability flags from FEN notation, mapped to the Rook each one refers to
+BB_CASTLING_FLAGS = {
+    'K': (WHITE, BB_H1),
+    'Q': (WHITE, BB_A1),
+    'k': (BLACK, BB_H8),
+    'q': (BLACK, BB_A8),
+}
 BB_KNIGHT_MOVES = _gen_moves(((1, 2), (1, -2), (-1, 2), (-1, -2), (2, 1), (2, -1), (-2, 1), (-2, -1)))
 BB_KING_MOVES = _gen_moves(((1, 1), (0, 1), (1, 0), (-1, -1), (-1, 0), (0, -1), (1, -1), (-1, 1)))
 BB_PAWN_ATTACKS = {

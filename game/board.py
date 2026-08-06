@@ -154,6 +154,9 @@ class Board:
             assert turn in ['w', 'b'], "Invalid FEN."
             self.turn = BLACK if turn == 'b' else WHITE
 
+        if len(components) > 2:
+            self._set_castling_rights_from_fen(components[2])
+
         if len(components) > 3:
             _en_passant_coord = components[3].upper()
             self.en_passant_sq = None if _en_passant_coord == '-' else Square.from_coord(_en_passant_coord)
@@ -164,7 +167,26 @@ class Board:
         if len(components) > 5:
             self.fullmoves = int(components[5])
 
-        self._update_castling_rights()  # Cache castling rights
+        # Narrow whatever we ended up with to the Kings and Rooks actually on the board. When
+        # the FEN carried no castling field this is the only thing that sets the rights, and
+        # they are inferred from piece placement alone.
+        self._update_castling_rights()
+
+    def _set_castling_rights_from_fen(self, flags: str):
+        """
+        Sets castling rights from the availability field of a FEN string.
+
+        Rights are a property of the game's history rather than of the position, so they
+        cannot be recovered from piece placement: a King and Rook can stand on their original
+        squares having already moved away and back, which forfeits the right permanently.
+        """
+        rights = {WHITE: BB_EMPTY, BLACK: BB_EMPTY}
+        if flags != '-':
+            for flag in flags:
+                assert flag in BB_CASTLING_FLAGS, f'{flag} is not a valid castling right in FEN notation.'
+                colour, bb_rook = BB_CASTLING_FLAGS[flag]
+                rights[colour] |= bb_rook
+        self.castling_rights = rights
 
     def _attack_rays_from_square(
             self, square: Square, directions: Iterable[Direction], ignore: Bitboard = BB_EMPTY,
