@@ -712,9 +712,10 @@ class Board:
         else:
             self.en_passant_sq = None
 
-        # Update castling rights if the king or rook move
-        if piece.type in (KING, ROOK):
-            self._update_castling_rights()
+        # Update castling rights. This must run for every move, not just King and Rook
+        # moves: capturing a Rook on its original square also removes castling rights, and
+        # the capturing piece can be of any type.
+        self._update_castling_rights()
 
         # Reset halfmove clock if a pawn moved or a piece was captured
         if piece.type == PAWN or captured_piece:
