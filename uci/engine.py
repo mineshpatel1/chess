@@ -99,7 +99,7 @@ class UciEngine:
         out(f'bestmove {move.uci}')
 
     def about(self):
-        output = [f'id name {NAME}', f'id name {AUTHOR}']
+        output = [f'id name {NAME}', f'id author {AUTHOR}']
         for name, param in self.params.items():
             opt = f'option name {name} type {param.uci_type} default {param.default_value}'
             if param.min_value is not None:
@@ -115,7 +115,10 @@ class UciEngine:
 
     def run(self):
         while True:
-            cmd = input().strip()
+            try:
+                cmd = input().strip()
+            except EOFError:  # stdin closed without a 'quit', e.g. the GUI went away
+                break
 
             if cmd.lower() == 'quit':
                 break
