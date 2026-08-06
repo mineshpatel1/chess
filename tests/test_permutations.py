@@ -24,6 +24,17 @@ class TestPermutations(unittest.TestCase):
 
         # Verified, but too slow for the suite: depth 4 = 197281, depth 5 = 4865609
 
+    def test_perft_position_3(self):
+        """
+        An endgame with pawns abreast of both Kings on open ranks, so this position is only
+        enumerated correctly if an en passant capture that exposes its own King is rejected.
+        Both colours have such a capture available here.
+        """
+        self._assert_perft(
+            '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1',
+            {1: 14, 2: 191, 3: 2812, 4: 43238},
+        )
+
     def test_perft_position_5(self):
         """
         Black has a Knight on f2 bearing down on h1, so this position is only enumerated
