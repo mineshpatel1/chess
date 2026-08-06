@@ -265,6 +265,28 @@ class TestMoves(unittest.TestCase):
             _board = Board(fen)
             self.assertEqual(_board.has_insufficient_material, result)
 
+    def test_fifty_move_draw_counts_plies(self):
+        """
+        The fifty move rule is fifty moves by *each* player. The halfmove clock counts plies,
+        so the draw is only claimable once it reaches 100, not 50.
+        """
+        _board = Board('8/8/4k3/8/8/4K3/8/R7 w - - 49 80')
+        _board.make_move(Move.from_uci('a1a2'))
+        self.assertEqual(_board.halfmove_clock, 50)  # Only 25 moves each
+        self.assertFalse(_board.is_game_over)
+        _board.raise_if_game_over()  # Must not raise
+
+        _board = Board('8/8/4k3/8/8/4K3/8/R7 w - - 98 80')
+        _board.make_move(Move.from_uci('a1a2'))
+        self.assertEqual(_board.halfmove_clock, 99)
+        self.assertFalse(_board.is_game_over)
+
+        _board.make_move(Move.from_uci('e6e7'))
+        self.assertEqual(_board.halfmove_clock, 100)
+        self.assertTrue(_board.is_game_over)
+        with self.assertRaises(FiftyMoveDraw):
+            _board.raise_if_game_over()
+
     def test_threefold_repetition(self):
         _board = Board(track_repetitions=True)
         for move in (
@@ -291,9 +313,16 @@ class TestMoves(unittest.TestCase):
             _board.make_move(m)
 
         self.assertTrue(_board.has_threefold_repetition)
+
+        # is_game_over must agree with raise_if_game_over about what ends a game
+        self.assertTrue(_board.is_game_over)
+        with self.assertRaises(ThreefoldRepetition):
+            _board.raise_if_game_over()
+
         _board.unmake_move()
         _board.make_move(Move.from_uci('h2h3'))
         self.assertFalse(_board.has_threefold_repetition)
+        self.assertFalse(_board.is_game_over)
 
 
 def main():

@@ -18,6 +18,7 @@ from game.constants import (
     BLACK,
 
     STARTING_STATE,
+    HALFMOVE_CLOCK_LIMIT,
 
     PieceType,
     PAWN,
@@ -491,13 +492,15 @@ class Board:
 
     @property
     def is_game_over(self):
-        has_legal_move = any(self.legal_moves)
-
-        if self.halfmove_clock >= 50:  # 50 move draw
+        # Kept in the same order as raise_if_game_over, and deliberately lazy: generating
+        # legal moves is far more expensive than any of the checks above it.
+        if self.halfmove_clock >= HALFMOVE_CLOCK_LIMIT:  # Fifty move draw
             return True
         elif self.has_insufficient_material:
             return True
-        elif not has_legal_move:  # Check/stalemate
+        elif self.has_threefold_repetition:
+            return True
+        elif not any(self.legal_moves):  # Checkmate or stalemate
             return True
         else:
             return False
@@ -854,7 +857,7 @@ class Board:
 
     def raise_if_game_over(self):
         """Raises an exception if the game is in an end state."""
-        if self.halfmove_clock >= 50:
+        if self.halfmove_clock >= HALFMOVE_CLOCK_LIMIT:
             raise FiftyMoveDraw
         elif self.has_insufficient_material:
             raise InsufficientMaterial

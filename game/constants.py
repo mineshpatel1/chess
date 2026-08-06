@@ -8,6 +8,10 @@ KINGSIDE = 'kingside'
 FILE_NAMES = ["A", "B", "C", "D", "E", "F", "G", "H"]
 RANK_NAMES = ["1", "2", "3", "4", "5", "6", "7", "8"]
 
+# The fifty move rule is fifty moves by *each* player. The halfmove clock counts plies, so
+# the draw is claimable once it reaches 100.
+HALFMOVE_CLOCK_LIMIT = 100
+
 PieceType = str
 PAWN = 'p'
 ROOK = 'r'
