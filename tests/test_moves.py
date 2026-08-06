@@ -149,6 +149,28 @@ class TestMoves(unittest.TestCase):
             bb.make_move(move)
         self.assertEqual(bb.fen, 'rnbqkbnr/pppppp1p/8/8/P7/5p2/1PPPP1PP/RNBQKBNR w KQkq - 0 4')
 
+    def test_en_passant_discovered_check(self):
+        """
+        En passant clears two squares on the same rank at once: the capturing pawn leaves,
+        and the captured pawn is removed from beside it. If the King sits on that rank the
+        capture can expose it, which makes the capture illegal.
+        """
+        # White Ka5 and Black Rh5 share rank 5, with the White b5 pawn and the Black c5 pawn
+        # between them. Taking c5 en passant would remove both and open the rank.
+        bb = Board('8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1')
+        bb.make_move(Move.from_uci('b4b3'))
+        bb.make_move(Move.from_uci('c7c5'))
+
+        self.assertEqual(bb.en_passant_sq, C6)
+        self.assertEqual({m.uci for m in bb.legal_moves if m.from_square == B5}, {'b5b6'})
+
+        # The same applies to Black, whose King on h4 shares rank 4 with the White b4 Rook
+        bb = Board('8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1')
+        bb.make_move(Move.from_uci('g2g4'))
+
+        self.assertEqual(bb.en_passant_sq, G3)
+        self.assertEqual({m.uci for m in bb.legal_moves if m.from_square == F4}, {'f4f3'})
+
     def test_promotion(self):
         b = Board('rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1')
         promotion_moves = set()

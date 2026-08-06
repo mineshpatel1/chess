@@ -96,12 +96,11 @@ Verified against the [reference results](https://www.chessprogramming.org/Perft_
 |---|---|---|---|
 | Starting position | 4 | 197,281 | ✅ |
 | Kiwipete | 3 | 97,862 | ✅ |
-| Position 3 | 2 | 191 | ❌ known bug — en passant discovered check |
+| Position 3 | 4 | 43,238 | ✅ |
 | Position 4 | 3 | 9,467 | ✅ |
 | Position 5 | 3 | 62,379 | ✅ |
 
-The remaining failure is an over-count: the generator emits two illegal moves at depth 2,
-where an en passant capture vacates two squares on the same rank and exposes the king.
+Move generation matches the reference counts on every position in the standard suite.
 
 ## Playing against other engines
 

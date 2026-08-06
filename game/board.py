@@ -602,7 +602,26 @@ class Board:
                     if not _is_safe(attackers, king_pos, move):
                         continue
 
+            # En passant clears two squares on the same rank at once: the capturing pawn
+            # leaves, and the captured pawn is removed from beside it. The pin detection
+            # above cannot see this, because self._protectors only recognises a pin held by
+            # exactly one blocker. Play these captures out and look at the result instead.
+            if self._is_en_passant(move):
+                self.make_move(move)
+                exposed = self.kings[not self.turn] & self._attack_bitboard(self.turn)
+                self.unmake_move()
+                if exposed:
+                    continue
+
             yield move
+
+    def _is_en_passant(self, move: Move) -> bool:
+        """Whether the move captures en passant. Matches the condition used by make_move."""
+        return (
+            self.en_passant_sq is not None and
+            move.to_square == self.en_passant_sq and
+            bool(self.pawns[self.turn] & BB_SQUARES[move.from_square])
+        )
 
     @property
     def turn_name(self) -> str:
