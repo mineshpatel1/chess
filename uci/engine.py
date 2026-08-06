@@ -92,6 +92,12 @@ class UciEngine:
             self.board.make_move(move)
 
     def get_best_move(self):
+        # Checkmate and stalemate leave nothing to search. Both search and random_move
+        # assume at least one legal move exists, so answer before calling them.
+        if not any(self.board.legal_moves):
+            out('bestmove (none)')
+            return
+
         if self.params['skill'].value == 0:
             move = random_move(self.board)
         else:

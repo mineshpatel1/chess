@@ -1,0 +1,131 @@
+import io
+import unittest
+import contextlib
+
+from game.board import Board
+from game.constants import WHITE, BLACK
+from ai.algorithms import alpha_beta, _terminal_value
+from uci.engine import UciEngine
+
+
+class TestTerminalValue(unittest.TestCase):
+    """
+    Direct cover for the scoring of positions with no legal moves. Values inside the search
+    are positive for the opponent, and the sign convention is the whole of what was wrong.
+    """
+
+    # White has been mated by Qh4, and it is White to move
+    MATED = 'rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 1'
+
+    # Black to move with nowhere to go, but not in check
+    STALEMATED = '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1'
+
+    def test_checkmate_is_scored_against_the_side_to_move(self):
+        board = Board(fen=self.MATED)
+        self.assertTrue(board.is_checkmate)
+
+        # We are the side being mated, which is the best possible outcome for the opponent
+        self.assertGreater(_terminal_value(board, 3, WHITE), 0)
+
+        # The opponent is the side being mated, which is the best possible outcome for us
+        self.assertLess(_terminal_value(board, 3, BLACK), 0)
+
+    def test_closer_mates_score_higher(self):
+        board = Board(fen=self.MATED)
+
+        # Remaining depth is larger nearer the root, so a shallower mate scores further from
+        # zero and wins the comparison
+        self.assertGreater(_terminal_value(board, 5, WHITE), _terminal_value(board, 3, WHITE))
+        self.assertLess(_terminal_value(board, 5, BLACK), _terminal_value(board, 3, BLACK))
+
+    def test_stalemate_scores_as_a_draw(self):
+        board = Board(fen=self.STALEMATED)
+        self.assertTrue(board.is_stalemate)
+
+        # A draw is a draw whoever is searching
+        self.assertEqual(_terminal_value(board, 3, WHITE), 0)
+        self.assertEqual(_terminal_value(board, 3, BLACK), 0)
+
+
+class TestSearch(unittest.TestCase):
+    """Tests of what the AI decides, rather than of what the rules permit."""
+
+    def test_finds_mate_in_one(self):
+        fen = '6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1'  # Ra8 is mate
+        for depth in (2, 3):
+            board = Board(fen=fen)
+            move = alpha_beta(board, depth=depth)
+            self.assertEqual(move.uci, 'a1a8', f'at depth {depth}')
+
+            board.make_move(move)
+            self.assertTrue(board.is_checkmate)
+
+    def test_avoids_forced_mate(self):
+        """
+        Black threatens Ra1 mate and the King on h1 is boxed in by its own pawns. Only a move
+        that makes luft survives it. Scoring mate against `player` rather than against the
+        side to move made this branch invisible, and the engine walked into it.
+        """
+        fen = 'r5k1/5ppp/8/8/8/8/5PPP/7K w - - 0 1'
+        for depth in (3, 4):
+            move = alpha_beta(Board(fen=fen), depth=depth)
+            self.assertIn(move.uci, {'g2g3', 'g2g4', 'h2h3', 'h2h4'}, f'at depth {depth}')
+
+            # And prove the rejected moves really do lose
+            board = Board(fen=fen)
+            board.make_move(move)
+            board.make_move('a8a1')
+            self.assertFalse(board.is_checkmate, f'at depth {depth}')
+
+    def test_prefers_the_faster_mate(self):
+        """Rc8 is mate at once. Several Queen moves mate a move later and are generated first."""
+        move = alpha_beta(Board(fen='7k/Q7/8/8/8/8/8/2R4K w - - 0 1'), depth=4)
+        self.assertEqual(move.uci, 'c1c8')
+
+    def test_prefers_a_draw_to_a_losing_position(self):
+        """
+        White is a Knight and four pawns down. Every Black pawn is blocked and the Knight on
+        b8 is pinned to the King by the Rook on h8, so a5a6 takes away the King's last flight
+        square and stalemates Black. A draw beats every other move on the board.
+        """
+        fen = 'kn5R/3p1p2/1P1p1p2/P2p1p2/3p1P2/3p4/3P4/7K w - - 0 1'
+        self.assertLess(Board(fen=fen).value, 0)  # White really is losing
+
+        move = alpha_beta(Board(fen=fen), depth=4)
+        self.assertEqual(move.uci, 'a5a6')
+
+        board = Board(fen=fen)
+        board.make_move(move)
+        self.assertTrue(board.is_stalemate)
+
+
+class TestUciSearchOutput(unittest.TestCase):
+    def _go(self, fen: str) -> str:
+        engine = UciEngine()
+        engine.set_fen(fen)
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            engine.get_best_move()
+        return output.getvalue().strip()
+
+    def test_go_reports_a_move(self):
+        self.assertTrue(self._go('6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1').startswith('bestmove '))
+
+    def test_go_with_no_legal_moves(self):
+        """
+        Searching a finished game returns no move, which used to reach `move.uci` on None and
+        kill the engine. UCI expects `bestmove (none)`.
+        """
+        self.assertEqual(
+            self._go('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 1'),
+            'bestmove (none)',
+        )
+        self.assertEqual(self._go('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1'), 'bestmove (none)')
+
+
+def main():
+    unittest.main()
+
+
+if __name__ == '__main__':
+    main()

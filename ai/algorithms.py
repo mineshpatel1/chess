@@ -9,6 +9,32 @@ from game.board import Board, Move
 LOW_BOUND = -9999999
 HIGH_BOUND = 9999999
 
+# Score of a forced mate, kept well inside the search window so it never collides with the
+# alpha/beta bounds themselves.
+MATE = 1000000
+
+
+def _terminal_value(board: Board, depth: int, player: bool) -> int:
+    """
+    Scores a position that has no legal moves, in the same terms as the rest of the tree.
+
+    Values inside the search are positive for the opponent: _get_best_move plays the root
+    move before descending, so _alpha_beta_max nodes belong to the opponent and
+    _alpha_beta_min nodes belong to us, and the sign is flipped once at the root.
+
+    Checkmate is therefore scored against whoever is to move, which is what makes one
+    function correct at both node types. Scoring it against `player` instead is only ever
+    right at one of them, and leaves the engine unable to see mate against itself.
+
+    Deeper mates score lower, so a mate in one is preferred over a mate in five and the
+    engine does not shuffle in a won position. Stalemate is a draw and scores zero.
+    """
+    if not board.is_in_check:  # No moves and no check: stalemate, which is a draw
+        return 0
+
+    mate_score = MATE + depth  # Larger remaining depth means a mate closer to the root
+    return mate_score if board.turn == player else -mate_score
+
 
 def simple_eval(board: Board) -> int:
     return board.value
@@ -138,11 +164,8 @@ def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, player: boo
             return best, counter
         i += 1
 
-    if i == 0:  # Game is over
-        if board.is_checkmate and board.turn != player:
-            return HIGH_BOUND + 1, counter  # Value checkmate above all else
-        else:
-            return LOW_BOUND - 1, counter   # Any other end game state is the worst case scenario
+    if i == 0:  # No legal moves: checkmate or stalemate
+        return _terminal_value(board, depth, player), counter
     return beta, counter
 
 
@@ -165,11 +188,8 @@ def _alpha_beta_max(board: Board, depth: int, alpha: int, beta: int, player: boo
             return best, counter
         i += 1
 
-    if i == 0:  # Game is over
-        if board.is_checkmate and board.turn != player:
-            return LOW_BOUND - 1, counter  # Value checkmate above all else
-        else:
-            return HIGH_BOUND + 1, counter   # Any other end game state is the worst case scenario
+    if i == 0:  # No legal moves: checkmate or stalemate
+        return _terminal_value(board, depth, player), counter
 
     return alpha, counter
 

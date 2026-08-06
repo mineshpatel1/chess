@@ -4,6 +4,7 @@ from tests.test_board import TestBitboard
 from tests.test_moves import TestMoves
 from tests.test_undo import TestUndo
 from tests.test_permutations import TestPermutations
+from tests.test_search import TestSearch, TestTerminalValue, TestUciSearchOutput
 
 
 def main():
