@@ -111,6 +111,29 @@ class TestMoves(unittest.TestCase):
         self.assertEqual(bb.fen, '2kr1bnr/1bp1pppp/1pnq4/p2p4/7P/P2P1NP1/1PP1PPB1/RNBQ1RK1 w - - 3 8')
         self.assertEqual(bb.castle_flags, '-')
 
+    def test_castling_rights_lost_when_rook_captured(self):
+        """
+        A Rook captured on its original square takes its castling right with it, even though
+        the capturing piece is neither a King nor a Rook.
+        """
+        bb = Board('r3k2r/pppppppp/8/8/8/6n1/PPPPPPPP/R3K2R b KQkq - 0 1')
+        self.assertEqual(bb.castle_flags, 'KQkq')
+
+        bb.make_move(Move.from_uci('g3h1'))  # Black Knight takes the Rook on h1
+
+        piece = bb.piece_at(H1)
+        self.assertEqual((piece.type, piece.colour), (KNIGHT, BLACK))
+        self.assertEqual(bb.castle_flags, 'Qkq')
+
+        # White may still castle Queenside, but Kingside is gone with the Rook. Offering it
+        # would let White capture the Knight and conjure a Rook onto f1.
+        self.assertEqual({m.uci for m in bb.legal_moves if m.is_castling}, {'e1c1'})
+
+        # Undoing the capture restores the Rook and the right along with it
+        bb.unmake_move()
+        self.assertEqual(bb.castle_flags, 'KQkq')
+        self.assertEqual({m.uci for m in bb.legal_moves if m.is_castling}, {'e8g8', 'e8c8'})
+
     def test_en_passant(self):
         bb = Board()
         for m in (

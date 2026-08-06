@@ -98,10 +98,10 @@ Verified against the [reference results](https://www.chessprogramming.org/Perft_
 | Kiwipete | 3 | 97,862 | ✅ |
 | Position 3 | 2 | 191 | ❌ known bug — en passant discovered check |
 | Position 4 | 3 | 9,467 | ✅ |
-| Position 5 | 3 | 62,379 | ❌ known bug — castling with a captured rook |
+| Position 5 | 3 | 62,379 | ✅ |
 
-Both failures are over-counts: the generator emits a small number of illegal moves in these
-edge cases. See the open issues.
+The remaining failure is an over-count: the generator emits two illegal moves at depth 2,
+where an en passant capture vacates two squares on the same rank and exposes the king.
 
 ## Playing against other engines
 
