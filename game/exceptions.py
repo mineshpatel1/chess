@@ -15,7 +15,7 @@ class Stalemate(Draw):
 
 
 class FiftyMoveDraw(Draw):
-    MESSAGE = "50 moves have occured without moving a pawn or taking a piece."
+    MESSAGE = "50 moves have occurred without moving a pawn or taking a piece."
 
 
 class InsufficientMaterial(Draw):
