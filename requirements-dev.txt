@@ -1,4 +1,0 @@
-# Optional. The engine and its test suite require nothing outside the standard library.
-# python-chess is only used to cross-check this engine's move generation against a
-# reference implementation in ai/benchmark.py.
-chess>=1.0

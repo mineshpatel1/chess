@@ -1,7 +1,7 @@
 from typing import List, Iterable
 
-from game.square import *
-from game.constants import (
+from games.chess.square import *
+from games.chess.constants import (
     BLACK,
     WHITE,
 

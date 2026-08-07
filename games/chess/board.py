@@ -1,10 +1,12 @@
 from typing import Dict, Optional, Union
 
 import log
-from game.bitboard import *
-from game.move import Move
-from game.piece import Piece
-from game.exceptions import (
+from games.base import GameState, Outcome, DRAW, win
+from games.chess.evaluation import weighted_eval
+from games.chess.bitboard import *
+from games.chess.move import Move
+from games.chess.piece import Piece
+from games.chess.exceptions import (
     Checkmate,
     Stalemate,
     IllegalMove,
@@ -12,7 +14,7 @@ from game.exceptions import (
     ThreefoldRepetition,
     InsufficientMaterial,
 )
-from game.constants import (
+from games.chess.constants import (
     Colour,
     WHITE,
     BLACK,
@@ -40,7 +42,7 @@ from game.constants import (
     WEST,
     NORTHWEST,
 )
-from game.square import (
+from games.chess.square import (
     PAWN_POSITION_VALUES,
     ROOK_POSITION_VALUES,
     KNIGHT_POSITION_VALUES,
@@ -51,7 +53,13 @@ from game.square import (
 )
 
 
-class Board:
+class ChessBoard(GameState):
+    # Chess branches wide enough, and evaluates slowly enough, for a process pool at the root
+    # to pay for itself several times over.
+    PARALLEL_ROOT = True
+
+    DEFAULT_EVAL = staticmethod(weighted_eval)
+
     def __init__(self, fen: str = STARTING_STATE, track_repetitions: bool = False):
         """
         Represents the chess game and game state as a bitboard.
@@ -448,6 +456,33 @@ class Board:
         return not self.is_in_check and not any(self.legal_moves)
 
     @property
+    def outcome_without_moves(self) -> Outcome:
+        """
+        Chess has no win condition that can be spotted without generating moves, so `outcome`
+        stays the inherited None and this is the whole of how the search learns a chess game
+        has ended: nowhere to go is checkmate if the King is attacked and stalemate if it is
+        not.
+        """
+        return win(not self.turn) if self.is_in_check else DRAW
+
+    @property
+    def signature(self) -> str:
+        """
+        The FEN, which carries castling rights, the en passant square and the clocks. The
+        printed board carries none of them, and two positions that print alike can be very
+        different games.
+        """
+        return self.fen
+
+    def copy(self) -> 'ChessBoard':
+        """
+        A board at the same position, built from the FEN so it carries none of the history
+        that only `unmake_move` would want. That is what the root workers need, and it is
+        cheaper than snapshotting the move stack.
+        """
+        return ChessBoard(self.fen)
+
+    @property
     def has_insufficient_material(self):
         # If the player has any pawns, rooks or queens the game can be won
         if self.occupied & (self.all_pawns | self.all_rooks | self.all_queens):
@@ -491,19 +526,25 @@ class Board:
         return False
 
     @property
-    def is_game_over(self):
-        # Kept in the same order as raise_if_game_over, and deliberately lazy: generating
-        # legal moves is far more expensive than any of the checks above it.
+    def result(self) -> Optional[Outcome]:
+        """
+        Chess can finish three ways the search never models - the fifty move rule, insufficient
+        material, and threefold repetition - all of them draws, and none of them visible from
+        the move list alone. A game loop needs them; the search would only pay for them.
+
+        Kept in the same order as raise_if_game_over, and deliberately lazy: generating legal
+        moves is far more expensive than any of the checks above it.
+        """
         if self.halfmove_clock >= HALFMOVE_CLOCK_LIMIT:  # Fifty move draw
-            return True
+            return DRAW
         elif self.has_insufficient_material:
-            return True
+            return DRAW
         elif self.has_threefold_repetition:
-            return True
+            return DRAW
         elif not any(self.legal_moves):  # Checkmate or stalemate
-            return True
+            return self.outcome_without_moves
         else:
-            return False
+            return None
 
     @property
     def value(self) -> int:
@@ -554,7 +595,7 @@ class Board:
     def weighted_value(self) -> int:
         """
         Weighted evaluation of the game, positive for white, negative for black. Adjusts piece values depending on the
-        positions on the game. More expensive to calcualte than Board.value.
+        positions on the game. More expensive to calcualte than ChessBoard.value.
         """
         total = 0
         king_values = KING_LATE_GAME_POSITION_VALUES if self.is_endgame else KING_POSITION_VALUES
@@ -583,7 +624,7 @@ class Board:
 
     @property
     def relative_value(self):
-        """Board value normalised for the given player. All players should look to maximise this value."""
+        """ChessBoard value normalised for the given player. All players should look to maximise this value."""
         modifier = 1 if self.turn == WHITE else -1
         return modifier * self.value
 
@@ -688,7 +729,7 @@ class Board:
 
     def make_safe_move(self, move: Union[Move, str]):
         """
-        Same as Board.make_move, but validates if the move is legal first (slower).
+        Same as ChessBoard.make_move, but validates if the move is legal first (slower).
         """
         if isinstance(move, str):
             move = Move.from_uci(move)
@@ -885,7 +926,7 @@ class Board:
             raise Stalemate
 
     def __str__(self):
-        """Board representation using Unicode piece characters."""
+        """ChessBoard representation using Unicode piece characters."""
         board_str = ''
         rank = 8
         for sq in SQUARES_VFLIP:
@@ -901,14 +942,10 @@ class Board:
         board_str += '\n   A  B  C  D  E  F  G  H '
         return board_str
 
-    # Aliases for benchmarking
-    push = make_move
-    pop = unmake_move
-
 
 class _BoardState:
     """Storage of bitboard integers representing state. Very cheap to copy, even if a bit ugly."""
-    def __init__(self, board: Board):
+    def __init__(self, board: ChessBoard):
         self.turn = board.turn
         self.en_passant_sq = board.en_passant_sq
         self.halfmove_clock = board.halfmove_clock
@@ -934,7 +971,7 @@ class _BoardState:
         self.occupied_colour_b = board.occupied_colour[BLACK]
         self.castling_rights = board.castling_rights
 
-    def load(self, board: Board):
+    def load(self, board: ChessBoard):
         board.turn = self.turn
         board.en_passant_sq = self.en_passant_sq
         board.halfmove_clock = self.halfmove_clock

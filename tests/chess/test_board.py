@@ -1,6 +1,6 @@
 import unittest
 
-from game.board import *
+from games.chess.board import *
 
 
 class TestBitboard(unittest.TestCase):
@@ -73,7 +73,7 @@ class TestBitboard(unittest.TestCase):
         self.assertEqual(bitboard_to_str(_board), match)
 
     def test_print_board(self):
-            _board = Board()
+            _board = ChessBoard()
             match = ("""
 8 [♜][♞][♝][♛][♚][♝][♞][♜]
 7 [♟][♟][♟][♟][♟][♟][♟][♟]
@@ -92,7 +92,7 @@ class TestBitboard(unittest.TestCase):
             ('rn1qk3/p1p1p3/8/3Q4/8/8/PPPPPP1P/RNBQKBNR b - - 0 1', 2780),
             ('rnbqkbnr/pppp1ppp/8/8/3q4/8/P2P1PPP/4KBNR w - - 0 1', -3150),
         ):
-            _board = Board(fen=fen)
+            _board = ChessBoard(fen=fen)
             self.assertEqual(_board.value, val)
 
     def test_weighted_value(self):
@@ -104,7 +104,7 @@ class TestBitboard(unittest.TestCase):
             ('rn1qk3/p1p1p3/8/3Q4/8/8/PPPPPP1P/RNBQKBNR b - - 0 1', 2730),
             ('rnbqkbnr/pppp1ppp/8/8/3q4/8/P2P1PPP/4KBNR w - - 0 1', -3120),
         ):
-            _board = Board(fen=fen)
+            _board = ChessBoard(fen=fen)
             self.assertEqual(_board.weighted_value, val)
 
     def test_is_endgame(self):
@@ -115,7 +115,7 @@ class TestBitboard(unittest.TestCase):
             ('4k3/8/8/8/8/8/8/2BQK1N1 w - - 0 1', True),  # Queen on, but only four pieces
             ('8/8/8/4k3/8/8/8/R6K w - - 0 1', True),  # King and Rook against a King
         ):
-            self.assertEqual(Board(fen=fen).is_endgame, result, fen)
+            self.assertEqual(ChessBoard(fen=fen).is_endgame, result, fen)
 
     def test_king_position_by_game_phase(self):
         """
@@ -127,14 +127,14 @@ class TestBitboard(unittest.TestCase):
         pinning their sums would break on any retune.
         """
         # Endgame: no queens, so the King should walk towards the centre
-        centralised = Board(fen='8/8/8/4k3/4K3/8/8/R7 w - - 0 1')
-        cornered = Board(fen='8/8/8/4k3/8/8/8/R6K w - - 0 1')
+        centralised = ChessBoard(fen='8/8/8/4k3/4K3/8/8/R7 w - - 0 1')
+        cornered = ChessBoard(fen='8/8/8/4k3/8/8/8/R6K w - - 0 1')
         self.assertTrue(centralised.is_endgame)
         self.assertGreater(centralised.weighted_value, cornered.weighted_value)
 
         # Opening: queens and a full board, so the King should stay tucked away instead
-        tucked = Board(fen='rn2k3/8/8/8/8/8/8/RN1Q2KR w - - 0 1')
-        exposed = Board(fen='rn2k3/8/8/8/3K4/8/8/RN1Q3R w - - 0 1')
+        tucked = ChessBoard(fen='rn2k3/8/8/8/8/8/8/RN1Q2KR w - - 0 1')
+        exposed = ChessBoard(fen='rn2k3/8/8/8/3K4/8/8/RN1Q3R w - - 0 1')
         self.assertFalse(tucked.is_endgame)
         self.assertEqual(tucked.value, exposed.value)  # Same material, only the King moved
         self.assertGreater(tucked.weighted_value, exposed.weighted_value)

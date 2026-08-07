@@ -2,9 +2,9 @@ import re
 import sys
 from typing import Any, Optional, List
 
-from game.board import Board, Move
-from game.exceptions import IllegalMove
-from ai.algorithms import random_move, alpha_beta
+from games.chess.board import ChessBoard, Move
+from games.chess.exceptions import IllegalMove
+from ai.search import random_move, alpha_beta
 
 
 def out(line):
@@ -75,17 +75,17 @@ class UciEngine:
         out('readyok')
 
     def __init__(self):
-        self.board = Board()
+        self.board = ChessBoard()
         self.params = {}
 
         for param in PARAMS:
             self.params[param.name] = param
 
     def reset_board(self):
-        self.board = Board()
+        self.board = ChessBoard()
 
     def set_fen(self, fen: str):
-        self.board = Board(fen=fen)
+        self.board = ChessBoard(fen=fen)
 
     def play_moves(self, moves: List[str]):
         for m in moves:
@@ -107,7 +107,7 @@ class UciEngine:
         if self.params['skill'].value == 0:
             move = random_move(self.board)
         else:
-            move = alpha_beta(self.board, depth=self.params['skill'].value, print_count=False)
+            move = alpha_beta(self.board, depth=self.params['skill'].value)
         out(f'bestmove {move.uci}')
 
     def about(self):

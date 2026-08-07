@@ -1,7 +1,7 @@
 import unittest
 
-from ai.benchmark import traverse_moves
-from game.board import *
+from ai.perft import traverse_moves
+from games.chess.board import *
 
 
 class TestPermutations(unittest.TestCase):
@@ -12,7 +12,7 @@ class TestPermutations(unittest.TestCase):
 
     def _assert_perft(self, fen: str, counts: dict):
         for depth in sorted(counts):
-            board = Board(fen)
+            board = ChessBoard(fen)
             self.assertEqual(
                 traverse_moves(board, depth, False),
                 counts[depth],

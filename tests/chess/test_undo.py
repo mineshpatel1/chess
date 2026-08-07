@@ -1,7 +1,7 @@
 import unittest
 
-from game.constants import STARTING_STATE
-from game.board import Board, Move
+from games.chess.constants import STARTING_STATE
+from games.chess.board import ChessBoard, Move
 
 
 class TestUndo(unittest.TestCase):
@@ -72,7 +72,7 @@ class TestUndo(unittest.TestCase):
         )
 
         # Play through the game as it happened
-        board = Board()
+        board = ChessBoard()
 
         for uci, _fen in moves:
             m = Move.from_uci(uci)
@@ -163,7 +163,7 @@ class TestUndo(unittest.TestCase):
         )
 
         # Play through the game as it happened
-        board = Board()
+        board = ChessBoard()
 
         for uci, _fen in moves:
             m = Move.from_uci(uci)

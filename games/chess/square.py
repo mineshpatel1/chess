@@ -1,6 +1,6 @@
 from typing import Tuple
 
-from game.constants import (
+from games.chess.constants import (
     WHITE,
     BLACK,
     FILE_NAMES,
@@ -26,7 +26,7 @@ def index_to_coord(idx: int) -> str:
 
 def index_to_file_rank(idx: int) -> Tuple[int, int]:
     """Converts an integer position into the corresponding file and rank (in that order)."""
-    assert 0 <= idx < 64, "Board index must be between 0 and 63."
+    assert 0 <= idx < 64, "ChessBoard index must be between 0 and 63."
     return idx % 8, int(idx / 8)
 
 
