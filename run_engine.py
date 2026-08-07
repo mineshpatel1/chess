@@ -4,7 +4,7 @@ import asyncio
 import log
 from games.chess.board import *
 from ai.search import random_move, alpha_beta
-from ai.benchmark import simulate_game_async
+from ai.simulate import simulate_game_async
 from uci.stockfish import start_engine
 
 ENGINE_DIR = 'third-party-engines'
@@ -24,7 +24,9 @@ async def main():
         await eng.set_position_from_board(board)
         return await eng.get_best_move()
 
-    await simulate_game_async(lambda b: alpha_beta(b, 4), engine_move)
+    board = Board()
+    await simulate_game_async(board, lambda b: alpha_beta(b, 4), engine_move)
+    log.info(board.pgn_uci)
 
     await eng.quit()
 

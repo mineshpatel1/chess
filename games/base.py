@@ -98,3 +98,26 @@ class GameState(ABC):
         of four — override it.
         """
         return None
+
+    @property
+    def result(self) -> Optional[Outcome]:
+        """
+        How the game finished, or None if it has not.
+
+        This is the whole question in one place, and it is what a game loop wants. The search
+        deliberately does not use it: it asks the two halves separately so that generating
+        moves, much the more expensive half, happens once per node rather than twice.
+
+        Games with ways to finish that neither half covers — chess draws by repetition or by
+        the fifty move rule — override this and keep `is_game_over` agreeing with it for free.
+        """
+        outcome = self.outcome
+        if outcome is not None:
+            return outcome
+        if not any(self.legal_moves):
+            return self.outcome_without_moves
+        return None
+
+    @property
+    def is_game_over(self) -> bool:
+        return self.result is not None

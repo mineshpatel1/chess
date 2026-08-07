@@ -1,6 +1,6 @@
 import unittest
 
-from ai.benchmark import traverse_moves
+from ai.perft import traverse_moves
 from games.chess.board import *
 
 

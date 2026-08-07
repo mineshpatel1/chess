@@ -517,19 +517,25 @@ class Board(GameState):
         return False
 
     @property
-    def is_game_over(self):
-        # Kept in the same order as raise_if_game_over, and deliberately lazy: generating
-        # legal moves is far more expensive than any of the checks above it.
+    def result(self) -> Optional[Outcome]:
+        """
+        Chess can finish three ways the search never models - the fifty move rule, insufficient
+        material, and threefold repetition - all of them draws, and none of them visible from
+        the move list alone. A game loop needs them; the search would only pay for them.
+
+        Kept in the same order as raise_if_game_over, and deliberately lazy: generating legal
+        moves is far more expensive than any of the checks above it.
+        """
         if self.halfmove_clock >= HALFMOVE_CLOCK_LIMIT:  # Fifty move draw
-            return True
+            return DRAW
         elif self.has_insufficient_material:
-            return True
+            return DRAW
         elif self.has_threefold_repetition:
-            return True
+            return DRAW
         elif not any(self.legal_moves):  # Checkmate or stalemate
-            return True
+            return self.outcome_without_moves
         else:
-            return False
+            return None
 
     @property
     def value(self) -> int:
@@ -926,10 +932,6 @@ class Board(GameState):
                 board_str += '[ ]'
         board_str += '\n   A  B  C  D  E  F  G  H '
         return board_str
-
-    # Aliases for benchmarking
-    push = make_move
-    pop = unmake_move
 
 
 class _BoardState:
