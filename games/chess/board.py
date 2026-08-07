@@ -465,6 +465,15 @@ class Board(GameState):
         """
         return win(not self.turn) if self.is_in_check else DRAW
 
+    @property
+    def signature(self) -> str:
+        """
+        The FEN, which carries castling rights, the en passant square and the clocks. The
+        printed board carries none of them, and two positions that print alike can be very
+        different games.
+        """
+        return self.fen
+
     def copy(self) -> 'Board':
         """
         A board at the same position, built from the FEN so it carries none of the history

@@ -7,6 +7,7 @@ from tests.test_permutations import TestPermutations
 from tests.test_search import TestSearch, TestTerminalValue, TestUciSearchOutput
 from tests.test_search_equivalence import TestHarness, TestDecisivePositions
 from tests.test_simulate import TestResult, TestSimulateGame
+from tests.test_conformance_chess import TestChessConformance
 
 
 def main():

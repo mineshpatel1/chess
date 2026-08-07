@@ -100,6 +100,21 @@ class GameState(ABC):
         return None
 
     @property
+    def signature(self) -> str:
+        """
+        Everything that distinguishes this position from another one, as a string.
+
+        Two states with the same signature must be the same position to play from. That is
+        stricter than looking the same: chess positions that print identically can still
+        differ in castling rights or in which pawn may be taken en passant, and a state
+        restored without them is a different game wearing the same picture.
+
+        Defaults to the printed board, which is right for games where the board is the whole
+        of the state. Games carrying anything else override it - chess with its FEN.
+        """
+        return str(self)
+
+    @property
     def result(self) -> Optional[Outcome]:
         """
         How the game finished, or None if it has not.
