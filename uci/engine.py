@@ -2,7 +2,7 @@ import re
 import sys
 from typing import Any, Optional, List
 
-from games.chess.board import Board, Move
+from games.chess.board import ChessBoard, Move
 from games.chess.exceptions import IllegalMove
 from ai.search import random_move, alpha_beta
 
@@ -75,17 +75,17 @@ class UciEngine:
         out('readyok')
 
     def __init__(self):
-        self.board = Board()
+        self.board = ChessBoard()
         self.params = {}
 
         for param in PARAMS:
             self.params[param.name] = param
 
     def reset_board(self):
-        self.board = Board()
+        self.board = ChessBoard()
 
     def set_fen(self, fen: str):
-        self.board = Board(fen=fen)
+        self.board = ChessBoard(fen=fen)
 
     def play_moves(self, moves: List[str]):
         for m in moves:

@@ -12,7 +12,7 @@ class TestPermutations(unittest.TestCase):
 
     def _assert_perft(self, fen: str, counts: dict):
         for depth in sorted(counts):
-            board = Board(fen)
+            board = ChessBoard(fen)
             self.assertEqual(
                 traverse_moves(board, depth, False),
                 counts[depth],

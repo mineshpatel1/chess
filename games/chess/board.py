@@ -53,7 +53,7 @@ from games.chess.square import (
 )
 
 
-class Board(GameState):
+class ChessBoard(GameState):
     # Chess branches wide enough, and evaluates slowly enough, for a process pool at the root
     # to pay for itself several times over.
     PARALLEL_ROOT = True
@@ -474,13 +474,13 @@ class Board(GameState):
         """
         return self.fen
 
-    def copy(self) -> 'Board':
+    def copy(self) -> 'ChessBoard':
         """
         A board at the same position, built from the FEN so it carries none of the history
         that only `unmake_move` would want. That is what the root workers need, and it is
         cheaper than snapshotting the move stack.
         """
-        return Board(self.fen)
+        return ChessBoard(self.fen)
 
     @property
     def has_insufficient_material(self):
@@ -595,7 +595,7 @@ class Board(GameState):
     def weighted_value(self) -> int:
         """
         Weighted evaluation of the game, positive for white, negative for black. Adjusts piece values depending on the
-        positions on the game. More expensive to calcualte than Board.value.
+        positions on the game. More expensive to calcualte than ChessBoard.value.
         """
         total = 0
         king_values = KING_LATE_GAME_POSITION_VALUES if self.is_endgame else KING_POSITION_VALUES
@@ -624,7 +624,7 @@ class Board(GameState):
 
     @property
     def relative_value(self):
-        """Board value normalised for the given player. All players should look to maximise this value."""
+        """ChessBoard value normalised for the given player. All players should look to maximise this value."""
         modifier = 1 if self.turn == WHITE else -1
         return modifier * self.value
 
@@ -729,7 +729,7 @@ class Board(GameState):
 
     def make_safe_move(self, move: Union[Move, str]):
         """
-        Same as Board.make_move, but validates if the move is legal first (slower).
+        Same as ChessBoard.make_move, but validates if the move is legal first (slower).
         """
         if isinstance(move, str):
             move = Move.from_uci(move)
@@ -926,7 +926,7 @@ class Board(GameState):
             raise Stalemate
 
     def __str__(self):
-        """Board representation using Unicode piece characters."""
+        """ChessBoard representation using Unicode piece characters."""
         board_str = ''
         rank = 8
         for sq in SQUARES_VFLIP:
@@ -945,7 +945,7 @@ class Board(GameState):
 
 class _BoardState:
     """Storage of bitboard integers representing state. Very cheap to copy, even if a bit ugly."""
-    def __init__(self, board: Board):
+    def __init__(self, board: ChessBoard):
         self.turn = board.turn
         self.en_passant_sq = board.en_passant_sq
         self.halfmove_clock = board.halfmove_clock
@@ -971,7 +971,7 @@ class _BoardState:
         self.occupied_colour_b = board.occupied_colour[BLACK]
         self.castling_rights = board.castling_rights
 
-    def load(self, board: Board):
+    def load(self, board: ChessBoard):
         board.turn = self.turn
         board.en_passant_sq = self.en_passant_sq
         board.halfmove_clock = self.halfmove_clock

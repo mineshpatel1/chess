@@ -21,7 +21,7 @@ import unittest
 from typing import List, Tuple
 
 from ai.search import _root_move_score, alpha_beta, MATE
-from games.chess.board import Board
+from games.chess.board import ChessBoard
 from games.chess.evaluation import weighted_eval
 from tests.chess.corpus import positions, DECISIVE_POSITIONS
 
@@ -40,8 +40,8 @@ def root_scores(fen: str, depth: int) -> List[Tuple[str, int]]:
     thing rather than a simplification of it.
     """
     scores = []
-    for move in Board(fen).legal_moves:
-        _, value = _root_move_score(Board(fen), depth, move, weighted_eval)
+    for move in ChessBoard(fen).legal_moves:
+        _, value = _root_move_score(ChessBoard(fen), depth, move, weighted_eval)
         scores.append((move.uci, value))
     return scores
 
@@ -66,7 +66,7 @@ class TestHarness(unittest.TestCase):
 
     def test_corpus_positions_all_have_moves(self):
         for fen in positions(CORPUS_SIZE):
-            self.assertTrue(any(Board(fen).legal_moves), fen)
+            self.assertTrue(any(ChessBoard(fen).legal_moves), fen)
 
     def test_search_is_deterministic(self):
         """A comparison against a search that varies run to run would prove nothing."""
@@ -83,7 +83,7 @@ class TestHarness(unittest.TestCase):
             for depth in (1, 2, 3):
                 self.assertEqual(
                     best_of(root_scores(fen, depth)),
-                    alpha_beta(Board(fen), depth=depth).uci,
+                    alpha_beta(ChessBoard(fen), depth=depth).uci,
                     f'{fen} at depth {depth}',
                 )
 

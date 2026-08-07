@@ -11,7 +11,7 @@ class TestMoves(unittest.TestCase):
             'd3d4', 'd3c4', 'd3e3', 'd3c3', 'b3c4', 'e2e3', 'c2c3', 'a2a4', 'a2a3', 'g1h3', 'e1f2', 'b1a3', 'b1c3',
             'e1f1', 'e1d1',
         }
-        bb = Board('rnbqkbnr/ppp1pppp/8/8/1Bp1R2P/1P1Q1PB1/P1PPP1P1/RN2K1N1 w Qkq - 0 1')
+        bb = ChessBoard('rnbqkbnr/ppp1pppp/8/8/1Bp1R2P/1P1Q1PB1/P1PPP1P1/RN2K1N1 w Qkq - 0 1')
         white_moves = {m.uci for m in bb._pseudo_legal_moves(WHITE)}
         self.assertEqual(white_moves, match)
 
@@ -22,7 +22,7 @@ class TestMoves(unittest.TestCase):
             ('rnb1kbnr/pppp1ppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR b', False),
             ('rnb2bnr/ppppkppp/4p3/7q/8/BP3P2/P1PPP1PP/RN1QKBNR b', True),
         ):
-            _board = Board(fen=fen)
+            _board = ChessBoard(fen=fen)
             self.assertEqual(_board.is_in_check, match)
 
     def test_safe_moves(self):
@@ -48,12 +48,12 @@ class TestMoves(unittest.TestCase):
                 'g3g4', 'c3c4',
             }),
         ):
-            _board = Board(fen=fen)
+            _board = ChessBoard(fen=fen)
             _moves = {m.uci for m in _board.legal_moves}
             self.assertEqual(_moves, match)
 
     def test_make_basic_moves(self):
-        bb = Board()
+        bb = ChessBoard()
         bb.make_move(Move.from_uci('c2c3'))
         with self.assertRaises(IllegalMove):
             bb.make_move(Move.from_uci('b2b3'))
@@ -70,12 +70,12 @@ class TestMoves(unittest.TestCase):
             ('rnb1kbnr/pppppppp/8/1P6/N1B5/BPqPPN2/P2Q1PPP/R3K2R w KQkq - 0 1', {'e1g1', 'e1d1', 'e1e2', 'e1f1'}),
             ('rnb1kbn1/pppppppp/4q3/1P6/N1B5/BP1PPN2/P2QrPPP/R3K2R w KQq - 0 1', {'e1f1', 'e1d1', 'e1e2'}),
         ):
-            _board = Board(fen=fen)
+            _board = ChessBoard(fen=fen)
             _moves = {m.uci for m in _board.legal_moves if m.from_square == E1}
             self.assertEqual(_moves, match)
 
     def test_castling_moves(self):
-        bb = Board()
+        bb = ChessBoard()
         for move in (
             'g1f3',
             'b8c6',
@@ -115,7 +115,7 @@ class TestMoves(unittest.TestCase):
         """Every castling availability field survives a load and a re-render of the FEN."""
         for flags in ('KQkq', 'KQk', 'KQ', 'Kkq', 'Kq', 'K', 'Qkq', 'Q', 'kq', 'k', 'q', '-'):
             fen = f'r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w {flags} - 0 1'
-            _board = Board(fen=fen)
+            _board = ChessBoard(fen=fen)
             self.assertEqual(_board.castle_flags, flags)
             self.assertEqual(_board.fen, fen)
 
@@ -124,40 +124,40 @@ class TestMoves(unittest.TestCase):
         Castling rights come from the FEN, not from where the pieces happen to stand. Every
         King and Rook here is on its original square, but the FEN says the rights are gone.
         """
-        _board = Board(fen='r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w - - 0 1')
+        _board = ChessBoard(fen='r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w - - 0 1')
         self.assertEqual(_board.castle_flags, '-')
         self.assertEqual({m.uci for m in _board.legal_moves if m.is_castling}, set())
 
     def test_fen_castling_field_narrowed_to_the_board(self):
         """A FEN claiming rights that the pieces cannot support is narrowed to reality."""
-        _board = Board(fen='4k3/8/8/8/8/8/8/4K3 w KQkq - 0 1')  # No Rooks anywhere
+        _board = ChessBoard(fen='4k3/8/8/8/8/8/8/4K3 w KQkq - 0 1')  # No Rooks anywhere
         self.assertEqual(_board.castle_flags, '-')
 
     def test_fen_without_castling_field_infers_from_position(self):
         """Short FENs carry no castling field, so rights fall back to piece placement."""
-        self.assertEqual(Board(fen='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w').castle_flags, 'KQkq')
-        self.assertEqual(Board(fen='4k3/8/8/8/8/8/8/4K3 w').castle_flags, '-')
+        self.assertEqual(ChessBoard(fen='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w').castle_flags, 'KQkq')
+        self.assertEqual(ChessBoard(fen='4k3/8/8/8/8/8/8/4K3 w').castle_flags, '-')
 
     def test_fen_does_not_resurrect_lost_castling_rights(self):
         """
         A round trip through FEN must not hand back rights the game has already forfeited.
-        Board.copy() rebuilds from the FEN, and ai.search.alpha_beta copies the board once per
+        ChessBoard.copy() rebuilds from the FEN, and ai.search.alpha_beta copies the board once per
         root move, so the search would otherwise plan castles the real game can no longer play.
         """
-        bb = Board('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1')
+        bb = ChessBoard('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1')
         for uci in ('e1e2', 'e8e7', 'e2e1', 'e7e8'):  # Both Kings step out and back
             bb.make_move(Move.from_uci(uci))
 
         self.assertEqual(bb.castle_flags, '-')
-        self.assertEqual(Board(bb.fen).castle_flags, '-')
-        self.assertEqual({m.uci for m in Board(bb.fen).legal_moves if m.is_castling}, set())
+        self.assertEqual(ChessBoard(bb.fen).castle_flags, '-')
+        self.assertEqual({m.uci for m in ChessBoard(bb.fen).legal_moves if m.is_castling}, set())
 
     def test_castling_rights_lost_when_rook_captured(self):
         """
         A Rook captured on its original square takes its castling right with it, even though
         the capturing piece is neither a King nor a Rook.
         """
-        bb = Board('r3k2r/pppppppp/8/8/8/6n1/PPPPPPPP/R3K2R b KQkq - 0 1')
+        bb = ChessBoard('r3k2r/pppppppp/8/8/8/6n1/PPPPPPPP/R3K2R b KQkq - 0 1')
         self.assertEqual(bb.castle_flags, 'KQkq')
 
         bb.make_move(Move.from_uci('g3h1'))  # Black Knight takes the Rook on h1
@@ -176,7 +176,7 @@ class TestMoves(unittest.TestCase):
         self.assertEqual({m.uci for m in bb.legal_moves if m.is_castling}, {'e8g8', 'e8c8'})
 
     def test_en_passant(self):
-        bb = Board()
+        bb = ChessBoard()
         for m in (
                 'a2a3',
                 'g7g5',
@@ -198,7 +198,7 @@ class TestMoves(unittest.TestCase):
         """
         # White Ka5 and Black Rh5 share rank 5, with the White b5 pawn and the Black c5 pawn
         # between them. Taking c5 en passant would remove both and open the rank.
-        bb = Board('8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1')
+        bb = ChessBoard('8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1')
         bb.make_move(Move.from_uci('b4b3'))
         bb.make_move(Move.from_uci('c7c5'))
 
@@ -206,14 +206,14 @@ class TestMoves(unittest.TestCase):
         self.assertEqual({m.uci for m in bb.legal_moves if m.from_square == B5}, {'b5b6'})
 
         # The same applies to Black, whose King on h4 shares rank 4 with the White b4 Rook
-        bb = Board('8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1')
+        bb = ChessBoard('8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1')
         bb.make_move(Move.from_uci('g2g4'))
 
         self.assertEqual(bb.en_passant_sq, G3)
         self.assertEqual({m.uci for m in bb.legal_moves if m.from_square == F4}, {'f4f3'})
 
     def test_promotion(self):
-        b = Board('rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1')
+        b = ChessBoard('rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1')
         promotion_moves = set()
         for m in b.legal_moves:
             if m.from_square == G7:
@@ -242,7 +242,7 @@ class TestMoves(unittest.TestCase):
         fen = 'rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1'
         placements = set()
         for piece in 'qrbn':
-            _board = Board(fen)
+            _board = ChessBoard(fen)
             _board.make_safe_move(f'g7g8{piece}')
             placements.add(_board.fen)
         self.assertEqual(len(placements), 4)
@@ -254,14 +254,14 @@ class TestMoves(unittest.TestCase):
         """
         fen = 'rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1'
 
-        _board = Board(fen)
+        _board = ChessBoard(fen)
         self.assertNotIn(Move.from_uci('g7g8'), list(_board.legal_moves))
         with self.assertRaises(IllegalMove):
             _board.make_safe_move('g7g8')
 
         # make_move is the unchecked path, and must still fail meaningfully rather than
         # with an AttributeError
-        _board = Board(fen)
+        _board = ChessBoard(fen)
         with self.assertRaises(IllegalMove):
             _board.make_move('g7g8')
 
@@ -279,7 +279,7 @@ class TestMoves(unittest.TestCase):
             ('3q1bRk/5p2/5N1p/8/8/8/2r2PPP/6K1 b', True),
             ('R7/3pkppr/5P1p/2p5/8/4P3/3P2PP/1NBQKBNR b K - 0 19', False),
         ):
-            _board = Board(fen=fen)
+            _board = ChessBoard(fen=fen)
             self.assertEqual(_board.is_checkmate, result)
 
     def test_stalemate(self):
@@ -291,7 +291,7 @@ class TestMoves(unittest.TestCase):
             ('5k2/5P2/5K2/8/8/8/8/8 w - - 0 1 w', False),
             ('5k2/5P2/5K2/8/8/8/8/8 b - - 0 1 b', True),
         ):
-            _board = Board(fen=fen)
+            _board = ChessBoard(fen=fen)
             self.assertEqual(_board.is_stalemate, result)
 
     def test_insufficient_material(self):
@@ -304,7 +304,7 @@ class TestMoves(unittest.TestCase):
             ('8/8/3bb3/8/1k6/8/3K4/8 b - - 0 1', False),
             ('8/8/3b4/8/1k6/4B3/3K4/8 b - - 0 1', True),
         ):
-            _board = Board(fen)
+            _board = ChessBoard(fen)
             self.assertEqual(_board.has_insufficient_material, result)
 
     def test_fifty_move_draw_counts_plies(self):
@@ -312,13 +312,13 @@ class TestMoves(unittest.TestCase):
         The fifty move rule is fifty moves by *each* player. The halfmove clock counts plies,
         so the draw is only claimable once it reaches 100, not 50.
         """
-        _board = Board('8/8/4k3/8/8/4K3/8/R7 w - - 49 80')
+        _board = ChessBoard('8/8/4k3/8/8/4K3/8/R7 w - - 49 80')
         _board.make_move(Move.from_uci('a1a2'))
         self.assertEqual(_board.halfmove_clock, 50)  # Only 25 moves each
         self.assertFalse(_board.is_game_over)
         _board.raise_if_game_over()  # Must not raise
 
-        _board = Board('8/8/4k3/8/8/4K3/8/R7 w - - 98 80')
+        _board = ChessBoard('8/8/4k3/8/8/4K3/8/R7 w - - 98 80')
         _board.make_move(Move.from_uci('a1a2'))
         self.assertEqual(_board.halfmove_clock, 99)
         self.assertFalse(_board.is_game_over)
@@ -330,7 +330,7 @@ class TestMoves(unittest.TestCase):
             _board.raise_if_game_over()
 
     def test_threefold_repetition(self):
-        _board = Board(track_repetitions=True)
+        _board = ChessBoard(track_repetitions=True)
         for move in (
             'B2B3',
             'C7C6',

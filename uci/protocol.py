@@ -6,7 +6,7 @@ import asyncio
 from typing import Any, Optional, List, Tuple
 
 import log
-from games.chess.board import Board
+from games.chess.board import ChessBoard
 
 
 class CommandState(enum.Enum):
@@ -140,7 +140,7 @@ class UciProtocol(asyncio.SubprocessProtocol):
         self.send_line(' '.join(command))
         await self.ping()
 
-    async def set_position_from_board(self, board: Board):
+    async def set_position_from_board(self, board: ChessBoard):
         await self.set_position(board.fen)
 
     async def get_best_move(self):

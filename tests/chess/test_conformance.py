@@ -10,7 +10,7 @@ one that already worked.
 import unittest
 
 from games.base import DRAW, win
-from games.chess.board import Board
+from games.chess.board import ChessBoard
 from games.chess.constants import WHITE, BLACK
 from tests.conformance import GameConformanceTests
 
@@ -22,23 +22,26 @@ class TestChessConformance(GameConformanceTests, unittest.TestCase):
     PLAYOUT_PLIES = 10
     SEARCH_DEPTH = 2
 
-    def new_game(self) -> Board:
-        return Board()
+    def new_game(self) -> ChessBoard:
+        return ChessBoard()
 
     def decided_games(self):
         return [
             # White mated by Qh4, so Black won
-            (Board('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 1'), win(BLACK)),
+            (
+                ChessBoard('rnb1kbnr/pppp1ppp/4p3/8/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 0 1'),
+                win(BLACK),
+            ),
             # Black to move, nowhere to go, not in check
-            (Board('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1'), DRAW),
+            (ChessBoard('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1'), DRAW),
             # Bishop and King cannot mate
-            (Board('7k/8/8/8/8/8/8/6BK w - - 0 1'), DRAW),
+            (ChessBoard('7k/8/8/8/8/8/8/6BK w - - 0 1'), DRAW),
             # The halfmove clock has run out
-            (Board('4k3/8/8/8/8/8/8/R3K3 w - - 100 60'), DRAW),
+            (ChessBoard('4k3/8/8/8/8/8/8/R3K3 w - - 100 60'), DRAW),
         ]
 
     def forced_win_in_one(self):
-        return Board('6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1'), WHITE  # Ra8 is mate
+        return ChessBoard('6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1'), WHITE  # Ra8 is mate
 
 
 def main():

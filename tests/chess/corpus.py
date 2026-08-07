@@ -9,7 +9,7 @@ disagreement found once can be found again.
 import random
 from typing import List
 
-from games.chess.board import Board
+from games.chess.board import ChessBoard
 from games.chess.constants import STARTING_STATE
 
 # Playout starting points. The perft positions are here because they were chosen to be awkward
@@ -46,14 +46,14 @@ def positions(count: int = 200, seed: int = 0, max_plies: int = 60) -> List[str]
     found = list(DECISIVE_POSITIONS)
     seen = set(found)
 
-    boards = [Board(fen) for fen in SEED_POSITIONS]
+    boards = [ChessBoard(fen) for fen in SEED_POSITIONS]
     plies = 0
 
     while len(found) < count and plies < max_plies:
         for i, board in enumerate(boards):
             moves = list(board.legal_moves)
             if not moves:  # Playout finished, so restart it from its seed
-                boards[i] = Board(SEED_POSITIONS[i])
+                boards[i] = ChessBoard(SEED_POSITIONS[i])
                 continue
 
             board.make_move(rng.choice(moves))

@@ -24,7 +24,7 @@ async def main():
         await eng.set_position_from_board(board)
         return await eng.get_best_move()
 
-    board = Board()
+    board = ChessBoard()
     await simulate_game_async(board, lambda b: alpha_beta(b, 4), engine_move)
     log.info(board.pgn_uci)
 

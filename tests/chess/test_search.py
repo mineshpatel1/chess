@@ -2,7 +2,7 @@ import io
 import unittest
 import contextlib
 
-from games.chess.board import Board
+from games.chess.board import ChessBoard
 from games.chess.constants import WHITE, BLACK
 from ai.search import alpha_beta, terminal_score, MATE
 from uci.engine import UciEngine
@@ -24,11 +24,11 @@ class TestTerminalValue(unittest.TestCase):
     # Black to move with nowhere to go, but not in check
     STALEMATED = '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1'
 
-    def _score(self, board: Board, depth: int) -> int:
+    def _score(self, board: ChessBoard, depth: int) -> int:
         return terminal_score(board.outcome_without_moves, board.turn, depth)
 
     def test_checkmate_is_scored_against_the_side_to_move(self):
-        board = Board(fen=self.MATED)
+        board = ChessBoard(fen=self.MATED)
         self.assertTrue(board.is_checkmate)
         self.assertEqual(board.turn, WHITE)
 
@@ -39,14 +39,14 @@ class TestTerminalValue(unittest.TestCase):
         self.assertEqual(board.outcome_without_moves.winner, BLACK)
 
     def test_closer_mates_score_higher(self):
-        board = Board(fen=self.MATED)
+        board = ChessBoard(fen=self.MATED)
 
         # Remaining depth is larger nearer the root, so a shallower mate scores further from
         # zero. Being mated is negative, so nearer the root is the *smaller* number
         self.assertLess(self._score(board, 5), self._score(board, 3))
 
     def test_stalemate_scores_as_a_draw(self):
-        board = Board(fen=self.STALEMATED)
+        board = ChessBoard(fen=self.STALEMATED)
         self.assertTrue(board.is_stalemate)
 
         # A draw is a draw whoever is searching, and at any depth
@@ -61,7 +61,7 @@ class TestSearch(unittest.TestCase):
     def test_finds_mate_in_one(self):
         fen = '6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1'  # Ra8 is mate
         for depth in (2, 3):
-            board = Board(fen=fen)
+            board = ChessBoard(fen=fen)
             move = alpha_beta(board, depth=depth)
             self.assertEqual(move.uci, 'a1a8', f'at depth {depth}')
 
@@ -76,18 +76,18 @@ class TestSearch(unittest.TestCase):
         """
         fen = 'r5k1/5ppp/8/8/8/8/5PPP/7K w - - 0 1'
         for depth in (3, 4):
-            move = alpha_beta(Board(fen=fen), depth=depth)
+            move = alpha_beta(ChessBoard(fen=fen), depth=depth)
             self.assertIn(move.uci, {'g2g3', 'g2g4', 'h2h3', 'h2h4'}, f'at depth {depth}')
 
             # And prove the rejected moves really do lose
-            board = Board(fen=fen)
+            board = ChessBoard(fen=fen)
             board.make_move(move)
             board.make_move('a8a1')
             self.assertFalse(board.is_checkmate, f'at depth {depth}')
 
     def test_prefers_the_faster_mate(self):
         """Rc8 is mate at once. Several Queen moves mate a move later and are generated first."""
-        move = alpha_beta(Board(fen='7k/Q7/8/8/8/8/8/2R4K w - - 0 1'), depth=4)
+        move = alpha_beta(ChessBoard(fen='7k/Q7/8/8/8/8/8/2R4K w - - 0 1'), depth=4)
         self.assertEqual(move.uci, 'c1c8')
 
     def test_prefers_a_draw_to_a_losing_position(self):
@@ -97,12 +97,12 @@ class TestSearch(unittest.TestCase):
         square and stalemates Black. A draw beats every other move on the board.
         """
         fen = 'kn5R/3p1p2/1P1p1p2/P2p1p2/3p1P2/3p4/3P4/7K w - - 0 1'
-        self.assertLess(Board(fen=fen).value, 0)  # White really is losing
+        self.assertLess(ChessBoard(fen=fen).value, 0)  # White really is losing
 
-        move = alpha_beta(Board(fen=fen), depth=4)
+        move = alpha_beta(ChessBoard(fen=fen), depth=4)
         self.assertEqual(move.uci, 'a5a6')
 
-        board = Board(fen=fen)
+        board = ChessBoard(fen=fen)
         board.make_move(move)
         self.assertTrue(board.is_stalemate)
 

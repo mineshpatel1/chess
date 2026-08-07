@@ -11,8 +11,8 @@ Adding a game means adding its class here and nowhere else.
 from typing import Tuple, Type
 
 from games.base import GameState
-from games.chess.board import Board
+from games.chess.board import ChessBoard
 
 GAMES: Tuple[Type[GameState], ...] = (
-    Board,
+    ChessBoard,
 )

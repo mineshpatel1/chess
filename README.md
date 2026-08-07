@@ -66,7 +66,7 @@ Search time grows steeply with depth — see the benchmarks below.
 |---|---|
 | `games/base.py` | The `GameState` contract — the only thing the search knows about a game |
 | `games/chess/bitboard.py` | 64-bit board representation, precomputed attack/ray tables |
-| `games/chess/board.py` | Board state, move generation, legality, FEN, draw detection |
+| `games/chess/board.py` | `ChessBoard`: position, move generation, legality, FEN, draws |
 | `games/chess/evaluation.py` | Material and piece-square evaluation |
 | `games/chess/move.py`, `piece.py`, `square.py` | Value types |
 | `ai/search.py` | Negamax with alpha-beta pruning, and a random mover |
