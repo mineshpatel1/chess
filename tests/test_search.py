@@ -4,14 +4,18 @@ import contextlib
 
 from games.chess.board import Board
 from games.chess.constants import WHITE, BLACK
-from ai.algorithms import alpha_beta, _terminal_value
+from ai.algorithms import alpha_beta, terminal_score, MATE
 from uci.engine import UciEngine
 
 
 class TestTerminalValue(unittest.TestCase):
     """
-    Direct cover for the scoring of positions with no legal moves. Values inside the search
-    are positive for the opponent, and the sign convention is the whole of what was wrong.
+    Direct cover for the scoring of positions with no legal moves.
+
+    Negamax has every node speak for whoever is to move in it, so a finished position is
+    scored from the point of view of the player facing it. Being mated is the worst thing that
+    can happen to the side it happens to, and scores negatively no matter who is searching -
+    which is exactly what lets one function serve every node of the tree.
     """
 
     # White has been mated by Qh4, and it is White to move
@@ -20,31 +24,35 @@ class TestTerminalValue(unittest.TestCase):
     # Black to move with nowhere to go, but not in check
     STALEMATED = '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1'
 
+    def _score(self, board: Board, depth: int) -> int:
+        return terminal_score(board.outcome_without_moves, board.turn, depth)
+
     def test_checkmate_is_scored_against_the_side_to_move(self):
         board = Board(fen=self.MATED)
         self.assertTrue(board.is_checkmate)
+        self.assertEqual(board.turn, WHITE)
 
-        # We are the side being mated, which is the best possible outcome for the opponent
-        self.assertGreater(_terminal_value(board, 3, WHITE), 0)
+        # White is the side being mated, and it is White who has to look at this position
+        self.assertEqual(self._score(board, 3), -(MATE + 3))
 
-        # The opponent is the side being mated, which is the best possible outcome for us
-        self.assertLess(_terminal_value(board, 3, BLACK), 0)
+        # The winner is Black, whichever way round the search happens to be
+        self.assertEqual(board.outcome_without_moves.winner, BLACK)
 
     def test_closer_mates_score_higher(self):
         board = Board(fen=self.MATED)
 
         # Remaining depth is larger nearer the root, so a shallower mate scores further from
-        # zero and wins the comparison
-        self.assertGreater(_terminal_value(board, 5, WHITE), _terminal_value(board, 3, WHITE))
-        self.assertLess(_terminal_value(board, 5, BLACK), _terminal_value(board, 3, BLACK))
+        # zero. Being mated is negative, so nearer the root is the *smaller* number
+        self.assertLess(self._score(board, 5), self._score(board, 3))
 
     def test_stalemate_scores_as_a_draw(self):
         board = Board(fen=self.STALEMATED)
         self.assertTrue(board.is_stalemate)
 
-        # A draw is a draw whoever is searching
-        self.assertEqual(_terminal_value(board, 3, WHITE), 0)
-        self.assertEqual(_terminal_value(board, 3, BLACK), 0)
+        # A draw is a draw whoever is searching, and at any depth
+        self.assertEqual(self._score(board, 3), 0)
+        self.assertEqual(self._score(board, 5), 0)
+        self.assertIsNone(board.outcome_without_moves.winner)
 
 
 class TestSearch(unittest.TestCase):

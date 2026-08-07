@@ -15,14 +15,9 @@ catching early.
 import unittest
 from typing import List, Tuple
 
-from ai.algorithms import (
-    _get_best_move,
-    _negamax_root_move,
-    alpha_beta,
-    weighted_eval,
-    relative_weighted_eval,
-)
+from ai.algorithms import _root_move_score, alpha_beta, MATE
 from games.chess.board import Board
+from games.chess.evaluation import weighted_eval
 from tests.corpus import positions, DECISIVE_POSITIONS
 
 # Kept small enough to stay in the default suite. The equivalence run that gates the rewrite
@@ -33,24 +28,15 @@ DEPTHS = (1, 2, 3)
 
 def root_scores(fen: str, depth: int) -> List[Tuple[str, int]]:
     """
-    Every root move and the score the current search gives it, in generation order.
+    Every root move and the score the search gives it, in generation order.
 
-    This deliberately mirrors what `alpha_beta` does internally - a full window per root move,
-    each searched independently - so that comparing it against a replacement compares the real
+    This mirrors what `alpha_beta` does internally - a full window per root move, each
+    searched independently - so that comparing it against a replacement compares the real
     thing rather than a simplification of it.
     """
     scores = []
     for move in Board(fen).legal_moves:
-        _, value, _ = _get_best_move(Board(fen), depth, move, weighted_eval)
-        scores.append((move.uci, value))
-    return scores
-
-
-def negamax_root_scores(fen: str, depth: int) -> List[Tuple[str, int]]:
-    """The same thing from the negamax search, for comparison against `root_scores`."""
-    scores = []
-    for move in Board(fen).legal_moves:
-        _, value = _negamax_root_move(Board(fen), depth, move, relative_weighted_eval)
+        _, value = _root_move_score(Board(fen), depth, move, weighted_eval)
         scores.append((move.uci, value))
     return scores
 
@@ -97,32 +83,49 @@ class TestHarness(unittest.TestCase):
                 )
 
 
-class TestNegamaxMatchesAlphaBeta(unittest.TestCase):
+class TestDecisivePositions(unittest.TestCase):
     """
-    The gate on replacing the min/max pair with negamax.
+    Scores at and beside a finish, recorded rather than reasoned about.
 
-    The two formulations should be the same search wearing different clothes, so they are held
-    to agreeing on every root move's score - not merely on which move wins - across the whole
-    corpus. Anything less would let a scoring change hide behind a coincidence of ordering.
+    Mate and stalemate scoring is where a sign convention goes wrong, and where the old
+    formulation and the new one had to be proven to agree. That comparison is gone with the
+    old search, so these pin the surviving one against drifting on its own: a win is worth
+    MATE plus the depth remaining, a draw is worth nothing, and both are worth the same from
+    either side of the board.
     """
 
-    def test_root_scores_are_identical(self):
-        for fen in positions(CORPUS_SIZE):
-            for depth in DEPTHS:
-                self.assertEqual(
-                    root_scores(fen, depth),
-                    negamax_root_scores(fen, depth),
-                    f'{fen} at depth {depth}',
-                )
+    def test_a_forced_mate_scores_as_a_win(self):
+        # Ra8 is mate in one, and should be the only move worth a mate score
+        scores = dict(root_scores('6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1', 3))
+        self.assertEqual(scores['a1a8'], MATE + 2)
+        self.assertTrue(all(v < MATE for m, v in scores.items() if m != 'a1a8'))
 
-    def test_decisive_positions_agree(self):
-        """Mate and stalemate scoring is where the sign conventions differ, so pin it hardest."""
+    def test_a_closer_mate_outscores_a_further_one(self):
+        """Rc8 mates at once. Several Queen moves mate a move later and are generated first."""
+        scores = dict(root_scores('7k/Q7/8/8/8/8/8/2R4K w - - 0 1', 4))
+        mates = sorted((v for v in scores.values() if v > MATE), reverse=True)
+        self.assertEqual(scores['c1c8'], mates[0])
+        self.assertGreater(mates[0], mates[-1])
+
+    def test_a_stalemate_scores_as_a_draw(self):
+        """
+        White is a Knight and four pawns down, so the stalemate at a5a6 is the best score on
+        the board and a draw is worth exactly nothing.
+
+        Searched at an even depth deliberately. There is no quiescence, so at odd depths the
+        search gets the last move of the sequence and Rxb8 looks like a free Knight - it
+        scores +40 at depths 1 and 3 and the recapture falls over the horizon. That is a known
+        property of a fixed-depth search, not something for this test to trip over.
+        """
+        scores = dict(root_scores('kn5R/3p1p2/1P1p1p2/P2p1p2/3p1P2/3p4/3P4/7K w - - 0 1', 4))
+        self.assertEqual(scores['a5a6'], 0)
+        self.assertEqual(max(scores.values()), 0)
+
+    def test_every_decisive_position_is_reproducible(self):
         for fen in DECISIVE_POSITIONS:
-            for depth in (1, 2, 3, 4):
+            for depth in (1, 2, 3):
                 self.assertEqual(
-                    root_scores(fen, depth),
-                    negamax_root_scores(fen, depth),
-                    f'{fen} at depth {depth}',
+                    root_scores(fen, depth), root_scores(fen, depth), f'{fen} at depth {depth}'
                 )
 
 

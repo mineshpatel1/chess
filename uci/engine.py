@@ -107,7 +107,7 @@ class UciEngine:
         if self.params['skill'].value == 0:
             move = random_move(self.board)
         else:
-            move = alpha_beta(self.board, depth=self.params['skill'].value, print_count=False)
+            move = alpha_beta(self.board, depth=self.params['skill'].value)
         out(f'bestmove {move.uci}')
 
     def about(self):

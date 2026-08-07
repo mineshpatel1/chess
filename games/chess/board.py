@@ -2,6 +2,7 @@ from typing import Dict, Optional, Union
 
 import log
 from games.base import GameState, Outcome, DRAW, win
+from games.chess.evaluation import weighted_eval
 from games.chess.bitboard import *
 from games.chess.move import Move
 from games.chess.piece import Piece
@@ -56,6 +57,8 @@ class Board(GameState):
     # Chess branches wide enough, and evaluates slowly enough, for a process pool at the root
     # to pay for itself several times over.
     PARALLEL_ROOT = True
+
+    DEFAULT_EVAL = staticmethod(weighted_eval)
 
     def __init__(self, fen: str = STARTING_STATE, track_repetitions: bool = False):
         """
