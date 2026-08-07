@@ -474,6 +474,24 @@ class ChessBoard(GameState):
         """
         return self.fen
 
+    def parse_move(self, text: str) -> Move:
+        """
+        A move in UCI, as a person would type it into the engine: e2e4, or e7e8q to promote.
+
+        The inherited default would already match this, since `str(Move)` is the UCI. This is
+        here to say why a move was refused, which for chess is usually that it is illegal
+        rather than that it was mistyped, and the two deserve different messages.
+        """
+        uci = text.strip().lower()
+        try:
+            move = Move.from_uci(uci)
+        except (AssertionError, ValueError, IndexError):
+            raise ValueError(f'{text.strip()!r} is not a move: try something like e2e4') from None
+
+        if move not in self.legal_moves:
+            raise ValueError(f'{uci} is not legal here')
+        return move
+
     def copy(self) -> 'ChessBoard':
         """
         A board at the same position, built from the FEN so it carries none of the history
