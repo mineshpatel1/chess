@@ -6,7 +6,7 @@ import asyncio
 from typing import Any, Optional, List, Tuple
 
 import log
-from game.board import Board
+from games.chess.board import Board
 
 
 class CommandState(enum.Enum):

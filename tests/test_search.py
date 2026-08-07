@@ -2,8 +2,8 @@ import io
 import unittest
 import contextlib
 
-from game.board import Board
-from game.constants import WHITE, BLACK
+from games.chess.board import Board
+from games.chess.constants import WHITE, BLACK
 from ai.algorithms import alpha_beta, _terminal_value
 from uci.engine import UciEngine
 

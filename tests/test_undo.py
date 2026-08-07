@@ -1,7 +1,7 @@
 import unittest
 
-from game.constants import STARTING_STATE
-from game.board import Board, Move
+from games.chess.constants import STARTING_STATE
+from games.chess.board import Board, Move
 
 
 class TestUndo(unittest.TestCase):

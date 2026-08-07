@@ -1,4 +1,4 @@
-from game.constants import (
+from games.chess.constants import (
     WHITE,
     BLACK,
     PieceType,

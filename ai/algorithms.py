@@ -4,7 +4,7 @@ import multiprocessing
 from typing import Callable
 
 import log
-from game.board import Board, Move
+from games.chess.board import Board, Move
 
 LOW_BOUND = -9999999
 HIGH_BOUND = 9999999

@@ -5,7 +5,7 @@ import inspect
 from typing import TYPE_CHECKING, Tuple, Union, Callable
 
 import log
-from game.board import Board
+from games.chess.board import Board
 
 if TYPE_CHECKING:
     # python-chess is an optional dev dependency, used only to cross-check this engine

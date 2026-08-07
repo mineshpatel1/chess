@@ -2,7 +2,7 @@ import os
 import asyncio
 
 import log
-from game.board import *
+from games.chess.board import *
 from ai.algorithms import random_move, alpha_beta
 from ai.benchmark import simulate_game_async
 from uci.stockfish import start_engine

@@ -1,10 +1,10 @@
 from typing import Dict, Optional, Union
 
 import log
-from game.bitboard import *
-from game.move import Move
-from game.piece import Piece
-from game.exceptions import (
+from games.chess.bitboard import *
+from games.chess.move import Move
+from games.chess.piece import Piece
+from games.chess.exceptions import (
     Checkmate,
     Stalemate,
     IllegalMove,
@@ -12,7 +12,7 @@ from game.exceptions import (
     ThreefoldRepetition,
     InsufficientMaterial,
 )
-from game.constants import (
+from games.chess.constants import (
     Colour,
     WHITE,
     BLACK,
@@ -40,7 +40,7 @@ from game.constants import (
     WEST,
     NORTHWEST,
 )
-from game.square import (
+from games.chess.square import (
     PAWN_POSITION_VALUES,
     ROOK_POSITION_VALUES,
     KNIGHT_POSITION_VALUES,

@@ -1,8 +1,8 @@
 from __future__ import annotations
 from typing import Union, Optional
 
-from game.constants import PieceType, QUEEN, ROOK, BISHOP, KNIGHT
-from game.square import Square, file_rank_to_index, char_to_file
+from games.chess.constants import PieceType, QUEEN, ROOK, BISHOP, KNIGHT
+from games.chess.square import Square, file_rank_to_index, char_to_file
 
 
 class Move:

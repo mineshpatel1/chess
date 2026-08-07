@@ -1,6 +1,6 @@
 import unittest
 
-from game.board import *
+from games.chess.board import *
 
 
 class TestBitboard(unittest.TestCase):

@@ -1,6 +1,6 @@
 from typing import Tuple
 
-from game.constants import (
+from games.chess.constants import (
     WHITE,
     BLACK,
     FILE_NAMES,

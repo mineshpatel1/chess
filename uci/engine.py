@@ -2,8 +2,8 @@ import re
 import sys
 from typing import Any, Optional, List
 
-from game.board import Board, Move
-from game.exceptions import IllegalMove
+from games.chess.board import Board, Move
+from games.chess.exceptions import IllegalMove
 from ai.algorithms import random_move, alpha_beta
 
 
