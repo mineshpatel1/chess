@@ -23,7 +23,7 @@ from typing import List, Tuple
 from ai.search import _root_move_score, alpha_beta, MATE
 from games.chess.board import Board
 from games.chess.evaluation import weighted_eval
-from tests.corpus import positions, DECISIVE_POSITIONS
+from tests.chess.corpus import positions, DECISIVE_POSITIONS
 
 # Kept small enough to stay in the default suite. The equivalence run that gates the rewrite
 # widens these considerably - see the module docstring in tests/test_all.py.
