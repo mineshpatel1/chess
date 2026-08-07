@@ -15,9 +15,15 @@ catching early.
 import unittest
 from typing import List, Tuple
 
-from ai.algorithms import _get_best_move, alpha_beta, weighted_eval
+from ai.algorithms import (
+    _get_best_move,
+    _negamax_root_move,
+    alpha_beta,
+    weighted_eval,
+    relative_weighted_eval,
+)
 from games.chess.board import Board
-from tests.corpus import positions
+from tests.corpus import positions, DECISIVE_POSITIONS
 
 # Kept small enough to stay in the default suite. The equivalence run that gates the rewrite
 # widens these considerably - see the module docstring in tests/test_all.py.
@@ -36,6 +42,15 @@ def root_scores(fen: str, depth: int) -> List[Tuple[str, int]]:
     scores = []
     for move in Board(fen).legal_moves:
         _, value, _ = _get_best_move(Board(fen), depth, move, weighted_eval)
+        scores.append((move.uci, value))
+    return scores
+
+
+def negamax_root_scores(fen: str, depth: int) -> List[Tuple[str, int]]:
+    """The same thing from the negamax search, for comparison against `root_scores`."""
+    scores = []
+    for move in Board(fen).legal_moves:
+        _, value = _negamax_root_move(Board(fen), depth, move, relative_weighted_eval)
         scores.append((move.uci, value))
     return scores
 
@@ -78,6 +93,35 @@ class TestHarness(unittest.TestCase):
                 self.assertEqual(
                     best_of(root_scores(fen, depth)),
                     alpha_beta(Board(fen), depth=depth).uci,
+                    f'{fen} at depth {depth}',
+                )
+
+
+class TestNegamaxMatchesAlphaBeta(unittest.TestCase):
+    """
+    The gate on replacing the min/max pair with negamax.
+
+    The two formulations should be the same search wearing different clothes, so they are held
+    to agreeing on every root move's score - not merely on which move wins - across the whole
+    corpus. Anything less would let a scoring change hide behind a coincidence of ordering.
+    """
+
+    def test_root_scores_are_identical(self):
+        for fen in positions(CORPUS_SIZE):
+            for depth in DEPTHS:
+                self.assertEqual(
+                    root_scores(fen, depth),
+                    negamax_root_scores(fen, depth),
+                    f'{fen} at depth {depth}',
+                )
+
+    def test_decisive_positions_agree(self):
+        """Mate and stalemate scoring is where the sign conventions differ, so pin it hardest."""
+        for fen in DECISIVE_POSITIONS:
+            for depth in (1, 2, 3, 4):
+                self.assertEqual(
+                    root_scores(fen, depth),
+                    negamax_root_scores(fen, depth),
                     f'{fen} at depth {depth}',
                 )
 

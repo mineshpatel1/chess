@@ -4,6 +4,7 @@ import multiprocessing
 from typing import Callable
 
 import log
+from games.base import GameState, Outcome
 from games.chess.board import Board, Move
 
 LOW_BOUND = -9999999
@@ -42,6 +43,17 @@ def simple_eval(board: Board) -> int:
 
 def weighted_eval(board: Board) -> int:
     return board.weighted_value
+
+
+# Negamax wants every score from the point of view of the player to move, so that a node can
+# negate what its children hand back without knowing who anybody is. Board.value and
+# Board.weighted_value are absolute - positive for White - so these flip them for Black.
+def relative_simple_eval(board: Board) -> int:
+    return board.value if board.turn else -board.value
+
+
+def relative_weighted_eval(board: Board) -> int:
+    return board.weighted_value if board.turn else -board.weighted_value
 
 
 def first_possible_move(board: Board) -> Move:
@@ -143,6 +155,65 @@ def negamax(board: Board, depth: int, print_count: bool = False):
             f"Evaluations: {counter} in {elapsed}s at {counter/elapsed} evals/s."
         )
     return best_move
+
+
+def terminal_score(outcome: Outcome, turn: bool, depth: int) -> int:
+    """
+    Scores a finished position from the point of view of the player to move in it.
+
+    Losing is the worst thing that can happen to the side it happens to, so a lost position
+    scores negatively whoever is searching - which is what lets one function serve every node
+    of a negamax tree, where each node speaks for whoever is to move in it.
+
+    Deeper wins score lower, `depth` being the depth still remaining, so a mate in one is
+    preferred to a mate in five and the engine does not shuffle in a won position.
+    """
+    if outcome.winner is None:
+        return 0
+    return (MATE + depth) if outcome.winner == turn else -(MATE + depth)
+
+
+def _negamax_ab(state: GameState, depth: int, alpha: int, beta: int, evaluate: Callable) -> int:
+    """
+    Alpha-beta in the negamax formulation: every node returns a score from the point of view
+    of the player to move in it, and its parent negates what it gets back.
+
+    The window is checked before the horizon so that a game already won scores as a win rather
+    than being handed to the evaluation. For chess `outcome` is the inherited None - it has no
+    win condition that can be spotted without generating moves - so this costs one attribute
+    load and the node order is unchanged.
+    """
+    outcome = state.outcome
+    if outcome is not None:
+        return terminal_score(outcome, state.turn, depth)
+
+    if depth == 0:
+        return evaluate(state)
+
+    any_move = False
+    for move in state.legal_moves:
+        any_move = True
+        state.make_move(move)
+        score = -_negamax_ab(state, depth - 1, -beta, -alpha, evaluate)
+        state.unmake_move()
+
+        if score >= beta:
+            return beta  # Fail-hard, matching the search this replaces bound for bound
+        if score > alpha:
+            alpha = score
+
+    if not any_move:  # Nothing to play: checkmate, stalemate, or a full board
+        return terminal_score(state.outcome_without_moves, state.turn, depth)
+
+    return alpha
+
+
+def _negamax_root_move(state: GameState, depth: int, move, evaluate: Callable):
+    """One root move, searched on a full window so that root moves stay independent."""
+    state.make_move(move)
+    value = -_negamax_ab(state, depth - 1, LOW_BOUND, HIGH_BOUND, evaluate)
+    state.unmake_move()
+    return move, value
 
 
 def _alpha_beta_min(board: Board, depth: int, alpha: int, beta: int, player: bool, board_eval: Callable, counter: int):
