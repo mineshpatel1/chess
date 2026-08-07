@@ -16,7 +16,7 @@ import play
 from games.base import DRAW, win
 from games.chess.board import ChessBoard
 from games.connect4.board import Connect4
-from games.connect4.constants import FULL_BOARD, RED, YELLOW
+from games.connect4.constants import FULL_BOARD, YELLOW
 from tests.connect4.corpus import DRAWN_GAME, HORIZONTAL_WIN
 
 

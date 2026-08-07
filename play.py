@@ -66,7 +66,7 @@ def computer_player(depth: int) -> Callable:
     return lambda state: alpha_beta(state, depth=depth)
 
 
-def choose_players(state: GameState) -> Tuple[Callable, Callable]:
+def choose_players() -> Tuple[Callable, Callable]:
     """Asks who is playing each side, and how hard the computer should think."""
     kinds = ['Human', 'Computer', 'Random']
     choosers: List[Optional[Callable]] = []
@@ -120,9 +120,8 @@ def main() -> None:
     games: Tuple[Type[GameState], ...] = GAMES
     game = games[_choose('Game:', [cls.__name__ for cls in games])]
 
-    state = game()
-    first, second = choose_players(state)
-    play(state, first, second)
+    first, second = choose_players()
+    play(game(), first, second)
 
 
 if __name__ == '__main__':

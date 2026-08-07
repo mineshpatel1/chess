@@ -36,7 +36,7 @@ continuations - see tests/connect4/test_permutations.py.)
 import unittest
 from typing import Callable, List, Tuple
 
-from ai.search import MATE, _root_move_score, alpha_beta, terminal_score
+from ai.search import MATE, alpha_beta, terminal_score
 from games.base import GameState
 from games.connect4.bitboard import bit_count, drops
 from games.connect4.board import Connect4

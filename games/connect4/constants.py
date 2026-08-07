@@ -55,19 +55,15 @@ DISC_NAMES = {YELLOW: 'Yellow', RED: 'Red'}
 # One mask per column, covering its real cells and not its sentinel.
 COLUMN_MASKS: List[int] = [((1 << ROWS) - 1) << (column * STRIDE) for column in range(COLS)]
 
-# Every playable cell. Every sentinel is excluded by construction rather than by subtraction,
-# which is what makes `& FULL_BOARD` a safe way to discard a walk that left the board.
-FULL_BOARD = 0
-for _mask in COLUMN_MASKS:
-    FULL_BOARD |= _mask
-
-SENTINEL_ROW = 0
-BOTTOM_ROW = 0
-TOP_ROW = 0
-for _column in range(COLS):
-    SENTINEL_ROW |= 1 << (_column * STRIDE + ROWS)
-    BOTTOM_ROW |= 1 << (_column * STRIDE)
-    TOP_ROW |= 1 << (_column * STRIDE + ROWS - 1)
+# Every playable cell. Sentinels are excluded by construction rather than by subtraction, which
+# is what makes `& FULL_BOARD` a safe way to discard a walk that left the board.
+#
+# `sum` rather than `|` throughout: the masks being summed are disjoint by construction, one
+# cell per column, so the two are the same and this reads better.
+FULL_BOARD = sum(COLUMN_MASKS)
+SENTINEL_ROW = sum(1 << (column * STRIDE + ROWS) for column in range(COLS))
+BOTTOM_ROW = sum(1 << (column * STRIDE) for column in range(COLS))
+TOP_ROW = sum(1 << (column * STRIDE + ROWS - 1) for column in range(COLS))
 
 # Any straight line of constant (dcolumn, drow) is a constant step in index, so a diagonal is
 # not a special case - only a larger constant.
@@ -91,5 +87,3 @@ DIRECTIONS: Tuple[int, ...] = (VERTICAL, HORIZONTAL, DIAGONAL_UP, DIAGONAL_DOWN)
 CENTRE_FIRST: Tuple[int, ...] = tuple(
     sorted(range(COLS), key=lambda column: (abs(2 * column - (COLS - 1)), column))
 )
-
-del _mask, _column

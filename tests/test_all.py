@@ -41,6 +41,13 @@ from tests.connect4.test_search_equivalence import (
     TestPruningPays,
     TestTerminalScores,
 )
+from tests.connect4.test_evaluation import (
+    TestSymmetry,
+    TestBounds,
+    TestThreatCells,
+    TestThreatValue,
+)
+from tests.connect4.test_match import TestMatchResult, TestPlayMatch
 from tests.connect4.test_conformance import TestConnect4Conformance
 
 
