@@ -530,12 +530,34 @@ class Board:
         return total
 
     @property
+    def is_endgame(self) -> bool:
+        """
+        Whether the game has reached an endgame, which changes where the King wants to be: it
+        shelters behind its pawns while there is material to attack it, and walks towards the
+        centre once there is not.
+
+        True once the queens are off, or once at most four minor and major pieces remain
+        between both players.
+        """
+        queens = self.queens[WHITE] | self.queens[BLACK]
+        if not queens:
+            return True
+
+        return bit_count(
+            queens |
+            self.rooks[WHITE] | self.rooks[BLACK] |
+            self.bishops[WHITE] | self.bishops[BLACK] |
+            self.knights[WHITE] | self.knights[BLACK]
+        ) <= 4
+
+    @property
     def weighted_value(self) -> int:
         """
         Weighted evaluation of the game, positive for white, negative for black. Adjusts piece values depending on the
         positions on the game. More expensive to calcualte than Board.value.
         """
         total = 0
+        king_values = KING_LATE_GAME_POSITION_VALUES if self.is_endgame else KING_POSITION_VALUES
         for colour in (WHITE, BLACK):
             modifier = 1 if colour == WHITE else -1
             for piece_type in (PAWN, ROOK, BISHOP, KNIGHT, QUEEN, KING):
@@ -555,20 +577,8 @@ class Board:
                     for sq in bitboard_to_squares(self.queens[colour]):
                         total += ((PIECE_VALUES[piece_type] + QUEEN_POSITION_VALUES[colour][sq]) * modifier)
                 elif piece_type == KING:
-                    if (
-                        not (self.queens[WHITE] | self.queens[BLACK]) or
-                        bit_count(
-                            self.queens[WHITE] | self.queens[BLACK] |
-                            self.rooks[WHITE] | self.rooks[BLACK] |
-                            self.bishops[WHITE] | self.bishops[BLACK] |
-                            self.knights[WHITE] | self.knights[BLACK]
-                        ) <= 4
-                    ):
-                        pos_values = KING_POSITION_VALUES
-                    else:
-                        pos_values = KING_LATE_GAME_POSITION_VALUES
                     for sq in bitboard_to_squares(self.kings[colour]):
-                        total += ((PIECE_VALUES[piece_type] + pos_values[colour][sq]) * modifier)
+                        total += ((PIECE_VALUES[piece_type] + king_values[colour][sq]) * modifier)
         return total
 
     @property
