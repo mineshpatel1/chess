@@ -1,6 +1,7 @@
 from typing import Dict, Optional, Union
 
 import log
+from games.base import GameState, Outcome, DRAW, win
 from games.chess.bitboard import *
 from games.chess.move import Move
 from games.chess.piece import Piece
@@ -51,7 +52,11 @@ from games.chess.square import (
 )
 
 
-class Board:
+class Board(GameState):
+    # Chess branches wide enough, and evaluates slowly enough, for a process pool at the root
+    # to pay for itself several times over.
+    PARALLEL_ROOT = True
+
     def __init__(self, fen: str = STARTING_STATE, track_repetitions: bool = False):
         """
         Represents the chess game and game state as a bitboard.
@@ -446,6 +451,24 @@ class Board:
     @property
     def is_stalemate(self):
         return not self.is_in_check and not any(self.legal_moves)
+
+    @property
+    def outcome_without_moves(self) -> Outcome:
+        """
+        Chess has no win condition that can be spotted without generating moves, so `outcome`
+        stays the inherited None and this is the whole of how the search learns a chess game
+        has ended: nowhere to go is checkmate if the King is attacked and stalemate if it is
+        not.
+        """
+        return win(not self.turn) if self.is_in_check else DRAW
+
+    def copy(self) -> 'Board':
+        """
+        A board at the same position, built from the FEN so it carries none of the history
+        that only `unmake_move` would want. That is what the root workers need, and it is
+        cheaper than snapshotting the move stack.
+        """
+        return Board(self.fen)
 
     @property
     def has_insufficient_material(self):
