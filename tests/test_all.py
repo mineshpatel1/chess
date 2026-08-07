@@ -19,6 +19,30 @@ from tests.chess.test_search_equivalence import TestHarness, TestDecisivePositio
 from tests.chess.test_simulate import TestResult, TestSimulateGame
 from tests.chess.test_conformance import TestChessConformance
 
+from tests.connect4.test_bitboard import TestConstants, TestIndexing, TestDrops, TestConnectLength
+from tests.connect4.test_board import (
+    TestInvariants,
+    TestMoveGeneration,
+    TestCopy,
+    TestSignature,
+    TestDiagrams,
+    TestRendering,
+)
+from tests.connect4.test_wins import (
+    TestRuns,
+    TestExhaustiveWins,
+    TestSentinelBoundaries,
+    TestOutcome,
+)
+from tests.connect4.test_permutations import TestPermutations as TestConnect4Permutations
+from tests.connect4.test_play import TestPlayLoop, TestParseMove
+from tests.connect4.test_search_equivalence import (
+    TestEquivalence,
+    TestPruningPays,
+    TestTerminalScores,
+)
+from tests.connect4.test_conformance import TestConnect4Conformance
+
 
 def main():
     unittest.main()

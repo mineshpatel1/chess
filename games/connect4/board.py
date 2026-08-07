@@ -105,7 +105,7 @@ class Connect4(GameState):
         cheaper than copying it, but ours is a list of small ints and copying it costs nothing,
         so a copy stays undoable to the same depth the original was.
         """
-        clone = Connect4()
+        clone = type(self)()  # type(self), so a subclass copies to its own kind
         clone.discs[YELLOW] = self.discs[YELLOW]
         clone.discs[RED] = self.discs[RED]
         clone.turn = self.turn
