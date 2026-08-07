@@ -3,6 +3,7 @@ import sys
 from typing import Any, Optional, List
 
 from game.board import Board, Move
+from game.exceptions import IllegalMove
 from ai.algorithms import random_move, alpha_beta
 
 
@@ -88,8 +89,13 @@ class UciEngine:
 
     def play_moves(self, moves: List[str]):
         for m in moves:
-            move = Move.from_uci(m)
-            self.board.make_move(move)
+            try:
+                self.board.make_move(Move.from_uci(m))
+            except (IllegalMove, AssertionError) as e:
+                # UCI is the only interface, so a malformed move from the GUI must not take
+                # the engine down with it.
+                err(f'Could not play move {m}: {e}')
+                return
 
     def get_best_move(self):
         # Checkmate and stalemate leave nothing to search. Both search and random_move

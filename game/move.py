@@ -43,14 +43,18 @@ class Move:
     def __repr__(self) -> str:
         return f"'{str(self)}'"
 
+    # Promotion is part of a move's identity: e7e8q and e7e8r are different moves that reach
+    # different positions. __hash__ and __eq__ must agree on that, so they are kept in step.
     def __hash__(self) -> int:
         return hash((
             self.from_square,
-            self.to_square
+            self.to_square,
+            self.promotion,
         ))
 
     def __eq__(self, other) -> bool:
         return (
             other.from_square == self.from_square and
-            other.to_square == self.to_square
+            other.to_square == self.to_square and
+            other.promotion == self.promotion
         )

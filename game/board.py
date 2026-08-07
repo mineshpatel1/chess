@@ -697,7 +697,6 @@ class Board:
         if isinstance(move, str):
             move = Move.from_uci(move)
 
-        self._save()
         piece = self.piece_at(move.from_square)
         captured_piece = self.piece_at(move.to_square)
 
@@ -708,6 +707,13 @@ class Board:
             raise IllegalMove(f"Can't move that piece, it's not your turn.")
 
         backrank = 7 if self.turn == WHITE else 0
+
+        if piece.type == PAWN and move.to_square.rank == backrank and move.promotion is None:
+            raise IllegalMove(f"Move {move} reaches the back rank without naming a promotion piece.")
+
+        # Only now that the move is known to be playable, so a rejected move leaves no state
+        # behind for unmake_move to pop.
+        self._save()
 
         # Castling if a king is moving more than 1 square
         if piece.type == KING and abs(move.from_square.file - move.to_square.file) > 1:
@@ -737,7 +743,7 @@ class Board:
             self.place_piece(move.to_square, piece.type, piece.colour)
         elif piece.type == PAWN and move.to_square.rank == backrank:  # Promotion
             self.remove_piece(move.from_square)
-            self.place_piece(move.to_square, move.promotion, piece.colour)  # Assume queen for now
+            self.place_piece(move.to_square, move.promotion, piece.colour)
         else:
             # Regular piece move
             self.remove_piece(move.from_square)
