@@ -226,6 +226,48 @@ class TestMoves(unittest.TestCase):
         b.make_move(Move.from_uci('g7g8q'))
         self.assertEqual(b.fen, 'rnbqr1Q1/pppp4/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR b KQ - 0 1')
 
+    def test_promotion_piece_is_part_of_the_move(self):
+        """
+        The four promotions of a pawn are four different moves reaching four different
+        positions, so they must not compare or hash as one.
+        """
+        self.assertNotEqual(Move.from_uci('g7g8q'), Move.from_uci('g7g8r'))
+        self.assertEqual(len({Move.from_uci(f'g7g8{p}') for p in 'qrbn'}), 4)
+
+        # Moves that are not promotions are unaffected
+        self.assertEqual(Move.from_uci('e2e4'), Move.from_uci('e2e4'))
+        self.assertEqual(len({Move.from_uci('e2e4'), Move.from_uci('e2e4')}), 1)
+
+        # And each promotion really does produce a different board
+        fen = 'rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1'
+        placements = set()
+        for piece in 'qrbn':
+            _board = Board(fen)
+            _board.make_safe_move(f'g7g8{piece}')
+            placements.add(_board.fen)
+        self.assertEqual(len(placements), 4)
+
+    def test_promotion_without_a_piece_is_rejected(self):
+        """
+        A promotion with no piece named used to pass the legality check, because equality
+        ignored the promotion, and then died inside make_move on `None.lower()`.
+        """
+        fen = 'rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1'
+
+        _board = Board(fen)
+        self.assertNotIn(Move.from_uci('g7g8'), list(_board.legal_moves))
+        with self.assertRaises(IllegalMove):
+            _board.make_safe_move('g7g8')
+
+        # make_move is the unchecked path, and must still fail meaningfully rather than
+        # with an AttributeError
+        _board = Board(fen)
+        with self.assertRaises(IllegalMove):
+            _board.make_move('g7g8')
+
+        # A rejected move must leave nothing behind for unmake_move to pop
+        self.assertEqual(len(_board._history), 0)
+        self.assertEqual(_board.fen, fen)
 
     def test_checkmate(self):
         for fen, result in (

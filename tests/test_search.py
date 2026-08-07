@@ -122,6 +122,34 @@ class TestUciSearchOutput(unittest.TestCase):
         )
         self.assertEqual(self._go('7k/5Q2/6K1/8/8/8/8/8 b - - 0 1'), 'bestmove (none)')
 
+    def test_unplayable_move_does_not_kill_the_engine(self):
+        """
+        UCI is the only interface, so a malformed move from the GUI is reported on stderr and
+        the engine keeps answering rather than unwinding out of run().
+        """
+        engine = UciEngine()
+        engine.set_fen('rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1')
+
+        errors = io.StringIO()
+        with contextlib.redirect_stderr(errors):
+            engine.play_moves(['g7g8'])  # Promotion with no piece named
+        self.assertIn('g7g8', errors.getvalue())
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            engine.get_best_move()
+        self.assertTrue(output.getvalue().strip().startswith('bestmove '))
+
+    def test_promotion_through_uci(self):
+        """Each promotion piece named over UCI reaches a different position."""
+        placements = set()
+        for piece in 'qrbn':
+            engine = UciEngine()
+            engine.set_fen('rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1')
+            engine.play_moves([f'g7g8{piece}'])
+            placements.add(engine.board.fen)
+        self.assertEqual(len(placements), 4)
+
 
 def main():
     unittest.main()
