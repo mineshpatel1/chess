@@ -4,7 +4,7 @@ from typing import Any, Optional, List
 
 from games.chess.board import Board, Move
 from games.chess.exceptions import IllegalMove
-from ai.algorithms import random_move, alpha_beta
+from ai.search import random_move, alpha_beta
 
 
 def out(line):

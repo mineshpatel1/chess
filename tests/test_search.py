@@ -4,7 +4,7 @@ import contextlib
 
 from games.chess.board import Board
 from games.chess.constants import WHITE, BLACK
-from ai.algorithms import alpha_beta, terminal_score, MATE
+from ai.search import alpha_beta, terminal_score, MATE
 from uci.engine import UciEngine
 
 

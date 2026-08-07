@@ -141,8 +141,8 @@ class TestMoves(unittest.TestCase):
     def test_fen_does_not_resurrect_lost_castling_rights(self):
         """
         A round trip through FEN must not hand back rights the game has already forfeited.
-        ai.algorithms.alpha_beta rebuilds a Board from board.fen for every root move, so the
-        search would otherwise plan castles the real game can no longer play.
+        Board.copy() rebuilds from the FEN, and ai.search.alpha_beta copies the board once per
+        root move, so the search would otherwise plan castles the real game can no longer play.
         """
         bb = Board('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1')
         for uci in ('e1e2', 'e8e7', 'e2e1', 'e7e8'):  # Both Kings step out and back

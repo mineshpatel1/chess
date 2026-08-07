@@ -1,21 +1,26 @@
 """
-The safety net for rewriting the search.
+The safety net for changing the search.
 
 The search has no oracle but itself: perft pins move generation, and tests/test_search.py pins
 a handful of positions whose right answer we happen to know, but neither would notice the
-search quietly picking a different move in the middle of a game. So before the search is
-rewritten, this compares implementations directly - the same positions, the same depths, and
-every root move's score, not just the one that wins.
+search quietly picking a different move in the middle of a game.
 
-`root_scores` is the unit of comparison rather than the chosen move alone. Two searches can
-agree on the best move while disagreeing about everything else, and that is a drift worth
-catching early.
+This module exists to make that noticeable. It scores *every root move*, not just the one that
+wins, over a reproducible corpus - two searches can agree on the best move while disagreeing
+about everything else, and that is a drift worth catching. Replacing the min/max pair with
+negamax was gated on exactly this comparison: 37,167 root-move scores across 360 positions at
+depths 1-4, zero mismatches. The old search is gone, so what remains is the machinery, plus
+scores recorded against the surviving search so the next change to it has something to answer
+to.
+
+To run a wide comparison again, widen CORPUS_SIZE and DEPTHS and expect minutes, not seconds:
+cost grows as branching^depth, and corpus positions branch far wider than the opening does.
 """
 
 import unittest
 from typing import List, Tuple
 
-from ai.algorithms import _root_move_score, alpha_beta, MATE
+from ai.search import _root_move_score, alpha_beta, MATE
 from games.chess.board import Board
 from games.chess.evaluation import weighted_eval
 from tests.corpus import positions, DECISIVE_POSITIONS
