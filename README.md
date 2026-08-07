@@ -64,13 +64,16 @@ Search time grows steeply with depth — see the benchmarks below.
 
 | Module | What is in it |
 |---|---|
-| `game/bitboard.py` | 64-bit board representation, precomputed attack/ray tables |
-| `game/board.py` | Board state, move generation, legality, FEN, draw detection |
-| `game/move.py`, `game/piece.py`, `game/square.py` | Value types |
-| `ai/algorithms.py` | Minimax, negamax, alpha-beta search and board evaluation |
-| `ai/benchmark.py` | Perft traversal and AI-vs-AI game simulation |
+| `games/base.py` | The `GameState` contract — the only thing the search knows about a game |
+| `games/chess/bitboard.py` | 64-bit board representation, precomputed attack/ray tables |
+| `games/chess/board.py` | Board state, move generation, legality, FEN, draw detection |
+| `games/chess/evaluation.py` | Material and piece-square evaluation |
+| `games/chess/move.py`, `piece.py`, `square.py` | Value types |
+| `ai/search.py` | Negamax with alpha-beta pruning, and a random mover |
+| `ai/perft.py`, `ai/simulate.py` | Move enumeration, and playing two move-choosers off |
 | `uci/engine.py` | Mildred's own UCI server (`main.py` runs this) |
 | `uci/protocol.py`, `uci/stockfish.py` | An async UCI *client*, for driving other engines |
+| `tests/conformance.py` | The tests every game must pass |
 | `tests/` | Unit tests, full-game replay/undo tests, perft |
 
 Positions are held as twelve 64-bit integers (one per piece type per colour) plus occupancy
@@ -79,6 +82,32 @@ king and pawn moves come from lookup tables built at import time.
 
 Undo is cheap: `_BoardState` snapshots the raw integers rather than copying the board, so
 `make_move`/`unmake_move` is the hot path for search rather than a bottleneck.
+
+## Adding a game
+
+The search in `ai/` knows nothing about chess. It asks a game for its legal moves, plays them,
+unplays them, and asks how a finished position finished — so anything that can answer those
+questions can be searched. A move can be whatever suits the game; the search only ever hands
+one back.
+
+1. **Implement `GameState`** (`games/base.py`) in `games/<name>/`. Four methods —
+   `legal_moves`, `make_move`, `unmake_move`, `copy` — plus `outcome_without_moves`, which
+   says what it means to have nothing to play. In chess that is checkmate or stalemate; in a
+   game that fills up, it is a draw.
+2. **Override `outcome`** if the game can be won while moves remain — a line of three, a line
+   of four. It is checked at every node, so keep it cheap. It defaults to `None`, which is
+   right for games that end by running out of moves, so chess does not implement it at all.
+3. **Write an evaluation** returning a score that is positive for the player to move. The
+   search is negamax, so every score is read from the point of view of whoever is on move.
+   Name it as the class's `DEFAULT_EVAL`.
+4. **Set `PARALLEL_ROOT`** if the game branches widely enough that splitting the root across a
+   process pool beats starting one. Chess does; a game with seven or nine moves does not.
+5. **Register it** in `games/__init__.py` and **subclass `GameConformanceTests`**
+   (`tests/conformance.py`), filling in its three hooks. That suite is what catches the
+   mistakes that do not look like mistakes — an undo that restores almost everything, a copy
+   that shares state with its original.
+
+Nothing in `ai/` should need to change.
 
 ## Benchmarks
 
@@ -121,17 +150,21 @@ python3 run_engine.py
 
 ## Development
 
-The engine and the test suite need no third-party packages. `ai/benchmark.py` can optionally
-cross-check move generation against [python-chess](https://python-chess.readthedocs.io/):
-
-```bash
-pip install -r requirements-dev.txt
-```
+Nothing to install: the engine and the test suite are pure standard library, with no optional
+extras either.
 
 Run the suites individually while iterating:
 
 ```bash
-python3 -m unittest tests.test_moves -v          # rules and legality
-python3 -m unittest tests.test_undo -v           # full-game replay, forwards and back
-python3 -m unittest tests.test_permutations -v   # perft
+python3 -m unittest tests.test_moves -v               # rules and legality
+python3 -m unittest tests.test_undo -v                # full-game replay, forwards and back
+python3 -m unittest tests.test_permutations -v        # perft
+python3 -m unittest tests.test_conformance_chess -v   # chess against the shared game contract
+python3 -m unittest tests.test_search_equivalence -v  # search scores, position by position
 ```
+
+`tests/test_search_equivalence.py` is the net for changing the search, which has no oracle but
+itself. It scores every root move over a reproducible corpus rather than only the move that
+wins — two searches can agree on the best move and disagree about everything else. Widen
+`CORPUS_SIZE` and `DEPTHS` there before touching the search, and expect minutes: cost grows as
+branching^depth.
