@@ -50,6 +50,12 @@ STEPS_PER_GENERATION = 40
 # imitating a version of itself it has outgrown.
 BUFFER_SIZE = 20_000
 
+# How often to grade the network against the oracle. Exact and useful, but it is instrumentation
+# rather than training: measured at 80 games and 150 simulations it was 32% of a generation's wall
+# clock, against 3.5% for the gradient steps. Every generation is right while tuning; less often is
+# right when the answer is already known and the run just has to finish.
+BENCHMARK_EVERY = 1
+
 GENERATIONS = 30
 GAMES_PER_GENERATION = 40
 SIMULATIONS = 60
@@ -89,6 +95,7 @@ def train(
     exploration: float = EXPLORATION,
     dirichlet_epsilon: float = DIRICHLET_EPSILON,
     learning_rate: float = LEARNING_RATE,
+    benchmark_every: int = BENCHMARK_EVERY,
     checkpoint_path: Optional[str] = None,
     seed: int = 0,
     on_generation: Optional[Callable[[Progress], None]] = None,
@@ -111,7 +118,7 @@ def train(
     optimiser = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
     buffer: Deque[Example] = deque(maxlen=BUFFER_SIZE)
 
-    best_state, best_rate = None, -1.0
+    best_state, best_rate, last_rate = None, -1.0, 0.0
 
     for generation in range(1, generations + 1):
         started = time.perf_counter()
@@ -122,7 +129,10 @@ def train(
         buffer.extend(augment(fresh, encoder))
 
         loss, policy_loss, value_loss = _learn(net, optimiser, buffer, steps, batch_size, rng)
-        rate = _optimal_rate(net, encoder, game)
+
+        graded = generation % max(benchmark_every, 1) == 0 or generation == generations
+        rate = _optimal_rate(net, encoder, game) if graded else last_rate
+        last_rate = rate
 
         progress = Progress(
             generation=generation,
@@ -138,7 +148,7 @@ def train(
         if on_generation:
             on_generation(progress)
 
-        if rate > best_rate:
+        if graded and rate > best_rate:
             best_rate = rate
             best_state = {k: v.clone() for k, v in net.state_dict().items()}
             if checkpoint_path:
