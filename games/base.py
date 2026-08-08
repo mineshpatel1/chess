@@ -99,6 +99,24 @@ class GameState(ABC):
         """
         return None
 
+    def parse_move(self, text: str) -> Any:
+        """
+        The move a person meant by typing `text`, for a game loop reading from a terminal.
+
+        The search never needs this - it only ever plays moves it was handed - so it is not
+        abstract, and the default is enough for a game whose moves print the way they are
+        typed: it matches against `str(move)` over the legal moves. Chess moves print as UCI
+        and connect-4 moves as a column number, so both already work.
+
+        Games override it to say something more useful than "no such move" when the input is
+        wrong, which is most of what a person needs from a prompt. Raise ValueError with a
+        readable message; the caller shows it and asks again.
+        """
+        for move in self.legal_moves:
+            if str(move) == text.strip():
+                return move
+        raise ValueError(f'{text.strip()!r} is not a legal move here')
+
     @property
     def signature(self) -> str:
         """
