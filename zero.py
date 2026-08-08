@@ -57,13 +57,18 @@ def train(args) -> None:
 
     log.info(f'Training {game.__name__}: {args.generations} generations of {args.games} games '
              f'at {args.simulations} simulations.')
+    extra = {} if args.exploration is None else {'exploration': args.exploration}
     run(
         game,
         generations=args.generations,
         games_per_generation=args.games,
         simulations=args.simulations,
+        steps=args.steps,
+        symmetries=args.symmetries,
+        benchmark_every=args.benchmark_every,
         checkpoint_path=args.out,
         seed=args.seed,
+        **extra,
     )
     log.info(f'Best checkpoint written to {args.out}')
 
@@ -118,12 +123,21 @@ def main(argv: Optional[list] = None) -> None:
     parser.add_argument('--game', default=DEFAULT_GAME, help='which game (default: TicTacToe)')
     commands = parser.add_subparsers(dest='command', required=True)
 
+    # Defaults are the recipe the committed checkpoint was trained with - see the README. Every
+    # one of them was arrived at by measuring against the oracle rather than by taste.
     trainer = commands.add_parser('train', help='train a network from scratch')
-    trainer.add_argument('--generations', type=int, default=60)
-    trainer.add_argument('--games', type=int, default=40, help='self-play games per generation')
-    trainer.add_argument('--simulations', type=int, default=60, help='MCTS simulations per move')
+    trainer.add_argument('--generations', type=int, default=400)
+    trainer.add_argument('--games', type=int, default=80, help='self-play games per generation')
+    trainer.add_argument('--simulations', type=int, default=50, help='MCTS simulations per move')
+    trainer.add_argument('--steps', type=int, default=60, help='gradient steps per generation')
+    trainer.add_argument('--exploration', type=float, default=None,
+                         help='self-play c_puct (default 5.0, measured)')
+    trainer.add_argument('--symmetries', action='store_true',
+                         help='augment with the board symmetries (measured: no benefit)')
+    trainer.add_argument('--benchmark-every', type=int, default=2,
+                         help='grade against the oracle every N generations')
     trainer.add_argument('--out', default=DEFAULT_CHECKPOINT)
-    trainer.add_argument('--seed', type=int, default=0)
+    trainer.add_argument('--seed', type=int, default=1)
     trainer.set_defaults(run=train)
 
     grader = commands.add_parser('benchmark', help='grade a player against perfect play')

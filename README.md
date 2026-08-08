@@ -306,11 +306,53 @@ They come apart in one direction, and sharply. A player that never blunders *on 
 actually walks* never arrives at the positions it would get wrong — so it can be wrong in a
 hundred positions and still be impossible to beat. `zero.py benchmark` reports both.
 
+### Reproducing the committed checkpoint
+
+```bash
+python3 zero.py train
+```
+
+That is the whole command — the CLI defaults *are* the recipe. Written out in full, and every
+argument here is also the default:
+
+```bash
+python3 zero.py train \
+    --generations 400 \        # 45 min on four CPU threads
+    --games 80 \               # self-play games per generation
+    --simulations 50 \         # MCTS simulations per move
+    --steps 60 \               # gradient steps per generation
+    --seed 1 \
+    --out models/tictactoe-best.pt
+```
+
+The rest lives in `ai/zero/train.py` and `ai/zero/selfplay.py`, and each one has its measurement
+recorded next to it:
+
+| Parameter | Value | Why |
+|---|---|---|
+| Network | 9 → 64 → 64 → (9 policy, 1 value) | One signed plane beat two binary ones by 1.2 points |
+| `SELF_PLAY_EXPLORATION` | **5.0** | c_puct 1.5/3.0/5.0/8.0 → 92.8/95.4/95.8/94.7% |
+| `SIMULATIONS` | **50** | 50→200 buys 1.0 point for 3.1× the time |
+| `TEMPERATURE_MOVES` | 30 (all nine plies) | Cutting to 3 plies cost 10 points |
+| `OPENING_PLIES` | **0** | Random starts were covering for c_puct being too low |
+| `SYMMETRIES` | **False** | No benefit, and it is knowledge the network should not be given |
+| `DIRICHLET_EPSILON` / `ALPHA` | 0.25 / 1.0 | Root noise, self-play only — never at evaluation |
+| Optimiser | Adam, lr 1e-3, decay 1e-4, batch 128 | |
+| `BUFFER_SIZE` | 20,000 positions | |
+
+Training is deterministic given `--seed`, so the command above reproduces the committed weights.
+
+Grading it afterwards is two more commands:
+
+```bash
+python3 zero.py benchmark --player model:models/tictactoe-best.pt            # the network alone
+python3 zero.py benchmark --player model:models/tictactoe-best.pt+mcts:50    # with search
+```
+
 ### Results
 
-The committed checkpoint, trained for 400 generations of 80 self-play games at 50 simulations —
-**45 minutes on four CPU threads**, and 25KB of weights. Purely on-policy: no random openings, no
-symmetry augmentation, no supervision, nothing but self-play.
+The committed checkpoint: **45 minutes on four CPU threads**, 25KB of weights. Purely on-policy —
+no random openings, no symmetry augmentation, no supervision, nothing but self-play.
 
 **Can it be beaten? No — not even with the search switched off.**
 
