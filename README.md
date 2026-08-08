@@ -26,6 +26,11 @@ independent solver in every one of the game's 5,478 positions. It is also the sm
 can satisfy the contract — three files, no bitboard module, and a move that is just the number of
 a cell.
 
+Being solved makes it the right game to learn, too. There is an **AlphaZero implementation** in
+`ai/zero/` that trains a network from nothing but self-play, and because the answer is computable
+it can be graded against perfect play in every position rather than against an opponent. See
+[Learning to play](#learning-to-play).
+
 ## Quick start
 
 Requires Python 3.7+. Nothing to install.
@@ -34,6 +39,14 @@ Requires Python 3.7+. Nothing to install.
 python3 -m unittest tests.test_all -v     # run the test suite
 python3 play.py                           # play any of the three games in the terminal
 python3 -m games.chess.uci                # start the UCI engine on stdin
+python3 zero.py benchmark --player minimax:9   # grade a player against perfect play
+```
+
+The learned player is the one exception to "nothing to install", and it is opt-in:
+
+```bash
+pip install -r requirements-zero.txt      # PyTorch, and only for ai/zero/
+python3 zero.py train                     # train a tic-tac-toe network from scratch
 ```
 
 Talking to it directly:
@@ -90,10 +103,18 @@ Search time grows steeply with depth — see the benchmarks below.
 | `games/tictactoe/constants.py` | Nine cells, eight winning lines, and the order moves are tried in |
 | `games/tictactoe/board.py` | `TicTacToe`: two 9-bit integers, and a `SOLVED_DEPTH` of nine |
 | `games/tictactoe/evaluation.py` | Open twos, which matter only below the depth the game is solved at |
+| `games/tictactoe/encoding.py` | What a network sees: two planes, nine shared actions, eight symmetries |
 | `ai/search.py` | Negamax with alpha-beta pruning, and a random mover |
 | `ai/perft.py`, `ai/simulate.py` | Move enumeration, and playing two move-choosers off |
 | `ai/match.py` | Playing them off a few hundred times, which is how an evaluation is judged |
+| `ai/oracle.py` | Exact play, and grading any player against it in every position |
+| `ai/players.py` | Naming a player — `minimax:9`, `model:best.pt+mcts:200` — in one place |
+| `ai/zero/mcts.py` | PUCT search over a tree of paths, with no rollouts |
+| `ai/zero/net.py` | The network: input, two hidden layers of 64, a policy head and a value head |
+| `ai/zero/selfplay.py` | Games against itself, and the targets they produce |
+| `ai/zero/train.py` | The generation loop, graded against the oracle as it goes |
 | `play.py` | A terminal front end for any game in the registry |
+| `zero.py` | Training, grading and comparing learned players |
 | `tests/conformance.py` | The tests every game must pass |
 | `tests/chess/` | Rules, replay/undo, perft, and search scores, all driven by chess positions |
 | `tests/connect4/` | The same, plus the exhaustive win-detection oracle and the eval properties |
@@ -209,6 +230,145 @@ implementation happens to expose, which is what `test_a_copy_is_interchangeable_
 now does — moves, both halves of the result, and the turn. That also gives `copy` a real
 definition of what it may leave behind: anything invisible to that test. `move_history` qualifies,
 being read only by `pgn_uci`; the repetition history never did.
+
+## Learning to play
+
+`ai/zero/` is an AlphaZero implementation: a network learns to play tic-tac-toe from nothing but
+games against itself. No opening book, no evaluation function, no opponent — the only fact from
+outside the process is who won.
+
+It needs PyTorch, and it is the only thing here that does. The engine, `play.py` and the whole
+test suite run on the standard library; the learning tests skip themselves when torch is absent.
+
+```bash
+pip install -r requirements-zero.txt
+python3 zero.py train
+python3 zero.py benchmark --player model:models/tictactoe-best.pt
+python3 zero.py benchmark --player model:models/tictactoe-best.pt+mcts:200
+python3 zero.py match --a model:models/tictactoe-best.pt+mcts:200 --b minimax:9 --games 200
+python3 play.py                    # choose "Model" and play it yourself
+```
+
+A trained checkpoint is committed, so all of that works immediately after cloning.
+
+### Naming a player
+
+`ai/players.py` turns a string into the `state -> move` callable every harness here already
+expects, so the terminal, the benchmark and the match harness all mean the same thing by an
+opponent:
+
+| Spec | Player |
+|---|---|
+| `random` | a uniformly random legal move |
+| `minimax:9` | alpha-beta, which at depth 9 is perfect |
+| `model:PATH` | the network's policy, **with no search at all** |
+| `model:PATH+mcts:200` | the same network, thinking 200 simulations ahead |
+
+The last two are the reason it exists. Raw intuition and intuition-plus-search are one clause
+apart, so comparing them is a change of argument rather than of code — and both go through the
+same benchmark as the classical players.
+
+### Grading against perfect play
+
+Because tic-tac-toe is solved, a player can be graded against the answer rather than against an
+opponent. `ai/oracle.py` walks **every one of the 5,478 reachable positions**, asks the player for
+a move, and compares it with the set of moves that hold the position's value.
+
+That is a much harder test than playing matches, and a more useful one. A player only ever meets
+its own blunders through an opponent willing to punish them, and losing lines are precisely the
+ones a decent opponent never steers into. Walking every position has no opponent in it and no
+sampling either.
+
+The report splits by seat, and that split is the point:
+
+```
+$ python3 zero.py benchmark --player model:models/tictactoe-best.pt --value
+
+  overall       97.9% optimal (4423/4520), 97 blunders, 0.0228 mean value lost
+  as first      97.3% optimal (2358/2423), 65 blunders, 0.0289 mean value lost
+  as second     98.5% optimal (2065/2097), 32 blunders, 0.0157 mean value lost
+  by ply       0:100%  1:100%  2:100%  3:98%  4:95%  5:99%  6:98%  7:98%  8:100%
+  value head   0.1910 mean squared error vs truth
+```
+
+A player can be excellent from one seat and hopeless from the other, and an aggregate hides it
+behind an average. That is not hypothetical: it is what the 2021 attempt in this repository's
+history actually did, and it went unnoticed for months.
+
+### Results
+
+The committed checkpoint, trained for 250 generations of 80 self-play games at 150 simulations —
+**17 minutes on four CPU threads**, and 27KB of weights.
+
+| Player | Overall | As first | As second | Blunders |
+|---|---|---|---|---|
+| Raw policy, no search | 97.90% | 97.32% | 98.47% | 97 |
+| + 25 simulations | 99.34% | 99.17% | 99.52% | 30 |
+| + 100 simulations | 99.65% | 99.46% | 99.86% | 16 |
+| + 200 simulations | 99.78% | 99.63% | 99.95% | 10 |
+| + 800 simulations | 99.87% | 99.75% | **100.00%** | 6 |
+| `minimax:9` (perfect by construction) | 100% | 100% | 100% | 0 |
+
+The first row is the interesting one. **The network alone — one forward pass, no lookahead —
+picks a best move in 97.9% of all 4,520 positions in the game**, and the two seats are within
+1.2 points of each other. Search then buys most of the remainder: 800 simulations reaches
+perfection from the second seat and gets within six blunders of it overall.
+
+Both columns matter, and being able to run either is why `simulations` is a parameter rather than
+two implementations. A network that only plays well with 500 simulations has learned to be a
+useful prior for a search doing the real work; one whose raw policy is already near-perfect has
+learned the game. The gap between the two rows is the honest measure of which you have.
+
+### What it took to get right
+
+The three things that make this work are all things an earlier attempt got wrong, and none of
+them fails loudly — each produces a network that trains happily and plays badly.
+
+**The tree is made of paths, not positions.** Children hang off their parent, so a position
+reached by two move orders is two nodes. Keying one flat dict by position looks like an
+optimisation and is a different data structure: 97% of tic-tac-toe positions within five plies are
+reachable more than one way, and re-expanding a shared node resets its statistics and re-points
+its parent. A search built that way gets *worse* with more simulations.
+
+**One action space, over perspective-relative planes.** Plane 0 is always the mover's marks, so
+the network learns one player's problem and every game teaches it about both seats. Nine actions,
+not nine per player — a split head halves the data each half sees and invites the two halves to
+disagree about which block is which.
+
+**The value target is from the mover's own point of view, and a draw is 0.** A position whose
+player went on to win is `+1` *for that position*, whichever player it was. Most tic-tac-toe games
+are drawn, so most examples must say so.
+
+`tests/zero/` pins all three, and the important ones need no PyTorch at all: hand the search a
+**perfect evaluator** built from the oracle and it must play perfectly; hand it one that knows
+nothing and it must improve with more simulations.
+
+| Evaluator | 10 sims | 50 sims | 200 sims | 800 sims |
+|---|---|---|---|---|
+| Perfect (the oracle) | 100% | 100% | 100% | 100% |
+| Ignorant (flat priors, zero value) | 89.7% | 97.1% | 99.3% | 100% |
+
+The first row says the search uses knowledge correctly. The second says it generates knowledge on
+its own — and that it climbs, which is the property the 2021 version lacked. Both are checked
+without a single trained weight, which is exactly the test whose absence let that version stay
+broken.
+
+### Coverage, and an honest caveat
+
+On-policy self-play is what makes AlphaZero work, and it is also why a trained network only ever
+sees the positions it plays into. Measured here: self-play reached **366 of the 4,520** decision
+positions, and the network scored 96.7% on those and 78.8% on everything else.
+
+Which number is "the" score depends on the question. For playing a game the on-policy one is
+honest — nobody reaches the other positions. For *knowing the game*, which is what grading against
+a solver asks, the network has to have seen more of it. So a share of self-play games start from a
+random position (`OPENING_PLIES`), which costs nothing but breadth and uses no knowledge from
+outside the game. `ai/match.py` randomises its openings for the same reason. Nothing played during
+those plies is recorded, so every training target still comes from a real search.
+
+That single change took the raw-policy score from 80.3% to 96.8% on an otherwise identical run,
+and it is the largest single improvement in the whole implementation — larger than any change to
+the network, the loss or the search.
 
 ## Benchmarks
 
@@ -353,8 +513,9 @@ each game for the same reason.
 
 ## Development
 
-Nothing to install: the engine and the test suite are pure standard library, with no optional
-extras either.
+Nothing to install for the engine or its tests: both are pure standard library. The one optional
+extra is PyTorch, for the learned player in `ai/zero/` — the tests that need it skip themselves
+when it is absent, so `tests.test_all` passes on a clean checkout either way.
 
 Run the suites individually while iterating:
 
@@ -374,7 +535,18 @@ python3 -m unittest tests.tictactoe.test_perfect_play -v    # the engine against
 python3 -m unittest tests.tictactoe.test_permutations -v    # perft, and the published game census
 python3 -m unittest tests.tictactoe.test_conformance -v     # tic-tac-toe against the same contract
 python3 -m unittest tests.tictactoe.test_board -v           # the eight lines, re-derived independently
+python3 -m unittest tests.tictactoe.test_encoding -v        # planes, actions and the eight symmetries
+
+python3 -m unittest tests.test_oracle -v                    # the benchmark, calibrated on known players
+python3 -m unittest tests.zero.test_mcts -v                 # PUCT against a perfect evaluator (no torch)
+python3 -m unittest tests.zero.test_selfplay -v             # the training targets (no torch)
+python3 -m unittest tests.zero.test_net -v                  # the network and its checkpoints (torch)
 ```
+
+`tests/zero/test_mcts.py` and `tests/zero/test_selfplay.py` deliberately need no PyTorch. The
+parts of a learned player most likely to be wrong — the tree and the training targets — are the
+parts that can be checked without a single trained weight, and a bug in either looks exactly like
+a network that has not learned yet.
 
 `tests/chess/test_search_equivalence.py` is the net for changing the search, which has no
 oracle but itself. It scores every root move over a reproducible corpus rather than only the

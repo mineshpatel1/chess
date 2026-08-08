@@ -15,15 +15,21 @@ and has to survive a person typing nonsense at it - neither of which belongs in 
     python3 play.py
 """
 
+import glob
+import os
 import sys
 from typing import Callable, List, Optional, Tuple, Type
 
 import log
+# DEFAULT_DEPTH and default_depth are re-exported: they used to live here, and both the
+# prompt below and tests/tictactoe/test_play.py still reach for them by this name.
+from ai.players import DEFAULT_DEPTH, UnknownPlayer, default_depth, player
 from ai.search import alpha_beta, random_move
 from games import GAMES
 from games.base import GameState, Outcome
 
-DEFAULT_DEPTH = 4
+# Where `zero.py train` leaves its checkpoints, and so where to look for something to play.
+MODEL_DIR = 'models'
 
 
 def _ask(prompt: str) -> str:
@@ -66,20 +72,47 @@ def computer_player(depth: int) -> Callable:
     return lambda state: alpha_beta(state, depth=depth)
 
 
-def default_depth(game: Type[GameState]) -> int:
+def checkpoints(game: Type[GameState]) -> List[str]:
     """
-    How deep the computer searches unless it is told otherwise.
+    Trained networks on disk that this game could play against.
 
-    A game that declares SOLVED_DEPTH can be searched to the end of itself, and a search to the
-    end is perfect play, so there is no reason to offer anything shallower - tic-tac-toe solves
-    in well under a tenth of a second. Everything else gets a depth that answers promptly.
+    Matched by filename rather than by opening every file, so a directory of Connect 4
+    checkpoints does not cost a torch import to skip. `ai.zero.checkpoint.load` does the real
+    check when one is actually chosen, and refuses a network trained on another game.
     """
-    return DEFAULT_DEPTH if game.SOLVED_DEPTH is None else game.SOLVED_DEPTH
+    if game.ENCODER is None:
+        return []
+    return sorted(glob.glob(os.path.join(MODEL_DIR, f'{game.__name__.lower()}*.pt')))
+
+
+def _choose_model(game: Type[GameState]) -> Optional[Callable]:
+    """Picks a checkpoint and how hard it should think. None if there is nothing to pick."""
+    found = checkpoints(game)
+    if not found:
+        log.warning(f'No {game.__name__} checkpoints in {MODEL_DIR}/. Train one with zero.py.')
+        return None
+
+    log.newline()
+    log.info('Which model?')
+    path = found[_choose('Model:', found)]
+
+    log.newline()
+    log.info('How many simulations should it search? 0 plays the network\'s raw intuition with')
+    log.info('no lookahead at all, which is worth trying at least once for the contrast.')
+    answer = _ask('Simulations [200]: ').strip()
+    simulations = int(answer) if answer.isdigit() else 200
+
+    spec = f'model:{path}' + (f'+mcts:{simulations}' if simulations else '')
+    try:
+        return player(spec)
+    except UnknownPlayer as error:
+        log.warning(str(error))
+        return None
 
 
 def choose_players(game: Type[GameState]) -> Tuple[Callable, Callable]:
-    """Asks who is playing each side, and how hard the computer should think."""
-    kinds = ['Human', 'Computer', 'Random']
+    """Asks who is playing each side, and how hard each computer should think."""
+    kinds = ['Human', 'Computer', 'Random', 'Model']
     choosers: List[Optional[Callable]] = []
     depth = default_depth(game)
 
@@ -92,6 +125,8 @@ def choose_players(game: Type[GameState]) -> Tuple[Callable, Callable]:
             choosers.append(human_player)
         elif kind == 2:
             choosers.append(random_move)
+        elif kind == 3:
+            choosers.append(_choose_model(game))  # None falls through to the computer below
         else:
             choosers.append(None)  # Filled in below, once the depth is known
 

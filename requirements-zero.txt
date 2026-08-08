@@ -1,0 +1,12 @@
+# The learned player in ai/zero/ needs PyTorch. Nothing else in this project does.
+#
+# The engine, play.py and the whole of tests/test_all.py run on the standard library alone - the
+# learning tests skip themselves when torch is absent rather than failing - so this is only worth
+# installing if you intend to train or play a network.
+#
+#     pip install -r requirements-zero.txt
+#
+# CPU is enough. Tic-tac-toe trains to near-perfect play in a few minutes on four threads, and
+# the network is a few thousand parameters, so a GPU would spend more time on transfers than on
+# arithmetic.
+torch>=2.0
