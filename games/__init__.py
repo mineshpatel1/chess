@@ -13,8 +13,10 @@ from typing import Tuple, Type
 from games.base import GameState
 from games.chess.board import ChessBoard
 from games.connect4.board import Connect4
+from games.tictactoe.board import TicTacToe
 
 GAMES: Tuple[Type[GameState], ...] = (
     ChessBoard,
     Connect4,
+    TicTacToe,
 )

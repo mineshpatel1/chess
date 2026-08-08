@@ -50,6 +50,35 @@ from tests.connect4.test_evaluation import (
 from tests.connect4.test_match import TestMatchResult, TestPlayMatch
 from tests.connect4.test_conformance import TestConnect4Conformance
 
+from tests.tictactoe.test_board import (
+    TestGeometry,
+    TestIsWin,
+    TestMoveGeneration as TestTicTacToeMoveGeneration,
+    TestPlayingAndUndoing,
+    TestCopy as TestTicTacToeCopy,
+    TestSignature as TestTicTacToeSignature,
+    TestDiagrams as TestTicTacToeDiagrams,
+    TestRendering as TestTicTacToeRendering,
+)
+from tests.tictactoe.test_permutations import (
+    TestPerft,
+    TestTheCensus,
+    TestOutcomes,
+)
+from tests.tictactoe.test_evaluation import (
+    TestBitCount,
+    TestOpenTwos,
+    TestValue,
+    TestWeightedEval,
+)
+from tests.tictactoe.test_perfect_play import TestTheOracle, TestPerfectPlay
+from tests.tictactoe.test_play import (
+    TestDefaultDepth,
+    TestPlayLoop as TestTicTacToePlayLoop,
+    TestParseMove as TestTicTacToeParseMove,
+)
+from tests.tictactoe.test_conformance import TestTicTacToeConformance
+
 
 def main():
     unittest.main()
