@@ -366,6 +366,47 @@ class TestMoves(unittest.TestCase):
         self.assertFalse(_board.has_threefold_repetition)
         self.assertFalse(_board.is_game_over)
 
+    def test_a_copy_keeps_the_repetition_history(self):
+        """
+        A regression. `copy` rebuilt the board from its FEN, and a FEN carries castling rights,
+        the en passant square and both clocks - but not how many times a position has occurred.
+        So a copy of a game drawn by repetition had the *same signature* as the original and was
+        still running, which is the one thing `GameState.signature` promises cannot happen.
+
+        It mattered because copies are not incidental: `alpha_beta` takes one per root move and
+        `ai.match` plays every game on one. Nothing enabled `track_repetitions` outside this
+        file, so it never bit - but "no caller currently passes True" is not the same as correct,
+        and the shared suite could not see it because a copy compared equal on every field it
+        knew to look at.
+        """
+        _board = ChessBoard(track_repetitions=True)
+        for move in ('B1C3', 'B8C6', 'C3B1', 'C6B8') * 3:
+            _board.make_move(Move.from_uci(move))
+
+        self.assertTrue(_board.has_threefold_repetition, 'the fixture should be a drawn game')
+
+        clone = _board.copy()
+        self.assertEqual(_board.signature, clone.signature, 'the same position by any measure')
+        self.assertTrue(clone.track_repetitions, 'the copy stopped tracking')
+        self.assertTrue(clone.has_threefold_repetition)
+        self.assertEqual(_board.result, clone.result)
+        self.assertEqual(_board.is_game_over, clone.is_game_over)
+
+    def test_a_copy_leaves_the_move_history_behind(self):
+        """
+        The other half of the rule, so the fix above is not read as "copy everything". A copy may
+        drop anything a caller cannot observe, and `move_history` is only read by `pgn_uci` - it
+        is a record of where the board has been, where the repetition history is part of where
+        the board may still go.
+        """
+        _board = ChessBoard()
+        _board.make_move(Move.from_uci('e2e4'))
+
+        clone = _board.copy()
+        self.assertEqual([], clone.move_history)
+        self.assertEqual(_board.signature, clone.signature)
+        self.assertEqual(_board.result, clone.result)
+
 
 def main():
     unittest.main()

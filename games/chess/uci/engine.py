@@ -2,6 +2,7 @@ import re
 import sys
 from typing import Any, Optional, List
 
+from games.base import has_moves
 from games.chess.board import ChessBoard, Move
 from games.chess.exceptions import IllegalMove
 from ai.search import random_move, alpha_beta
@@ -100,7 +101,7 @@ class UciEngine:
     def get_best_move(self):
         # Checkmate and stalemate leave nothing to search. Both search and random_move
         # assume at least one legal move exists, so answer before calling them.
-        if not any(self.board.legal_moves):
+        if not has_moves(self.board.legal_moves):
             out('bestmove (none)')
             return
 
