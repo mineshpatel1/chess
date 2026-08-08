@@ -71,6 +71,28 @@ BENCHMARK_EVERY = 1
 # confidently slightly wrong.
 SELF_PLAY_EXPLORATION = 5.0
 
+# Whether to add every symmetric copy of each example, which for tic-tac-toe is eight for one.
+#
+# **Off**, on both an argument and a measurement, and it was on by default here for a while
+# without either being made.
+#
+# The argument is that it is hand-injected domain knowledge: the network is *told* the board has
+# eight symmetries rather than left to notice, which cuts against learning the game from self-play
+# alone. The paper history runs the same way - AlphaGo Zero used eight-fold dihedral augmentation
+# and AlphaZero dropped it, chess and shogi not being symmetric.
+#
+# The measurement says it buys nothing anyway. Over 150 generations at 50 simulations, on-policy:
+#
+#     generation      50       100      150
+#     with          93.05%   95.84%   96.31%
+#     without       93.94%   96.22%   96.46%
+#
+# Without leads at every checkpoint while seeing eight times fewer examples. The final margin is
+# inside single-seed noise, but there is no case for paying capacity for it: this network is an
+# MLP over a flattened board with no built-in equivariance, so all eight copies buy is that it
+# spends parameters learning the symmetry group instead of learning positions.
+SYMMETRIES = False
+
 GENERATIONS = 30
 GAMES_PER_GENERATION = 40
 SIMULATIONS = 50
@@ -111,6 +133,7 @@ def train(
     dirichlet_epsilon: float = DIRICHLET_EPSILON,
     learning_rate: float = LEARNING_RATE,
     benchmark_every: int = BENCHMARK_EVERY,
+    symmetries: bool = SYMMETRIES,
     checkpoint_path: Optional[str] = None,
     seed: int = 0,
     on_generation: Optional[Callable[[Progress], None]] = None,
@@ -141,7 +164,7 @@ def train(
         fresh, drawn = _self_play(
             net, encoder, game, games_per_generation, simulations, opening_plies,
             temperature_moves, exploration, dirichlet_epsilon, rng)
-        buffer.extend(augment(fresh, encoder))
+        buffer.extend(augment(fresh, encoder) if symmetries else fresh)
 
         loss, policy_loss, value_loss = _learn(net, optimiser, buffer, steps, batch_size, rng)
 
