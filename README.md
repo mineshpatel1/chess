@@ -103,7 +103,7 @@ Search time grows steeply with depth — see the benchmarks below.
 | `games/tictactoe/constants.py` | Nine cells, eight winning lines, and the order moves are tried in |
 | `games/tictactoe/board.py` | `TicTacToe`: two 9-bit integers, and a `SOLVED_DEPTH` of nine |
 | `games/tictactoe/evaluation.py` | Open twos, which matter only below the depth the game is solved at |
-| `games/tictactoe/encoding.py` | What a network sees: two planes, nine shared actions, eight symmetries |
+| `games/tictactoe/encoding.py` | What a network sees: one signed plane, nine shared actions |
 | `ai/search.py` | Negamax with alpha-beta pruning, and a random mover |
 | `ai/perft.py`, `ai/simulate.py` | Move enumeration, and playing two move-choosers off |
 | `ai/match.py` | Playing them off a few hundred times, which is how an evaluation is judged |
@@ -308,28 +308,32 @@ hundred positions and still be impossible to beat. `zero.py benchmark` reports b
 
 ### Results
 
-The committed checkpoint, trained for 300 generations of 80 self-play games at 50 simulations —
-**19 minutes on four CPU threads**, and 27KB of weights. Purely on-policy: no random openings, no
-supervision, nothing but self-play.
+The committed checkpoint, trained for 400 generations of 80 self-play games at 50 simulations —
+**45 minutes on four CPU threads**, and 25KB of weights. Purely on-policy: no random openings, no
+symmetry augmentation, no supervision, nothing but self-play.
 
 **Can it be beaten? No — not even with the search switched off.**
 
-| Player | vs perfect play | vs *any* opponent |
+| Player | vs *any* opponent, as first | vs *any* opponent, as second |
 |---|---|---|
-| **Raw policy, no search** | first: 8 lines, second: 163 — **unbeaten** | 592W / 171D — **0 losses** |
-| + 200 simulations | first: 5, second: 135 — **unbeaten** | 524W / 140D — **0 losses** |
+| **Raw policy, no search** | 107W / 4D — **0 losses** | 432W / 125D — **0 losses** |
 
 Every line, both seats, no losses. The network alone holds a draw against perfect play and beats
 everything that misplays — which is the whole of what tic-tac-toe asks of a player.
 
 **Does it know the game?** Less completely, and that is where the remaining gap is:
 
-| Player | Overall | As first | As second | Wrong (of 4,520) | Wrong up to symmetry (of 627) |
-|---|---|---|---|---|---|
-| Raw policy, no search | 97.54% | 97.28% | 97.85% | 111 | 34 |
-| + 25 simulations | 99.31% | 99.26% | 99.38% | 31 | 9 |
-| + 200 simulations | **99.96%** | 99.92% | **100.00%** | **2** | 2 |
-| `minimax:9` (perfect by construction) | 100% | 100% | 100% | 0 | 0 |
+| Player | Overall | Wrong (of 4,520) |
+|---|---|---|
+| Raw policy, no search | 98.30% | 77 |
+| + 25 simulations | 99.69% | 14 |
+| + 50 simulations | 99.87% | 6 |
+| + 200 simulations | **99.98%** | **1** |
+| `minimax:9` (perfect by construction) | 100% | 0 |
+
+A move counts as wrong only if it **changes the result** — a slower win is not a mistake, and
+neither is an arbitrary choice between moves of equal value. `solve()` returns 1/0/−1 with no
+depth term, so a mate in three scores the same as a mate in one.
 
 The raw-policy mistakes are all mid-game, and nearly all throw away a draw rather than a win.
 Every one is in a position the model never reaches when it is the one playing — which is exactly
@@ -357,10 +361,10 @@ optimisation and is a different data structure: 97% of tic-tac-toe positions wit
 reachable more than one way, and re-expanding a shared node resets its statistics and re-points
 its parent. A search built that way gets *worse* with more simulations.
 
-**One action space, over perspective-relative planes.** Plane 0 is always the mover's marks, so
-the network learns one player's problem and every game teaches it about both seats. Nine actions,
-not nine per player — a split head halves the data each half sees and invites the two halves to
-disagree about which block is which.
+**One action space, over a perspective-relative board.** The plane is always signed from the
+mover's point of view — +1 mine, −1 theirs — so the network learns one player's problem and every
+game teaches it about both seats. Nine actions, not nine per player: a split head halves the data
+each half sees and invites the two halves to disagree about which block is which.
 
 **The value target is from the mover's own point of view, and a draw is 0.** A position whose
 player went on to win is `+1` *for that position*, whichever player it was. Most tic-tac-toe games
