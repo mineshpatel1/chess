@@ -1,7 +1,7 @@
 from typing import Dict, Optional, Union
 
 import log
-from games.base import GameState, Outcome, DRAW, win
+from games.base import GameState, Outcome, DRAW, has_moves, win
 from games.chess.evaluation import weighted_eval
 from games.chess.bitboard import *
 from games.chess.move import Move
@@ -86,7 +86,7 @@ class ChessBoard(GameState):
 
     @property
     def _bb_en_passant(self):
-        return BB_SQUARES[self.en_passant_sq] if self.en_passant_sq else BB_EMPTY
+        return BB_SQUARES[self.en_passant_sq] if self.en_passant_sq is not None else BB_EMPTY
 
     @property
     def _short_fen(self):
@@ -414,7 +414,7 @@ class ChessBoard(GameState):
                 fen_str += str(blank_counter)
 
         _turn = 'w' if self.turn == WHITE else 'b'
-        _en_passant = '-' if not self.en_passant_sq else str(self.en_passant_sq).lower()
+        _en_passant = '-' if self.en_passant_sq is None else str(self.en_passant_sq).lower()
         fen_str += f' {_turn} {self.castle_flags} {_en_passant} {self.halfmove_clock} {self.fullmoves}'
 
         return fen_str
@@ -449,11 +449,11 @@ class ChessBoard(GameState):
 
     @property
     def is_checkmate(self):
-        return self.is_in_check and not any(self.legal_moves)
+        return self.is_in_check and not has_moves(self.legal_moves)
 
     @property
     def is_stalemate(self):
-        return not self.is_in_check and not any(self.legal_moves)
+        return not self.is_in_check and not has_moves(self.legal_moves)
 
     @property
     def outcome_without_moves(self) -> Outcome:
@@ -494,11 +494,22 @@ class ChessBoard(GameState):
 
     def copy(self) -> 'ChessBoard':
         """
-        A board at the same position, built from the FEN so it carries none of the history
-        that only `unmake_move` would want. That is what the root workers need, and it is
-        cheaper than snapshotting the move stack.
+        A board at the same position, built from the FEN so it carries none of the history that
+        only `unmake_move` would want. That is what the root workers need, and it is cheaper
+        than snapshotting the move stack.
+
+        The repetition history is the exception, and has to come too. It is not a record of
+        where the board has been - it is part of where the board can go, because a position
+        seen twice already is a draw the moment it appears again. A copy without it has the
+        same FEN and so the same `signature`, and finishes a different game: it was the one
+        thing `signature` promised could not happen.
+
+        `move_history` is genuinely only a record, being read by `pgn_uci` and nothing else, so
+        it stays behind.
         """
-        return ChessBoard(self.fen)
+        board = ChessBoard(self.fen, track_repetitions=self.track_repetitions)
+        board.repetitions = list(self.repetitions)
+        return board
 
     @property
     def has_insufficient_material(self):
@@ -559,7 +570,7 @@ class ChessBoard(GameState):
             return DRAW
         elif self.has_threefold_repetition:
             return DRAW
-        elif not any(self.legal_moves):  # Checkmate or stalemate
+        elif not has_moves(self.legal_moves):  # Checkmate or stalemate
             return self.outcome_without_moves
         else:
             return None

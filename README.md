@@ -187,6 +187,29 @@ It did change `games/base.py` twice, though, and honestly rather than not:
   under test stops one move before the position that breaks it. That is exactly how it survived
   Connect 4 being added.
 
+The audit that followed found the same shape of mistake once more, in `ChessBoard.copy`. It
+rebuilt the board from its FEN, which carries castling rights, the en passant square and both
+clocks — but not how many times a position has occurred. So a copy of a game drawn by threefold
+repetition had the **same `signature` as the original and was still running**, which is precisely
+what `GameState.signature` promises cannot happen. Nothing enabled `track_repetitions` outside one
+test, so it never bit; but copies are not incidental — `alpha_beta` takes one per root move and
+`ai/match.py` plays every game on one.
+
+Both bugs are the same failure, and it is worth naming because it is not a coding mistake:
+
+> **The test's notion of "the same" was weaker than the behaviour that mattered.**
+
+`any(moves)` asked whether a move was truthy when the question was whether one existed.
+`test_copy_is_equal_and_independent` compared a copy on `_identity`, which is built from
+`signature`, so anything `signature` omitted was invisible to it by construction. In both cases
+the suite was thorough about the wrong equality.
+
+The fix in both cases is to compare what a caller can actually *observe* rather than what the
+implementation happens to expose, which is what `test_a_copy_is_interchangeable_with_its_original`
+now does — moves, both halves of the result, and the turn. That also gives `copy` a real
+definition of what it may leave behind: anything invisible to that test. `move_history` qualifies,
+being read only by `pgn_uci`; the repetition history never did.
+
 ## Benchmarks
 
 Move generation, measured on a 4-core container with CPython 3.11:

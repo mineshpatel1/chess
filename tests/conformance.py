@@ -180,6 +180,36 @@ class GameConformanceTests:
             self.assertNotEqual(before, self._identity(clone), 'the copy did not actually move')
             self.assertEqual(before, self._identity(state), 'mutating a copy moved the original')
 
+    def test_a_copy_is_interchangeable_with_its_original(self):
+        """
+        Stronger than the test above, and deliberately not built on `_identity`.
+
+        `_identity` is `signature` plus the move list, so a copy that drops something
+        `signature` does not mention is *equal* to its original and does not *behave* like it.
+        Chess did exactly that: `copy` rebuilt the board from its FEN, which carries castling,
+        en passant and the clocks but not the repetition history, so a copy of a drawn game had
+        the same signature and was still running.
+
+        This compares what a caller can actually observe instead - the moves, both halves of the
+        result, and whose turn it is. Anything a copy is allowed to leave behind must be
+        invisible here, which is the real definition of what `copy` may drop.
+        """
+        for state in self._walk(seed=5):
+            clone = state.copy()
+            self.assertEqual(
+                self._observable(state), self._observable(clone), f'the copy differs\n{state}',
+            )
+
+    @staticmethod
+    def _observable(state: GameState):
+        """What a caller can see. Two states equal here have to be interchangeable."""
+        return (
+            sorted(str(move) for move in state.legal_moves),
+            str(state.outcome),
+            str(state.result),
+            state.turn,
+        )
+
     def test_decided_games_report_their_result(self):
         for state, expected in self.decided_games():
             self.assertEqual(expected, state.result, str(state))
