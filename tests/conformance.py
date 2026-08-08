@@ -14,10 +14,13 @@ all of it. To add a game:
             return TicTacToe()
 
         def decided_games(self):
-            return [(TicTacToe('XXX......'), win(FIRST)), (TicTacToe('XOXOXOOXO'), DRAW)]
+            return [(TicTacToe(ROW_WIN), win(CROSS)), (TicTacToe(DRAWN_GAME), DRAW)]
 
         def forced_win_in_one(self):
-            return TicTacToe('XX.OO....'), FIRST
+            return TicTacToe([0, 3, 1, 4]), CROSS
+
+That sketch was written before tic-tac-toe existed, as an illustration. It exists now, and
+tests/tictactoe/test_conformance.py is the real thing.
 
 `unittest` collects tests from the mixin only where it is combined with TestCase, so the
 shared methods run once per game rather than once on their own.
@@ -28,7 +31,7 @@ from typing import List, Optional, Tuple
 
 from ai.search import alpha_beta, random_move
 from ai.simulate import simulate_game
-from games.base import GameState, Outcome, Player
+from games.base import GameState, Outcome, Player, has_moves
 
 
 class GameConformanceTests:
@@ -90,7 +93,34 @@ class GameConformanceTests:
         state = self.new_game()
         self.assertIsNone(state.result)
         self.assertFalse(state.is_game_over)
-        self.assertTrue(any(state.legal_moves))
+        self.assertTrue(has_moves(state.legal_moves))
+
+    def test_a_position_with_moves_left_is_not_finished(self):
+        """
+        Whether a game is over is a question about how many moves there are, never about what
+        the moves are worth - and `any(moves)` quietly conflates the two. Both small games here
+        number their moves from zero, so move 0 is legal and falsy, and `GameState.result` used
+        to call a position finished when move 0 was the only one left: Connect 4 drawn with four
+        cells free in a column, tic-tac-toe drawn with a corner still empty.
+
+        The walk drives itself by `legal_moves` and `outcome` rather than by `is_game_over`,
+        because `is_game_over` is the thing under test - a walk that trusted it would stop at
+        the very position that breaks it, which is how this survived Connect 4 being added.
+        """
+        for seed in range(self.PLAYOUTS):
+            rng = random.Random(seed)
+            state = self.new_game()
+
+            for _ in range(self.PLAYOUT_PLIES):
+                if state.outcome is not None:
+                    break
+                moves = list(state.legal_moves)
+                if not moves:
+                    break
+
+                self.assertIsNone(state.result, f'{state} still has {len(moves)} moves')
+                self.assertFalse(state.is_game_over, str(state))
+                state.make_move(rng.choice(moves))
 
     def test_unmake_restores_the_position_exactly(self):
         """

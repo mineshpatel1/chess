@@ -66,11 +66,22 @@ def computer_player(depth: int) -> Callable:
     return lambda state: alpha_beta(state, depth=depth)
 
 
-def choose_players() -> Tuple[Callable, Callable]:
+def default_depth(game: Type[GameState]) -> int:
+    """
+    How deep the computer searches unless it is told otherwise.
+
+    A game that declares SOLVED_DEPTH can be searched to the end of itself, and a search to the
+    end is perfect play, so there is no reason to offer anything shallower - tic-tac-toe solves
+    in well under a tenth of a second. Everything else gets a depth that answers promptly.
+    """
+    return DEFAULT_DEPTH if game.SOLVED_DEPTH is None else game.SOLVED_DEPTH
+
+
+def choose_players(game: Type[GameState]) -> Tuple[Callable, Callable]:
     """Asks who is playing each side, and how hard the computer should think."""
     kinds = ['Human', 'Computer', 'Random']
     choosers: List[Optional[Callable]] = []
-    depth = DEFAULT_DEPTH
+    depth = default_depth(game)
 
     for name, default in (('first', 0), ('second', 1)):
         log.newline()
@@ -85,7 +96,12 @@ def choose_players() -> Tuple[Callable, Callable]:
             choosers.append(None)  # Filled in below, once the depth is known
 
     if None in choosers:
-        answer = _ask(f'Search depth [{DEFAULT_DEPTH}]: ').strip()
+        if game.SOLVED_DEPTH is not None:
+            log.newline()
+            log.info(f'{game.__name__} is solved at depth {game.SOLVED_DEPTH}, so the default '
+                     f'searches the whole game and cannot be beaten.')
+
+        answer = _ask(f'Search depth [{depth}]: ').strip()
         if answer.isdigit():
             depth = int(answer)
         choosers = [computer_player(depth) if c is None else c for c in choosers]
@@ -120,7 +136,7 @@ def main() -> None:
     games: Tuple[Type[GameState], ...] = GAMES
     game = games[_choose('Game:', [cls.__name__ for cls in games])]
 
-    first, second = choose_players()
+    first, second = choose_players(game)
     play(game(), first, second)
 
 

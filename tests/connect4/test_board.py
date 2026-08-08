@@ -131,6 +131,31 @@ class TestMoveGeneration(unittest.TestCase):
         columns = [3, 3, 2, 4, 1, 0, 3, 6, 6]
         self.assertEqual(columns, Connect4(columns).columns_played)
 
+    def test_column_zero_alone_is_still_a_move(self):
+        """
+        A regression, and one Connect 4 shipped with. Column 0 is a legal move and is also falsy,
+        and `GameState.result` used to ask `any(self.legal_moves)` - so a board with six cells
+        free in column 0 and nobody winning was reported as a drawn game.
+
+        Found while adding tic-tac-toe, where the same bug bites in about one game in nine
+        because the last free cell is cell 0 that often. Here it needs the other six columns to
+        fill first, which is why forty random playouts never turned it up. The position below is
+        from a real game - seed 1198 of the random playout in tests/connect4/corpus.py.
+        """
+        board = Connect4.from_diagram("""
+            .RRYYRR
+            .YYRRYR
+            .RYYYRR
+            .YYRRYY
+            YYRYYRR
+            RYYRYRR
+        """)
+
+        self.assertEqual([0], list(board.legal_moves))
+        self.assertIsNone(board.outcome, 'nobody has won this')
+        self.assertIsNone(board.result, 'the game is still running')
+        self.assertFalse(board.is_game_over)
+
 
 class TestCopy(unittest.TestCase):
     def test_a_copy_is_the_same_position(self):

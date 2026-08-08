@@ -35,6 +35,25 @@ def win(player: Player) -> Outcome:
     return Outcome(player)
 
 
+def has_moves(moves: Iterable[Any]) -> bool:
+    """
+    Whether there are any moves at all, said carefully.
+
+    `any(moves)` is the obvious way to write this and is wrong, because it asks whether any move
+    is *truthy* rather than whether any move exists. A move is whatever suits the game, and the
+    two small games here number theirs from zero - a Connect 4 column, a tic-tac-toe cell - so
+    move 0 is a perfectly legal move that is also falsy. A position whose only continuation is
+    move 0 would be reported as finished while it is still being played: Connect 4 called a draw
+    with four cells free in column 0, and tic-tac-toe with the top-left corner still empty, which
+    happens in about one game in nine.
+
+    Chess escapes it only because a Move object has no __bool__ and so is always truthy. That is
+    not a property the contract asks for, which is exactly why this is a function rather than a
+    convention to remember at each call site.
+    """
+    return any(True for _ in moves)
+
+
 class GameState(ABC):
     """
     A position in a two-player, perfect-information, zero-sum game.
@@ -51,6 +70,16 @@ class GameState(ABC):
 
     # The evaluation the search reaches for when it is not given one.
     DEFAULT_EVAL: Callable[['GameState'], int]
+
+    # The depth at which a search sees the whole game, for a game small enough to be solved.
+    #
+    # A search this deep reaches only finished positions, so it never consults an evaluation and
+    # never guesses: it is playing perfectly. `play.py` offers this as its default depth, which
+    # is how tic-tac-toe comes out of the box unbeatable rather than merely good.
+    #
+    # None for a game whose tree does not end inside any depth worth searching, which is most of
+    # them - chess and Connect 4 both leave it alone.
+    SOLVED_DEPTH: Optional[int] = None
 
     # Which player is to move.
     turn: Player
@@ -147,7 +176,7 @@ class GameState(ABC):
         outcome = self.outcome
         if outcome is not None:
             return outcome
-        if not any(self.legal_moves):
+        if not has_moves(self.legal_moves):
             return self.outcome_without_moves
         return None
 
