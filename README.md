@@ -295,29 +295,50 @@ A player can be excellent from one seat and hopeless from the other, and an aggr
 behind an average. That is not hypothetical: it is what the 2021 attempt in this repository's
 history actually did, and it went unnoticed for months.
 
+### Two different questions
+
+There are two things you can ask about a player, and they are not the same question:
+
+* **Does it know the game?** Grade it in every position, including ones no sensible game reaches.
+* **Can it be beaten?** Play it against every line an opponent could take it down.
+
+They come apart in one direction, and sharply. A player that never blunders *on the path it
+actually walks* never arrives at the positions it would get wrong — so it can be wrong in a
+hundred positions and still be impossible to beat. `zero.py benchmark` reports both.
+
 ### Results
 
 The committed checkpoint, trained for 250 generations of 80 self-play games at 150 simulations —
 **17 minutes on four CPU threads**, and 27KB of weights.
 
-| Player | Overall | As first | As second | Blunders |
+**Can it be beaten? No — not even with the search switched off.**
+
+| Player | vs perfect play | vs *any* opponent |
+|---|---|---|
+| **Raw policy, no search** | first: 8 lines, second: 107 — **unbeaten** | 620W / 126D — **0 losses** |
+| + 25 simulations | first: 10, second: 130 — **unbeaten** | 625W / 140D — **0 losses** |
+
+Every line, both seats, no losses. The network alone holds a draw against perfect play and beats
+everything that misplays — which is the whole of what tic-tac-toe asks of a player.
+
+**Does it know the game?** Less completely, and that is where the remaining gap is:
+
+| Player | Overall | As first | As second | Wrong |
 |---|---|---|---|---|
 | Raw policy, no search | 97.90% | 97.32% | 98.47% | 97 |
 | + 25 simulations | 99.34% | 99.17% | 99.52% | 30 |
-| + 100 simulations | 99.65% | 99.46% | 99.86% | 16 |
 | + 200 simulations | 99.78% | 99.63% | 99.95% | 10 |
 | + 800 simulations | 99.87% | 99.75% | **100.00%** | 6 |
 | `minimax:9` (perfect by construction) | 100% | 100% | 100% | 0 |
 
-The first row is the interesting one. **The network alone — one forward pass, no lookahead —
-picks a best move in 97.9% of all 4,520 positions in the game**, and the two seats are within
-1.2 points of each other. Search then buys most of the remainder: 800 simulations reaches
-perfection from the second seat and gets within six blunders of it overall.
+The 97 raw-policy mistakes are all at plies 3–7, and 91 of them throw away a draw rather than a
+win. Every one is in a position the model never reaches when it is the one playing — which is
+exactly why the table above reads "unbeaten" while this one does not read 100%.
 
-Both columns matter, and being able to run either is why `simulations` is a parameter rather than
-two implementations. A network that only plays well with 500 simulations has learned to be a
-useful prior for a search doing the real work; one whose raw policy is already near-perfect has
-learned the game. The gap between the two rows is the honest measure of which you have.
+Being able to run the network with search switched off is why `simulations` is a parameter rather
+than two implementations. A network that only plays well with 500 simulations has learned to be a
+useful prior for a search doing the real work; one that is unbeatable at zero simulations has
+learned the game itself.
 
 ### What it took to get right
 
@@ -359,16 +380,21 @@ On-policy self-play is what makes AlphaZero work, and it is also why a trained n
 sees the positions it plays into. Measured here: self-play reached **366 of the 4,520** decision
 positions, and the network scored 96.7% on those and 78.8% on everything else.
 
-Which number is "the" score depends on the question. For playing a game the on-policy one is
-honest — nobody reaches the other positions. For *knowing the game*, which is what grading against
-a solver asks, the network has to have seen more of it. So a share of self-play games start from a
-random position (`OPENING_PLIES`), which costs nothing but breadth and uses no knowledge from
-outside the game. `ai/match.py` randomises its openings for the same reason. Nothing played during
-those plies is recorded, so every training target still comes from a real search.
+Starting a share of self-play games from a random position (`OPENING_PLIES`) took the
+all-positions score from 80.3% to 96.8% — the largest single improvement measured here, larger
+than any change to the network, the loss or the search. Nothing played during those plies is
+recorded, so every training target still comes from a real search.
 
-That single change took the raw-policy score from 80.3% to 96.8% on an otherwise identical run,
-and it is the largest single improvement in the whole implementation — larger than any change to
-the network, the loss or the search.
+**But it is worth being suspicious of that number.** It moved the "knows the game" score a long
+way and the "cannot be beaten" score not at all — the network was already unbeatable without it.
+A correct AlphaZero is supposed to reach the state space through `c_puct` and root Dirichlet
+noise, so needing to force random starts is at least as likely to be evidence that the exploration
+is not pulling its weight as it is a genuine improvement. Random openings also bias the training
+distribution toward positions real play never reaches, which is a real cost paid for a metric of
+debatable value.
+
+All three knobs — the temperature schedule, `c_puct` and the Dirichlet weight — are parameters of
+`train()` so the alternative can be measured rather than argued about.
 
 ## Benchmarks
 

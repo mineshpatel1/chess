@@ -23,7 +23,7 @@ from typing import Optional, Type
 
 import log
 from ai.match import play_match
-from ai.oracle import benchmark
+from ai.oracle import benchmark, optimal_moves, play_every_line
 from ai.players import describe, player, UnknownPlayer
 from games import GAMES
 from games.base import GameState
@@ -81,7 +81,19 @@ def grade(args) -> None:
     log.info(f'Grading {describe(args.player)} on {game.__name__} against perfect play...')
     report = benchmark(chooser, game, value_fn=value_fn)
     log.newline()
+    log.info('Knowing the game — every position, against the solver:')
     log.info(str(report))
+
+    # The other question, and the one that decides whether it is any good to play against. A
+    # player can be wrong in hundreds of positions and still be unbeatable, because it never
+    # walks into the ones it would get wrong.
+    log.newline()
+    log.info('Playing the game — every line an opponent could take it down:')
+    for seat, name in ((True, 'first '), (False, 'second')):
+        against_best = play_every_line(chooser, game, seat, opponent=optimal_moves)
+        against_all = play_every_line(chooser, game, seat)
+        log.info(f'  as {name} vs perfect play : {against_best}')
+        log.info(f'  as {name} vs any opponent : {against_all}')
 
     if report.worst:
         log.newline()

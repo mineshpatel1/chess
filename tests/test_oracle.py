@@ -14,7 +14,15 @@ the failures it exists to find.
 import random
 import unittest
 
-from ai.oracle import Grade, benchmark, enumerate_positions, move_values, optimal_moves, solve
+from ai.oracle import (
+    Grade,
+    benchmark,
+    enumerate_positions,
+    move_values,
+    optimal_moves,
+    play_every_line,
+    solve,
+)
 from ai.search import alpha_beta, random_move
 from games.tictactoe.board import TicTacToe
 from games.tictactoe.constants import CELLS
@@ -150,6 +158,57 @@ class TestBenchmarkCalibration(unittest.TestCase):
             value_fn=lambda state: float(solve(state)),
         )
         self.assertAlmostEqual(0.0, report.value_error)
+
+
+class TestPlayEveryLine(unittest.TestCase):
+    """
+    The other question about a player, and the one that decides whether it is worth playing.
+
+    `benchmark` asks whether a player knows the whole game. This asks whether the game can be won
+    against it, which is not the same question and can give a very different answer: a player can
+    be wrong in a hundred positions and still be unbeatable, because it never walks into them.
+    """
+
+    def test_a_perfect_player_cannot_be_beaten_from_either_seat(self):
+        perfect = lambda state: alpha_beta(state, depth=TicTacToe.SOLVED_DEPTH)
+
+        for seat in (CROSS, NOUGHT):
+            record = play_every_line(perfect, TicTacToe, seat)
+            self.assertTrue(record.unbeaten, f'{record} from seat {seat}')
+            self.assertEqual(0, record.losses)
+
+    def test_a_perfect_player_only_draws_against_perfect_play(self):
+        """Tic-tac-toe is drawn, so best against best is a draw down every line."""
+        perfect = lambda state: alpha_beta(state, depth=TicTacToe.SOLVED_DEPTH)
+
+        for seat in (CROSS, NOUGHT):
+            record = play_every_line(perfect, TicTacToe, seat, opponent=optimal_moves)
+            self.assertEqual(0, record.wins)
+            self.assertEqual(0, record.losses)
+            self.assertEqual(record.lines, record.draws)
+
+    def test_a_weak_player_is_beaten(self):
+        """A one-ply search cannot see a fork, so lines exist that beat it."""
+        record = play_every_line(lambda s: alpha_beta(s, depth=1), TicTacToe, NOUGHT)
+        self.assertFalse(record.unbeaten)
+        self.assertGreater(record.losses, 0)
+
+    def test_it_beats_a_weak_player_that_a_benchmark_would_still_score_highly(self):
+        """
+        The two measures coming apart, which is the reason both exist. Depth 1 scores respectably
+        against the solver and is still losable to - and a player can equally be unbeatable while
+        scoring poorly, by never reaching the positions it would get wrong.
+        """
+        graded = benchmark(lambda s: alpha_beta(s, depth=1), TicTacToe)
+        played = play_every_line(lambda s: alpha_beta(s, depth=1), TicTacToe, NOUGHT)
+
+        self.assertGreater(graded.overall.rate, 0.5)
+        self.assertGreater(played.losses, 0)
+
+    def test_every_line_is_accounted_for(self):
+        record = play_every_line(lambda s: alpha_beta(s, depth=9), TicTacToe, CROSS)
+        self.assertEqual(record.lines, record.wins + record.draws + record.losses)
+        self.assertGreater(record.lines, 0)
 
 
 class TestGrade(unittest.TestCase):

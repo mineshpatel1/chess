@@ -128,6 +128,83 @@ def enumerate_positions(game: Callable[[], GameState]) -> Iterator[Tuple[GameSta
     yield from walk(0)
 
 
+class Record(NamedTuple):
+    """Every line a player could be taken down, counted."""
+
+    wins: int
+    draws: int
+    losses: int
+
+    @property
+    def lines(self) -> int:
+        return self.wins + self.draws + self.losses
+
+    @property
+    def unbeaten(self) -> bool:
+        return self.losses == 0
+
+    def __str__(self) -> str:
+        verdict = 'unbeaten' if self.unbeaten else f'LOSES {self.losses}'
+        return f'+{self.wins} ={self.draws} -{self.losses} over {self.lines} lines ({verdict})'
+
+
+def play_every_line(
+    player: Callable[[GameState], Any],
+    game: Callable[[], GameState],
+    seat: bool,
+    opponent: Optional[Callable[[GameState], List[Any]]] = None,
+) -> Record:
+    """
+    Plays `player` against every line its opponent has available, exhaustively.
+
+    A different question from `benchmark`, and the one that decides whether a player is any good
+    to play against. `benchmark` asks whether the player knows the whole game; this asks whether
+    the game can be won against it. They come apart in exactly one direction: a player can be
+    wrong in hundreds of positions and still be unbeatable, because a player that never blunders
+    *on the path it actually walks* never reaches the positions it would get wrong.
+
+    `opponent` returns the moves to branch on. The default tries everything, which is the
+    strongest claim available - no sequence of moves beats this player. Passing `optimal_moves`
+    asks the weaker and more usual question, whether it holds a draw against best play.
+
+    Memoised on the position, so an opponent's 255,168 games collapse to the few thousand
+    positions the player can actually be faced with.
+    """
+    branch = opponent or (lambda state: list(state.legal_moves))
+    memo: Dict[Tuple[str, bool], Record] = {}
+    state = game()
+
+    def walk() -> Record:
+        key = (state.signature, state.turn)
+        if key in memo:
+            return memo[key]
+
+        result = state.result
+        if result is not None:
+            record = Record(
+                wins=int(result.winner == seat),
+                draws=int(result.winner is None),
+                losses=int(result.winner == (not seat)),
+            )
+        elif state.turn == seat:
+            state.make_move(player(state))
+            record = walk()
+            state.unmake_move()
+        else:
+            wins = draws = losses = 0
+            for move in branch(state):
+                state.make_move(move)
+                below = walk()
+                state.unmake_move()
+                wins, draws, losses = wins + below.wins, draws + below.draws, losses + below.losses
+            record = Record(wins, draws, losses)
+
+        memo[key] = record
+        return record
+
+    return walk()
+
+
 class Grade(NamedTuple):
     """How a player did over some set of positions."""
 
