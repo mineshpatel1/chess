@@ -18,10 +18,12 @@ comparing it against "the same network with none" is a change of argument rather
 """
 
 import argparse
+import random
 import sys
 from typing import Optional, Type
 
 import log
+from ai import corpus
 from ai.match import play_match
 from ai.oracle import benchmark, enumerate_positions, optimal_moves, play_every_line
 from ai.players import describe, player, UnknownPlayer
@@ -73,25 +75,29 @@ def train(args) -> None:
     log.info(f'Best checkpoint written to {args.out}')
 
 
-def grade(args) -> None:
-    """Grades a player against perfect play in every position of the game."""
-    game = _game(args.game)
-    chooser = _player(args.player)
+def _show_worst(report) -> None:
+    if report.worst:
+        log.newline()
+        log.info('Worst positions:')
+        for board, played, best in report.worst:
+            log.info(f'{board}\n  played {played}, best was {sorted(best)}')
 
-    value_fn = None
-    if args.value and args.player.startswith('model:'):
-        from ai.zero.player import model_value
-        value_fn = model_value(args.player.split('+')[0][len('model:'):])
 
-    log.info(f'Grading {describe(args.player)} on {game.__name__} against perfect play...')
+def _grade_enumerated(game, chooser, spec, value_fn) -> None:
+    """
+    A game whose whole state space fits in a loop, which is tic-tac-toe and nothing else here.
+
+    Both questions get asked, because both can be. `benchmark` walks every position and asks
+    whether the player *knows* the game; `play_every_line` plays it against every line an opponent
+    could take it down and asks whether it *can be beaten*. They come apart sharply and in one
+    direction: a player never reaches the positions it would get wrong if it never blunders on the
+    path it actually walks.
+    """
     report = benchmark(chooser, enumerate_positions(game), value_fn=value_fn)
     log.newline()
     log.info('Knowing the game — every position, against the solver:')
     log.info(str(report))
 
-    # The other question, and the one that decides whether it is any good to play against. A
-    # player can be wrong in hundreds of positions and still be unbeatable, because it never
-    # walks into the ones it would get wrong.
     log.newline()
     log.info('Playing the game — every line an opponent could take it down:')
     for seat, name in ((True, 'first '), (False, 'second')):
@@ -100,11 +106,68 @@ def grade(args) -> None:
         log.info(f'  as {name} vs perfect play : {against_best}')
         log.info(f'  as {name} vs any opponent : {against_all}')
 
-    if report.worst:
+    _show_worst(report)
+
+
+def _grade_corpus(game, chooser, spec, value_fn, path, only_tier) -> None:
+    """
+    A game too big to enumerate, graded against positions solved ahead of time.
+
+    One report per tier and never a combined one. The tiers ask different questions - the opening
+    exhaustively, then random positions, then positions from real play - and averaging them would
+    produce a number whose value depended mostly on how many of each happened to be sampled.
+
+    `play_every_line` is not offered. It is exponential in the length of a game, which tic-tac-toe
+    can afford and Connect 4 cannot; the question it answers needs a different instrument here.
+    """
+    entries = corpus.load(path)
+    lookup = corpus.values(entries)
+    log.info(f'{len(entries)} solved positions from {path}')
+
+    for tier, description in corpus.TIERS:
+        chosen = [entry for entry in entries if entry.tier == tier]
+        if not chosen or (only_tier and tier != only_tier):
+            continue
+
         log.newline()
-        log.info('Worst positions:')
-        for board, played, best in report.worst:
-            log.info(f'{board}\n  played {played}, best was {sorted(best)}')
+        log.info(f'{description} ({len(chosen)} positions):')
+        report = benchmark(
+            chooser, corpus.positions(chosen, game), values=lookup, value_fn=value_fn,
+        )
+        log.info(str(report))
+        _show_worst(report)
+
+
+def grade(args) -> None:
+    """Grades a player against exact play, however this game can supply it."""
+    game = _game(args.game)
+    chooser = _player(args.player)
+
+    # Seeded, because `random` and a model sampling its policy both draw from the global RNG, and
+    # a benchmark whose number moves between runs is a benchmark you cannot quote. Deterministic
+    # players ignore this entirely.
+    random.seed(args.seed)
+
+    value_fn = None
+    if args.value and args.player.startswith('model:'):
+        from ai.zero.player import model_value
+        value_fn = model_value(args.player.split('+')[0][len('model:'):])
+
+    log.info(f'Grading {describe(args.player)} on {game.__name__} against perfect play...')
+
+    # A game that declares SOLVED_DEPTH can be searched to the end of itself, which means its
+    # state space is small enough to walk and to solve on the spot. Everything else needs answers
+    # computed in advance.
+    if game.SOLVED_DEPTH is not None:
+        _grade_enumerated(game, chooser, args.player, value_fn)
+    elif game.__name__ in corpus.CORPORA:
+        _grade_corpus(game, chooser, args.player, value_fn,
+                      corpus.CORPORA[game.__name__], args.tier)
+    else:
+        raise SystemExit(
+            f'{game.__name__} can neither be enumerated nor has a solved corpus, so there is '
+            f'nothing to grade it against'
+        )
 
 
 def match(args) -> None:
@@ -144,6 +207,10 @@ def main(argv: Optional[list] = None) -> None:
     grader.add_argument('--player', required=True, help='e.g. minimax:9, model:PATH+mcts:100')
     grader.add_argument('--value', action='store_true',
                         help='also grade the value head against the true value')
+    grader.add_argument('--tier', default=None,
+                        help='grade only one corpus tier: E (opening), R (random), P (real play)')
+    grader.add_argument('--seed', type=int, default=0,
+                        help='seeds the global RNG, so a player that samples is reproducible')
     grader.set_defaults(run=grade)
 
     matcher = commands.add_parser('match', help='play two players off against each other')

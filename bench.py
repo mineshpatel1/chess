@@ -38,10 +38,14 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 import log
+from ai.corpus import load
 from ai.oracle import Table, move_values
 from games.base import has_moves
 from games.connect4.board import Connect4
 from tests.connect4.solved import SOLVED
+
+# The solved corpus a learned player is graded against. See ai/corpus.py.
+CORPUS = 'ai/corpora/connect4.txt'
 
 
 def _percentile(sorted_times: List[float], fraction: float) -> float:
@@ -166,6 +170,42 @@ def frontier(args) -> None:
     _report(strata)
 
 
+def verify(args) -> None:
+    """
+    Re-solves the corpus with our own solver, as far back into the game as it can reach.
+
+    The corpus is computed by an external solver, so on its own it is one program's opinion. This
+    is the second opinion, and it is worth having precisely because the two share no code: ours is
+    Python negamax over a sentinel-padded bitboard, Pons' is C++ over a different layout with a
+    32MB opening book. Agreement between them is evidence; agreement of either with itself is not.
+
+    Only the plies our solver can afford, deepest first, so a run cut short has still checked
+    something. Everything shallower is covered instead by the game-tree consistency of the
+    enumerated tier and by the published opening - see tests/connect4/test_corpus.py.
+    """
+    entries = [entry for entry in load(args.corpus) if entry.ply >= args.from_ply]
+    entries.sort(key=lambda entry: -entry.ply)
+    log.info(f'Re-solving {len(entries)} corpus positions at ply {args.from_ply} and deeper...')
+
+    wrong = 0
+    by_ply: Dict[int, int] = {}
+    for entry in entries:
+        state = Connect4(entry.moves)
+        ours = move_values(state, Table())
+        if ours != entry.values:
+            wrong += 1
+            log.warning(f'  ply {entry.ply} {entry.moves}: corpus {entry.values}, ours {ours}')
+        by_ply[entry.ply] = by_ply.get(entry.ply, 0) + 1
+
+    log.newline()
+    for ply in sorted(by_ply, reverse=True):
+        log.info(f'  ply {ply:>2}: {by_ply[ply]} checked')
+    log.newline()
+    if wrong:
+        raise SystemExit(f'{wrong} positions disagree with our own solver')
+    log.info(f'Our solver agrees with the corpus in all {len(entries)} positions it can reach.')
+
+
 def main(argv: Optional[List[str]] = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     commands = parser.add_subparsers(dest='command', required=True)
@@ -179,6 +219,12 @@ def main(argv: Optional[List[str]] = None) -> None:
     edge.add_argument('--count', type=int, default=20, help='positions per ply')
     edge.add_argument('--seed', type=int, default=0)
     edge.set_defaults(run=frontier)
+
+    second = commands.add_parser('verify', help="re-solve the corpus with our own solver")
+    second.add_argument('--corpus', default=CORPUS)
+    second.add_argument('--from-ply', type=int, default=16,
+                        help='the shallowest ply our solver can afford')
+    second.set_defaults(run=verify)
 
     args = parser.parse_args(argv)
     args.run(args)

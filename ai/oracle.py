@@ -331,6 +331,9 @@ class Grade(NamedTuple):
         )
 
 
+VALUE_NAMES = {WIN: 'winning', DRAW: 'drawn  ', LOSS: 'losing '}
+
+
 class Report(NamedTuple):
     """A player graded against perfect play, whole and split the ways that matter."""
 
@@ -339,6 +342,7 @@ class Report(NamedTuple):
     by_ply: Dict[int, Grade]
     worst: List[Tuple[str, Any, List[Any]]]  # (board, move played, moves that were best)
     value_error: Optional[float] = None  # Mean squared error of a value function, if given
+    by_value: Dict[int, Grade] = {}  # Keyed by what the position is worth to the player to move
 
     def __str__(self) -> str:
         lines = [f'  overall      {self.overall}']
@@ -346,6 +350,10 @@ class Report(NamedTuple):
             if seat in self.by_seat:
                 name = 'first ' if seat else 'second'
                 lines.append(f'  as {name}     {self.by_seat[seat]}')
+
+        for value in (WIN, DRAW, LOSS):
+            if value in self.by_value:
+                lines.append(f'  in {VALUE_NAMES[value]}   {self.by_value[value]}')
 
         lines.append('  by ply       ' + '  '.join(
             f'{ply}:{grade.rate:.0%}' for ply, grade in sorted(self.by_ply.items())
@@ -399,10 +407,17 @@ def benchmark(
     because a player can pick good moves with a badly calibrated evaluation and vice versa. It is
     graded against `values` too, taking the best move's value as the position's, so that it needs
     no second source of truth.
+
+    The by-value split exists because it is the main way a score over *sampled* positions can
+    flatter. A position that is already winning usually has several moves that keep it winning, so
+    a set full of them is easy; the drawn positions, where exactly one move holds and the rest
+    lose, are where a player is really tested. An aggregate over a set that happens to be mostly
+    decided says more about the sampling than about the player.
     """
     overall = _Tally()
     by_seat: Dict[bool, _Tally] = {}
     by_ply: Dict[int, _Tally] = {}
+    by_value: Dict[int, _Tally] = {}
     worst: List[Tuple[str, Any, List[Any]]] = []
     squared_error = 0.0
     evaluated = 0
@@ -431,6 +446,7 @@ def benchmark(
         overall.add(was_optimal, lost)
         by_seat.setdefault(state.turn, _Tally()).add(was_optimal, lost)
         by_ply.setdefault(ply, _Tally()).add(was_optimal, lost)
+        by_value.setdefault(best, _Tally()).add(was_optimal, lost)
 
         if lost > 0 and len(worst) < worst_examples:
             worst.append((str(state), move, [m for m, v in worths.items() if v == best]))
@@ -441,4 +457,5 @@ def benchmark(
         by_ply={ply: tally.grade() for ply, tally in by_ply.items()},
         worst=worst,
         value_error=(squared_error / evaluated) if evaluated else None,
+        by_value={value: tally.grade() for value, tally in by_value.items()},
     )

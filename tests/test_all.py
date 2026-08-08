@@ -56,6 +56,15 @@ from tests.connect4.test_solver import (
     TestPublishedSolution,
 )
 from tests.connect4.test_conformance import TestConnect4Conformance
+from tests.connect4.test_corpus import (
+    TestGameTreeConsistency,
+    # Aliased: tests/connect4/test_solver.py exports a class of the same name, and an unaliased
+    # import would shadow it here - silently, since the suite would still pass with three fewer
+    # tests in it. Same reason TestPermutations is aliased above.
+    TestPublishedSolution as TestPublishedSolutionInTheCorpus,
+    TestTheFileIsWellFormed,
+    TestTheLoader,
+)
 
 from tests.tictactoe.test_board import (
     TestGeometry,
