@@ -16,8 +16,13 @@ from games.tictactoe.encoding import TRANSFORMS, TicTacToeEncoder as Encoder
 
 
 class TestShape(unittest.TestCase):
-    def test_the_board_is_two_planes(self):
-        self.assertEqual((2, SIDE, SIDE), Encoder.PLANE_SHAPE)
+    def test_the_board_is_one_signed_plane(self):
+        """
+        One plane, not two. Two binary planes - "mine" and "theirs" - is what AlphaZero uses and
+        what this was first; one signed plane measurably beat it here, at every checkpoint of an
+        otherwise identical run. See the docstring of `TicTacToeEncoder.planes`.
+        """
+        self.assertEqual((1, SIDE, SIDE), Encoder.PLANE_SHAPE)
 
     def test_there_is_one_action_per_cell_and_not_two(self):
         """
@@ -33,13 +38,24 @@ class TestShape(unittest.TestCase):
 
 
 class TestPlanes(unittest.TestCase):
-    def test_plane_zero_is_the_mover_and_plane_one_the_opponent(self):
+    def test_the_mover_is_positive_and_the_opponent_negative(self):
         state = TicTacToe([4, 0])  # Crosses centre, Noughts corner, Crosses to move
-        mine, theirs = Encoder.planes(state)
+        (board,) = Encoder.planes(state)
 
-        self.assertEqual(1, mine[1][1], 'the mover holds the centre')
-        self.assertEqual(1, theirs[0][0], 'the opponent holds the corner')
-        self.assertEqual(0, mine[0][0])
+        self.assertEqual(1, board[1][1], 'the mover holds the centre')
+        self.assertEqual(-1, board[0][0], 'the opponent holds the corner')
+        self.assertEqual(0, board[0][1], 'and that cell is empty')
+
+    def test_a_cell_cannot_be_both_players_at_once(self):
+        """
+        The constraint the signed encoding gets for free and two planes have to learn: one cell,
+        one value. That is the leading guess for why it trains faster on a board this small.
+        """
+        for state in (TicTacToe(), TicTacToe([4, 0]), TicTacToe([4, 0, 8, 2])):
+            (board,) = Encoder.planes(state)
+            for row in board:
+                for cell in row:
+                    self.assertIn(cell, (-1, 0, 1))
 
     def test_the_same_shape_looks_the_same_to_whoever_is_playing_it(self):
         """
@@ -57,12 +73,12 @@ class TestPlanes(unittest.TestCase):
         self.assertEqual(Encoder.planes(crosses_to_move), Encoder.planes(mirror))
 
     def test_an_empty_board_is_all_zeroes(self):
-        self.assertEqual([[[0] * SIDE] * SIDE] * 2, Encoder.planes(TicTacToe()))
+        self.assertEqual([[[0] * SIDE] * SIDE], Encoder.planes(TicTacToe()))
 
     def test_planes_are_read_in_the_same_order_the_board_prints(self):
-        state = TicTacToe([2])  # Crosses take the top right
-        _, theirs = Encoder.planes(state)
-        self.assertEqual(1, theirs[0][2], 'cell 2 is row 0, column 2')
+        state = TicTacToe([2])  # Crosses take the top right, so Noughts are to move
+        (board,) = Encoder.planes(state)
+        self.assertEqual(-1, board[0][2], 'cell 2 is row 0, column 2, and belongs to the opponent')
 
 
 class TestActions(unittest.TestCase):
@@ -126,7 +142,8 @@ class TestSymmetries(unittest.TestCase):
 
         for moved, spun in Encoder.symmetries(planes, policy):
             hot = spun.index(1.0)
-            mine = [r * SIDE + c for r in range(SIDE) for c in range(SIDE) if moved[0][r][c]]
+            # `== 1` rather than truthiness: the opponent's cells are -1, which is also truthy.
+            mine = [r * SIDE + c for r in range(SIDE) for c in range(SIDE) if moved[0][r][c] == 1]
             self.assertEqual([hot], mine, 'the policy did not follow the mark it belongs to')
 
     def test_a_symmetric_position_maps_to_itself(self):
