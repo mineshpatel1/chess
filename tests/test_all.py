@@ -78,6 +78,43 @@ from tests.tictactoe.test_play import (
     TestParseMove as TestTicTacToeParseMove,
 )
 from tests.tictactoe.test_conformance import TestTicTacToeConformance
+from tests.tictactoe.test_encoding import (
+    TestShape,
+    TestPlanes,
+    TestActions,
+    TestSymmetries,
+)
+
+# The learned player. Only tests/zero/test_net.py needs PyTorch, and it skips without it - the
+# tree and the training targets, which are the parts most likely to be wrong, are checked with
+# nothing installed at all.
+from tests.test_oracle import (
+    TestSolver,
+    TestEnumeration,
+    TestBenchmarkCalibration,
+    TestPlayEveryLine,
+    TestGrade,
+)
+from tests.zero.test_mcts import (
+    TestTerminalValue as TestZeroTerminalValue,
+    TestSearchWithPerfectKnowledge,
+    TestSearchWithNoKnowledge,
+    TestTheTreeIsPaths,
+    TestPolicyOutput,
+)
+from tests.zero.test_selfplay import (
+    TestValueTargets,
+    TestPlayGame,
+    TestRandomOpenings,
+    TestAugmentation,
+)
+from tests.zero.test_net import (
+    TestNetwork,
+    TestMasking,
+    TestCheckpoints,
+    TestPlayer,
+    TestTrainingLearns,
+)
 
 
 def main():

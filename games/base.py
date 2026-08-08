@@ -11,7 +11,7 @@ printable.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Iterable, NamedTuple, Optional
+from typing import Any, Callable, Iterable, Iterator, List, NamedTuple, Optional, Tuple, Type
 
 # True is the first player, the one a positive evaluation favours. Chess already works this
 # way: game.constants defines Colour = bool with WHITE = True.
@@ -54,6 +54,71 @@ def has_moves(moves: Iterable[Any]) -> bool:
     return any(True for _ in moves)
 
 
+Planes = List[List[List[int]]]
+Policy = List[float]
+
+
+class Encoder(ABC):
+    """
+    How a game is shown to a neural network, for the learned player in `ai.zero`.
+
+    Optional: a game without one is still a perfectly good game, it just cannot be learned. It is
+    kept separate from GameState because it answers a different question - GameState says what
+    the rules are, this says what a network sees - and because only some games will ever want it.
+
+    Everything here is plain Python: planes are nested lists of ints and moves stay whatever the
+    game already uses. Tensors are built in `ai.zero`, which is what lets `games/` keep its
+    promise of no third-party dependencies.
+
+    Two rules matter more than the rest, and both are here because a previous attempt at a learned
+    player in this project got them wrong in ways that took months to find.
+
+    **Planes are relative to the player to move**, never to a fixed player: plane 0 is always
+    "mine" and plane 1 always "theirs". A network then only has to learn one player's problem,
+    and every position teaches it something about both seats.
+
+    **The action space is single and shared.** POLICY_SIZE covers the moves of *the player to
+    move*, whoever that is - not one block of outputs per player. Splitting it halves the data
+    each half sees, and invites the two halves to disagree about which block is which.
+    """
+
+    # (planes, rows, columns) of what `planes` returns.
+    PLANE_SHAPE: Tuple[int, int, int]
+
+    # How many distinct actions exist, shared by both players.
+    POLICY_SIZE: int
+
+    @staticmethod
+    @abstractmethod
+    def planes(state: 'GameState') -> Planes:
+        """The position as the player to move sees it."""
+
+    @staticmethod
+    @abstractmethod
+    def action_index(move: Any) -> int:
+        """Which policy output corresponds to `move`."""
+
+    @staticmethod
+    @abstractmethod
+    def action_move(index: int) -> Any:
+        """The move a policy output corresponds to. The inverse of `action_index`."""
+
+    @staticmethod
+    def symmetries(planes: Planes, policy: Policy) -> Iterator[Tuple[Planes, Policy]]:
+        """
+        Equivalent (position, policy) pairs, for turning one training example into several.
+
+        A board with symmetries gets them for free: a rotated position is the same position, so
+        the rotated policy is the same policy, and the value does not change at all. The default
+        claims no symmetry and yields the example unaltered, which is always correct and never
+        useful.
+
+        Whatever a game yields here has to keep planes and policy in step. A transform applied to
+        one and not the other teaches the network to play the mirror image of what it is shown.
+        """
+        yield planes, policy
+
+
 class GameState(ABC):
     """
     A position in a two-player, perfect-information, zero-sum game.
@@ -80,6 +145,10 @@ class GameState(ABC):
     # None for a game whose tree does not end inside any depth worth searching, which is most of
     # them - chess and Connect 4 both leave it alone.
     SOLVED_DEPTH: Optional[int] = None
+
+    # How this game is shown to a neural network, for `ai.zero`. None means the game cannot be
+    # learned, which is the default and costs a game that does not care precisely nothing.
+    ENCODER: Optional[Type[Encoder]] = None
 
     # Which player is to move.
     turn: Player

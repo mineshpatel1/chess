@@ -32,6 +32,7 @@ from games.tictactoe.constants import (
     Mark,
     index,
 )
+from games.tictactoe.encoding import TicTacToeEncoder
 from games.tictactoe.evaluation import bit_count, weighted_eval
 
 
@@ -60,6 +61,10 @@ class TicTacToe(GameState):
     SOLVED_DEPTH = CELLS
 
     DEFAULT_EVAL = staticmethod(weighted_eval)
+
+    # How a network sees this game, for ai.zero. Two perspective-relative planes and nine shared
+    # actions - see games/tictactoe/encoding.py for why both of those matter.
+    ENCODER = TicTacToeEncoder
 
     def __init__(self, cells: Iterable[int] = ()) -> None:
         """A position, reached by playing `cells` from an empty board."""
