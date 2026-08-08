@@ -5,7 +5,7 @@ import contextlib
 from games.chess.board import ChessBoard
 from games.chess.constants import WHITE, BLACK
 from ai.search import alpha_beta, terminal_score, MATE
-from uci.engine import UciEngine
+from games.chess.uci.engine import UciEngine
 
 
 class TestTerminalValue(unittest.TestCase):

@@ -1,7 +1,7 @@
 import asyncio
 from typing import Tuple
 
-from uci.protocol import BaseCommand, UciProtocol
+from games.chess.uci.protocol import BaseCommand, UciProtocol
 
 
 class StockfishProtocol(UciProtocol):
