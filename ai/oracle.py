@@ -20,9 +20,19 @@ Only for games that declare `SOLVED_DEPTH`. Everything here enumerates the whole
 asking it about chess would not return.
 """
 
-from typing import Any, Callable, Dict, Iterator, List, NamedTuple, Optional, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+)
 
-from games.base import GameState
+from games.base import GameState, has_moves
 
 # Values are from the point of view of the player to move, the same convention `ai.search` uses.
 WIN = 1
@@ -30,61 +40,150 @@ DRAW = 0
 LOSS = -1
 
 
-def _key(state: GameState) -> str:
+# How a stored value relates to the true one. A search that cut off did not learn the exact
+# value, only that it was at least or at most what it returned, and a table that forgets which
+# is which will hand a bound back as though it were the answer.
+EXACT, LOWER, UPPER = 0, 1, 2
+
+
+class Table:
     """
-    What makes two positions the same question.
+    What the solver remembers between positions.
 
-    `signature` is the contract's own answer to that, and it is stricter than the printed board:
-    two chess positions that look alike can differ in castling rights and play differently. The
-    turn is folded in because a signature need not carry it, and a position with the other player
-    to move is a different question with a different answer.
+    Two dictionaries, deliberately keyed differently, and the difference is the whole reason this
+    is a class rather than a dict:
+
+    *Values* are keyed by `canonical_key`, so a position and its mirror image share an entry. That
+    is sound because a reflected board is worth exactly what the original is, and on Connect 4 it
+    halves the table.
+
+    *Move hints* are keyed by `solver_key`, and are never shared with a mirror. The best move in a
+    reflected position is the *reflected* move, so a hint read from a mirrored entry would be a
+    move for the wrong side of the board. Keeping them in separate dictionaries means that cannot
+    happen by accident: there is no mirrored entry to read a move out of.
     """
-    return f'{state.signature}|{int(state.turn)}'
+
+    __slots__ = ('values', 'hints', 'hits', 'nodes')
+
+    def __init__(self) -> None:
+        self.values: Dict[Any, Tuple[int, int]] = {}
+        self.hints: Dict[Any, Any] = {}
+        self.hits = 0
+        self.nodes = 0
 
 
-def solve(state: GameState, _memo: Optional[Dict[str, int]] = None) -> int:
+def _value_of(outcome, turn) -> int:
+    """A finished game's result, from the point of view of the player to move in it."""
+    if outcome.winner is None:
+        return DRAW
+    return WIN if outcome.winner == turn else LOSS
+
+
+def _finished_value(state: GameState) -> int:
+    """The value of a position that is over. Raises if it is not."""
+    result = state.result
+    if result is None:
+        raise ValueError(f'this game is not finished:\n{state}')
+    return _value_of(result, state.turn)
+
+
+def solve(state: GameState, _table: Optional[Table] = None) -> int:
     """
     The value of a position with best play by both sides, from the mover's point of view.
 
-    Plain memoised negamax, with no alpha-beta. Pruning would be faster and would make this a
-    worse instrument: a pruned search returns a bound for the moves it cut off, and this has to
-    be able to say what *every* move is worth, not just which one is best.
+    Alpha-beta over a transposition table, searched on a full window - which is what keeps this an
+    exact answer rather than a bound. Pruning inside a full window is sound: a cutoff only ever
+    discards a line that provably cannot beat one already found, so the value that comes back is
+    the true one. `move_values` relies on that, and searches every root child on a full window for
+    the same reason.
 
-    Memoised on `_key`, so the 255,168 games of tic-tac-toe collapse to its 5,478 positions.
+    Values are in {-1, 0, 1}, which makes the window unusually tight and the pruning unusually
+    good: proving a move wins is enough to stop looking at the rest.
     """
-    memo = _memo if _memo is not None else {}
-    key = _key(state)
-    if key in memo:
-        return memo[key]
-
-    result = state.result
-    if result is not None:
-        value = DRAW if result.winner is None else (WIN if result.winner == state.turn else LOSS)
-    else:
-        best = LOSS - 1
-        for move in state.legal_moves:
-            state.make_move(move)
-            reply = -solve(state, memo)
-            state.unmake_move()
-            best = max(best, reply)
-        value = best
-
-    memo[key] = value
-    return value
+    table = _table if _table is not None else Table()
+    return _search(state, LOSS, WIN, table)
 
 
-def move_values(state: GameState, _memo: Optional[Dict[str, int]] = None) -> Dict[Any, int]:
-    """What each legal move is worth to the player to move. The whole answer, not just the best."""
-    memo = _memo if _memo is not None else {}
+def _search(state: GameState, alpha: int, beta: int, table: Table) -> int:
+    """Negamax with alpha-beta, returning the value of `state` to the player to move in it."""
+    table.nodes += 1
+
+    outcome = state.outcome
+    if outcome is not None:  # Somebody has already won; it cannot have been the player to move
+        return _value_of(outcome, state.turn)
+
+    moves = list(state.legal_moves)
+    if not moves:
+        return _value_of(state.outcome_without_moves, state.turn)
+
+    # A move that wins right now ends the question, and collapses an entire subtree into one
+    # test. In a game where most lines end in a forced win that is the single largest saving
+    # available, which is why `winning_moves` is a hook a game can answer cheaply rather than a
+    # loop over make/unmake here - Connect 4 answers it in bit operations, four times faster.
+    #
+    # Asked before the table is consulted, because it is cheaper than the lookup: on Connect 4 the
+    # key involves mirroring the board, and there is no sense paying for that to learn something
+    # a handful of shifts already knows.
+    if has_moves(state.winning_moves):
+        return WIN
+
+    key = state.canonical_key
+    stored = table.values.get(key)
+    if stored is not None:
+        value, flag = stored
+        if flag == EXACT:
+            table.hits += 1
+            return value
+        if flag == LOWER:
+            alpha = max(alpha, value)
+        else:
+            beta = min(beta, value)
+        if alpha >= beta:
+            table.hits += 1
+            return value
+
+    original_alpha = alpha
+    hint = table.hints.get(state.solver_key)
+    if hint is not None and hint in moves:
+        moves = [hint] + [move for move in moves if move != hint]
+
+    best, best_move = LOSS - 1, None
+    for move in moves:
+        state.make_move(move)
+        reply = -_search(state, -beta, -alpha, table)
+        state.unmake_move()
+
+        if reply > best:
+            best, best_move = reply, move
+        alpha = max(alpha, reply)
+        if alpha >= beta:
+            break  # This move is already good enough that the rest cannot matter
+
+    flag = EXACT if original_alpha < best < beta else (LOWER if best >= beta else UPPER)
+    table.values[key] = (best, flag)
+    if best_move is not None:
+        table.hints[state.solver_key] = best_move
+    return best
+
+
+def move_values(state: GameState, _table: Optional[Table] = None) -> Dict[Any, int]:
+    """
+    What each legal move is worth to the player to move. The whole answer, not just the best.
+
+    Every child is searched on a full window, so every value that comes back is exact rather than
+    a bound. That costs more than asking only for the best move and is the entire point: grading a
+    player needs to know what the move it chose was worth, not merely that something beat it.
+    """
+    table = _table if _table is not None else Table()
     values = {}
     for move in state.legal_moves:
         state.make_move(move)
-        values[move] = -solve(state, memo)
+        values[move] = -_search(state, LOSS, WIN, table)
         state.unmake_move()
     return values
 
 
-def optimal_moves(state: GameState, _memo: Optional[Dict[str, int]] = None) -> List[Any]:
+def optimal_moves(state: GameState, _table: Optional[Table] = None) -> List[Any]:
     """
     Every move that preserves the value of the position.
 
@@ -92,7 +191,7 @@ def optimal_moves(state: GameState, _memo: Optional[Dict[str, int]] = None) -> L
     one from the solver has not made a mistake - grading against a single "correct" move would
     measure agreement with an arbitrary tie-break rather than quality of play.
     """
-    values = move_values(state, _memo)
+    values = move_values(state, _table)
     if not values:
         return []
     best = max(values.values())
@@ -104,14 +203,17 @@ def enumerate_positions(game: Callable[[], GameState]) -> Iterator[Tuple[GameSta
     Every position reachable from a new game, each yielded once, with the ply it occurs at.
 
     Yields the live state rather than a copy, so a caller keeping one must copy it. Deduplicated
-    by `_key`: a position reachable by four different move orders is one position and is graded
-    once, not four times weighted by how many ways there are to reach it.
+    by `solver_key`: a position reachable by four different move orders is one position and is
+    graded once, not four times weighted by how many ways there are to reach it.
+
+    Only for a game small enough to walk. This is what `benchmark` is given for tic-tac-toe; a
+    game that cannot be enumerated hands it a sample instead.
     """
     seen = set()
     state = game()
 
     def walk(ply: int) -> Iterator[Tuple[GameState, int]]:
-        key = _key(state)
+        key = state.solver_key
         if key in seen:
             return
         seen.add(key)
@@ -269,24 +371,35 @@ class _Tally:
 
 def benchmark(
     player: Callable[[GameState], Any],
-    game: Callable[[], GameState],
+    positions: Iterable[Tuple[GameState, int]],
+    values: Callable[[GameState], Dict[Any, int]] = move_values,
     value_fn: Optional[Callable[[GameState], float]] = None,
     worst_examples: int = 5,
 ) -> Report:
     """
-    Grades `player` in every position of `game` against perfect play.
+    Grades `player` over `positions` against perfect play.
 
-    No opponent and no games: the player is asked for a move in every position that can arise,
-    including ones no sensible game would reach, and each answer is compared with the set of
-    moves that hold the position's value. A player is only as good as its worst reachable
-    position, and playing matches will not find those - losing lines are exactly the ones a
-    decent opponent never steers into.
+    No opponent and no games: the player is asked for a move in each position, and each answer is
+    compared with the set of moves that hold the position's value. A player is only as good as its
+    worst reachable position, and playing matches will not find those - losing lines are exactly
+    the ones a decent opponent never steers into.
+
+    Both of what it needs are arguments, because how you get them differs by game and the report
+    should not. Tic-tac-toe passes `enumerate_positions(TicTacToe)` and the live solver: the whole
+    state space, valued on demand. Connect 4 cannot enumerate 4.5e12 positions, so it passes a
+    sampled corpus and a lookup into pinned values solved once, ahead of time. Chess will pass
+    whatever it can get. The grading is identical in all three, which is what makes the numbers
+    comparable - and comparing them across games is most of what this is for.
+
+    `values` maps a state to what each of its legal moves is worth, and defaults to solving on the
+    spot. A pinned corpus passes `corpus.__getitem__` in effect, and never runs a search at all.
 
     `value_fn` is optional and grades a *position evaluator* rather than a move chooser - for a
     learned player, its value head against the true game-theoretic value. Worth separating,
-    because a player can pick good moves with a badly calibrated evaluation and vice versa.
+    because a player can pick good moves with a badly calibrated evaluation and vice versa. It is
+    graded against `values` too, taking the best move's value as the position's, so that it needs
+    no second source of truth.
     """
-    memo: Dict[str, int] = {}
     overall = _Tally()
     by_seat: Dict[bool, _Tally] = {}
     by_ply: Dict[int, _Tally] = {}
@@ -294,22 +407,25 @@ def benchmark(
     squared_error = 0.0
     evaluated = 0
 
-    for state, ply in enumerate_positions(game):
-        if value_fn is not None:
-            squared_error += (value_fn(state) - solve(state, memo)) ** 2
-            evaluated += 1
-
+    for state, ply in positions:
         if state.is_game_over:
+            if value_fn is not None:
+                squared_error += (value_fn(state) - _finished_value(state)) ** 2
+                evaluated += 1
             continue
 
-        values = move_values(state, memo)
-        best = max(values.values())
-        move = player(state)
+        worths = values(state)
+        best = max(worths.values())
 
-        if move not in values:
+        if value_fn is not None:
+            squared_error += (value_fn(state) - best) ** 2
+            evaluated += 1
+
+        move = player(state)
+        if move not in worths:
             raise ValueError(f'{player} returned {move!r}, which is not legal here:\n{state}')
 
-        lost = best - values[move]
+        lost = best - worths[move]
         was_optimal = lost == 0
 
         overall.add(was_optimal, lost)
@@ -317,7 +433,7 @@ def benchmark(
         by_ply.setdefault(ply, _Tally()).add(was_optimal, lost)
 
         if lost > 0 and len(worst) < worst_examples:
-            worst.append((str(state), move, [m for m, v in values.items() if v == best]))
+            worst.append((str(state), move, [m for m, v in worths.items() if v == best]))
 
     return Report(
         overall=overall.grade(),

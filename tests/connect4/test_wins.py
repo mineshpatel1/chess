@@ -16,7 +16,15 @@ import random
 import unittest
 from typing import List, Optional, Set, Tuple
 
-from games.connect4.bitboard import cells, has_run, index, is_win, runs
+from games.base import has_moves
+from games.connect4.bitboard import (
+    cells,
+    completions,
+    has_run,
+    index,
+    is_win,
+    runs,
+)
 from games.connect4.board import Connect4
 from games.connect4.constants import (
     COLS,
@@ -152,6 +160,97 @@ class TestExhaustiveWins(unittest.TestCase):
                     self.assertEqual(
                         naive_is_win(occupied_cells(discs)), is_win(discs), f'{board}'
                     )
+
+
+class TestCompletions(unittest.TestCase):
+    """
+    The cells that would finish a line, which is `is_win` asked one move earlier.
+
+    Worth its own exhaustive check for the same reason `is_win` gets one, and rather more
+    urgently: `ai.oracle` returns WIN without searching when a winning move exists, so a cell
+    marked here that does not really complete a line is an exact solver returning a wrong answer
+    in silence. The oracle below is `is_win` itself, which shares the shift trick but not the
+    shape of the computation - `runs` halves its way up a chain, `completions` ANDs a fixed set of
+    offsets - and, more to the point, is already pinned by the two exhaustive tests above.
+    """
+
+    def test_a_cell_completes_a_line_exactly_when_adding_it_would_win(self):
+        """
+        Every cell of every board with three discs on a line, which is the whole of the space
+        that matters: a cell completes a line for `position` if and only if putting a disc there
+        makes `is_win` true. Both directions, over all 49 cells of all 196 candidate lines.
+        """
+        checked = marked = 0
+
+        for start in range(SIZE):
+            for delta in STEPS:
+                line = sum(1 << (start + step * delta) for step in range(CONNECT)) & FULL_BOARD
+
+                for gap in cells(line):
+                    three = line ^ (1 << gap)
+                    completing = completions(three)
+
+                    for cell in cells(FULL_BOARD):
+                        # Cells already held are skipped: `completions` says nothing about
+                        # occupancy and may mark them, and the solver intersects with `drops`
+                        # anyway. Sentinel cells are skipped by iterating FULL_BOARD, because the
+                        # oracle would be wrong about those rather than `completions` - `is_win`
+                        # does no masking, so it happily reads a line straight through one. That
+                        # is what test_it_never_marks_a_sentinel_cell covers instead.
+                        if three >> cell & 1:
+                            continue
+
+                        expected = is_win(three | 1 << cell)
+                        self.assertEqual(
+                            expected,
+                            bool(completing >> cell & 1),
+                            f'cell {cell} against three from {start} by {delta}',
+                        )
+                        checked += 1
+                        marked += expected
+
+        self.assertGreater(marked, 0, 'no completion was found anywhere, so this proved nothing')
+
+    def test_it_marks_nothing_for_an_empty_board(self):
+        self.assertEqual(0, completions(0))
+
+    def test_it_never_marks_a_sentinel_cell(self):
+        """
+        The wrap check, and the reason the result is masked with FULL_BOARD.
+
+        A left shift can carry a chain up out of a column; if the mask were omitted, a completion
+        could be reported on a cell that is not on the board at all - and `drops` would never
+        offer it, so the fault would only ever show up as a wrong value.
+        """
+        rng = random.Random(0)
+        for _ in range(200):
+            board = Connect4()
+            for _ in range(rng.randrange(0, 30)):
+                if board.outcome is not None:
+                    break
+                board.make_move(rng.choice(list(board.legal_moves)))
+
+            for player in (YELLOW, RED):
+                self.assertEqual(0, completions(board.discs[player]) & ~FULL_BOARD)
+
+    def test_it_agrees_with_playing_the_move_over_random_games(self):
+        """`Connect4.winning_moves` against the make-a-move-and-look version it replaces."""
+        rng = random.Random(1)
+        for _ in range(60):
+            board = Connect4()
+            while board.outcome is None and has_moves(board.legal_moves):
+                claimed = list(board.winning_moves)
+
+                actual = []
+                for column in list(board.legal_moves):
+                    board.make_move(column)
+                    outcome = board.outcome
+                    board.unmake_move()
+                    if outcome is not None:
+                        actual.append(column)
+
+                self.assertEqual(sorted(actual), sorted(claimed), str(board))
+                board.make_move(rng.choice(list(board.legal_moves)))
 
 
 class TestSentinelBoundaries(unittest.TestCase):

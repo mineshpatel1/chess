@@ -16,10 +16,12 @@ from games.base import DRAW, GameState, Outcome, win
 from games.connect4.bitboard import (
     Bitboard,
     bit_count,
+    completions,
     drops,
     index,
     is_win,
     landing_square,
+    mirror,
 )
 from games.connect4.constants import (
     CENTRE_FIRST,
@@ -86,6 +88,26 @@ class Connect4(GameState):
         return (column for column in CENTRE_FIRST if landing & COLUMN_MASKS[column])
 
     @property
+    def winning_moves(self) -> Iterator[int]:
+        """
+        Every column that completes a line of four for the player to move.
+
+        The inherited default plays each of the seven columns and tests the board it produces.
+        This asks the same question with no moves at all: `completions` marks every cell that
+        would finish a line, `drops` marks where a disc would land, and a column in both is a
+        column that wins. Measured at 4.5us against 18.8us over 2,000 positions.
+
+        Worth overriding because the exact solver in `ai.oracle` asks at every node it visits, and
+        the profiler put that one question at about half of its total running time.
+
+        Centre-first like `legal_moves`, so the two orders agree. It makes no difference to the
+        solver, which only asks whether the sequence is empty, but a caller that takes the first
+        winning move should get the same one either way.
+        """
+        landing = drops(self.occupied) & completions(self.discs[self.turn])
+        return (column for column in CENTRE_FIRST if landing & COLUMN_MASKS[column])
+
+    @property
     def signature(self) -> str:
         """
         The two disc masks, which are the whole of the position.
@@ -96,6 +118,34 @@ class Connect4(GameState):
         conformance suite asks for this once per move of every position it walks.
         """
         return f'{self.discs[YELLOW]}/{self.discs[RED]}'
+
+    @property
+    def solver_key(self) -> int:
+        """
+        The whole position as one integer, for the exact solver's transposition table.
+
+        `discs[turn] + occupied` is a standard Connect 4 encoding and it is exact rather than a
+        hash: the mover's discs plus every occupied cell recovers both players' discs and whose
+        turn it is, because the carry from adding the two puts a marker one cell above each
+        column's stack. Two positions with the same value are the same position.
+
+        The inherited default is `(signature, turn)`, which builds and hashes a string once per
+        node. The solver touches this millions of times in a single position, so an integer that
+        hashes to itself is worth having.
+        """
+        return self.discs[self.turn] + self.occupied
+
+    @property
+    def canonical_key(self) -> int:
+        """
+        The same key for a position and its left-right mirror, whichever is smaller.
+
+        A Connect 4 board reflected in its central column is worth exactly what the original is,
+        so the solver can share value bounds between the two and halve its table. It shares only
+        values: the *moves* mirror too, and reading a move from a reflected entry would return a
+        move for the wrong side of the board.
+        """
+        return min(self.solver_key, mirror(self.discs[self.turn]) + mirror(self.occupied))
 
     def copy(self) -> 'Connect4':
         """

@@ -31,6 +31,7 @@ from tests.connect4.test_board import (
 from tests.connect4.test_wins import (
     TestRuns,
     TestExhaustiveWins,
+    TestCompletions,
     TestSentinelBoundaries,
     TestOutcome,
 )
@@ -48,6 +49,12 @@ from tests.connect4.test_evaluation import (
     TestThreatValue,
 )
 from tests.connect4.test_match import TestMatchResult, TestPlayMatch
+from tests.connect4.test_solver import (
+    TestPinnedCorpus,
+    TestMirrorInvariance,
+    TestSolverKey,
+    TestPublishedSolution,
+)
 from tests.connect4.test_conformance import TestConnect4Conformance
 
 from tests.tictactoe.test_board import (

@@ -32,7 +32,7 @@ import torch.nn.functional as F
 
 import log
 from games.base import GameState
-from ai.oracle import benchmark
+from ai.oracle import benchmark, enumerate_positions
 from ai.zero.checkpoint import save
 from ai.zero.net import ZeroNet, evaluate, to_tensor
 from ai.zero.mcts import DIRICHLET_EPSILON
@@ -265,4 +265,4 @@ def _optimal_rate(net, encoder, game) -> float:
         priors, _ = evaluate(net, state, encoder)
         return max(state.legal_moves, key=lambda move: priors[encoder.action_index(move)])
 
-    return benchmark(raw, game).overall.rate
+    return benchmark(raw, enumerate_positions(game)).overall.rate
