@@ -32,7 +32,7 @@ from typing import (
     Tuple,
 )
 
-from games.base import GameState
+from games.base import GameState, has_moves
 
 # Values are from the point of view of the player to move, the same convention `ai.search` uses.
 WIN = 1
@@ -116,15 +116,16 @@ def _search(state: GameState, alpha: int, beta: int, table: Table) -> int:
     if not moves:
         return _value_of(state.outcome_without_moves, state.turn)
 
-    # A move that wins right now ends the question. Cheap to ask - one win test per move - and it
-    # collapses an entire subtree into seven bit operations, which in a game where most lines end
-    # in a forced win is the single largest saving available.
-    for move in moves:
-        state.make_move(move)
-        immediate = state.outcome
-        state.unmake_move()
-        if immediate is not None and immediate.winner is not None:
-            return WIN
+    # A move that wins right now ends the question, and collapses an entire subtree into one
+    # test. In a game where most lines end in a forced win that is the single largest saving
+    # available, which is why `winning_moves` is a hook a game can answer cheaply rather than a
+    # loop over make/unmake here - Connect 4 answers it in bit operations, four times faster.
+    #
+    # Asked before the table is consulted, because it is cheaper than the lookup: on Connect 4 the
+    # key involves mirroring the board, and there is no sense paying for that to learn something
+    # a handful of shifts already knows.
+    if has_moves(state.winning_moves):
+        return WIN
 
     key = state.canonical_key
     stored = table.values.get(key)

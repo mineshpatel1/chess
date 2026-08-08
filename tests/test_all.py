@@ -31,6 +31,7 @@ from tests.connect4.test_board import (
 from tests.connect4.test_wins import (
     TestRuns,
     TestExhaustiveWins,
+    TestCompletions,
     TestSentinelBoundaries,
     TestOutcome,
 )

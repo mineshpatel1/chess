@@ -231,6 +231,34 @@ class GameConformanceTests:
             for state in self._walk(seed=seed):
                 self.assertIsNone(state.result, f'{state} ended but the walk continued')
 
+    def test_winning_moves_are_moves_that_win(self):
+        """
+        `winning_moves` is an optimisation hook, and it is the dangerous kind: `ai.oracle` returns
+        WIN without searching whenever it is non-empty, so a move reported here that does not
+        actually win is an exact solver quietly giving a wrong answer. This is what says the
+        override a game supplies means what the name says.
+
+        Both directions, and they fail differently. A move reported that does not win is *wrong*;
+        a winning move not reported is merely a search that was not skipped, which is why the
+        contract permits under-reporting. Only games that decide a win through `outcome` have
+        anything to report at all - chess ends by the loser running out of moves, so its inherited
+        default finds nothing and both halves of this are vacuously true for it.
+        """
+        for seed in range(self.PLAYOUTS):
+            for state in self._walk(seed=seed):
+                claimed = {str(move) for move in state.winning_moves}
+
+                actual = set()
+                for move in list(state.legal_moves):
+                    state.make_move(move)
+                    outcome = state.outcome
+                    state.unmake_move()
+                    if outcome is not None and outcome.winner is not None:
+                        actual.add(str(move))
+
+                self.assertLessEqual(claimed, actual, f'{state}\nclaims a win that is not one')
+                self.assertEqual(actual, claimed, f'{state}\nmissed a win it could have reported')
+
     def test_the_search_returns_a_legal_move(self):
         for state in self._walk(seed=4):
             move = alpha_beta(state, depth=self.SEARCH_DEPTH)

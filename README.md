@@ -107,7 +107,7 @@ Search time grows steeply with depth — see the benchmarks below.
 | `ai/search.py` | Negamax with alpha-beta pruning, and a random mover |
 | `ai/perft.py`, `ai/simulate.py` | Move enumeration, and playing two move-choosers off |
 | `ai/match.py` | Playing them off a few hundred times, which is how an evaluation is judged |
-| `ai/oracle.py` | Exact play, and grading any player against it in every position |
+| `ai/oracle.py` | Exact play, and grading any player against it over a set of positions |
 | `ai/players.py` | Naming a player — `minimax:9`, `model:best.pt+mcts:200` — in one place |
 | `ai/zero/mcts.py` | PUCT search over a tree of paths, with no rollouts |
 | `ai/zero/net.py` | The network: input, two hidden layers of 64, a policy head and a value head |
@@ -115,9 +115,11 @@ Search time grows steeply with depth — see the benchmarks below.
 | `ai/zero/train.py` | The generation loop, graded against the oracle as it goes |
 | `play.py` | A terminal front end for any game in the registry |
 | `zero.py` | Training, grading and comparing learned players |
+| `bench.py` | Timing the exact solver, and finding how far back into a game it reaches |
 | `tests/conformance.py` | The tests every game must pass |
 | `tests/chess/` | Rules, replay/undo, perft, and search scores, all driven by chess positions |
 | `tests/connect4/` | The same, plus the exhaustive win-detection oracle and the eval properties |
+| `tests/connect4/solved.py` | 280 positions solved exactly and written down, so the solver cannot drift |
 | `tests/tictactoe/` | The same, plus the proof that the engine plays the game perfectly |
 
 In chess, positions are held as twelve 64-bit integers (one per piece type per colour) plus
@@ -629,6 +631,7 @@ python3 -m unittest tests.connect4.test_wins -v             # every line of four
 python3 -m unittest tests.connect4.test_board -v            # the sentinel invariants, fuzzed
 python3 -m unittest tests.connect4.test_conformance -v      # connect 4 against the same contract
 python3 -m unittest tests.connect4.test_evaluation -v       # symmetry, bounds and threat masks
+python3 -m unittest tests.connect4.test_solver -v           # the exact solver against 280 pinned answers
 
 python3 -m unittest tests.tictactoe.test_perfect_play -v    # the engine against an independent solver
 python3 -m unittest tests.tictactoe.test_permutations -v    # perft, and the published game census

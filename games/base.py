@@ -198,6 +198,35 @@ class GameState(ABC):
         return None
 
     @property
+    def winning_moves(self) -> Iterable[Any]:
+        """
+        Every legal move that wins the game on the spot.
+
+        An optimisation hook, and it is allowed to under-report: `ai.oracle` uses it only to stop
+        early when a win is available, so missing one costs a search it need not have done and
+        finding one that does not win would be a wrong answer. Yield conservatively.
+
+        The default plays each move and looks, which is correct for any game that decides a win
+        with `outcome` and finds nothing at all in a game - chess among them - that ends by the
+        loser running out of moves. That is the right default for chess: a mate search here would
+        cost more at every node than the shortcut could ever save.
+
+        Games override it when they can answer the question without playing anything. Connect 4
+        can, in bit operations, and it is worth four times the default because the solver asks at
+        every node it visits.
+
+        Playing and unplaying `self` while a caller iterates is safe as written - each move is
+        undone before its result is yielded - but a caller that keeps the generator across its own
+        moves will get nonsense. Consume it before doing anything else.
+        """
+        for move in self.legal_moves:
+            self.make_move(move)
+            outcome = self.outcome
+            self.unmake_move()
+            if outcome is not None and outcome.winner is not None:
+                yield move
+
+    @property
     def solver_key(self) -> Any:
         """
         What makes two positions the same question, as cheaply as the game can say it.
