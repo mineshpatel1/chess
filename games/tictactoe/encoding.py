@@ -124,11 +124,32 @@ class TicTacToeEncoder(Encoder):
     @staticmethod
     def symmetries(planes: Planes, policy: Policy) -> Iterator[Tuple[Planes, Policy]]:
         """
-        The same position seen eight ways, which is eight training examples for the price of one.
+        The same position seen eight ways: eight training examples for the price of one.
 
-        Worth having here beyond the free data: a network shown only the positions self-play
-        happens to reach can learn that the top-left corner is different from the bottom-right.
-        It is not, and the symmetries say so.
+        **Not used by default, because it was measured and it buys nothing.** Over 150
+        generations, identical in every other respect, training without it led at every
+        checkpoint while seeing eight times fewer examples:
+
+            generation      50       100      150
+            with          93.05%   95.84%   96.31%
+            without       93.94%   96.22%   96.46%
+
+        The final margin is inside single-seed noise, so this is "no benefit" rather than
+        "harmful" - but there is no case for paying for it. The guess as to why: this network
+        is an MLP over a flattened board with no built-in equivariance, so all eight copies buy
+        is that it spends parameters learning the symmetry group instead of learning positions.
+
+        There is a second reason it is off, and it is the one that would matter even if the
+        numbers had come out the other way. Augmenting *tells* the network the board has eight
+        symmetries rather than leaving it to notice, which is hand-injected domain knowledge in
+        a method whose whole claim is learning the game from self-play. AlphaGo Zero used
+        dihedral augmentation; AlphaZero dropped it, chess and shogi not being symmetric.
+
+        Kept, rather than deleted, because the measurement above is only worth anything while it
+        can be re-run - and because the answer is not obviously the same for another game. A
+        board with a mirror symmetry and a convolutional trunk, which has translation
+        equivariance but not reflection, is a different question that deserves its own run
+        rather than this conclusion inherited.
 
         Duplicates are not filtered. A symmetric position - the empty board, or a lone centre
         mark - maps to itself under several transforms and is emitted several times, which
