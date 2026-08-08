@@ -113,12 +113,16 @@ class MCTS:
         encoder: Encoder,
         simulations: int = SIMULATIONS,
         exploration: float = EXPLORATION,
+        dirichlet_alpha: float = DIRICHLET_ALPHA,
+        dirichlet_epsilon: float = DIRICHLET_EPSILON,
         rng: Optional[random.Random] = None,
     ) -> None:
         self.evaluator = evaluator
         self.encoder = encoder
         self.simulations = simulations
         self.exploration = exploration
+        self.dirichlet_alpha = dirichlet_alpha
+        self.dirichlet_epsilon = dirichlet_epsilon
         self.rng = rng or random.Random()
 
     def search(self, state: GameState, noise: bool = False) -> Result:

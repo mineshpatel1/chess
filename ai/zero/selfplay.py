@@ -24,7 +24,7 @@ import random
 from typing import Any, Callable, List, NamedTuple, Optional, Sequence, Tuple
 
 from games.base import Encoder, GameState
-from ai.zero.mcts import MCTS, Evaluator
+from ai.zero.mcts import DIRICHLET_ALPHA, DIRICHLET_EPSILON, EXPLORATION, MCTS, Evaluator
 
 # Plies played by sampling from the visit counts rather than taking the best move. Without this
 # every self-play game from a deterministic network is the same game, and the buffer fills with
@@ -62,7 +62,11 @@ def play_game(
     game: Callable[[], GameState],
     simulations: int,
     temperature_moves: int = TEMPERATURE_MOVES,
+    temperature: float = TEMPERATURE,
     opening_plies: int = 0,
+    exploration: float = EXPLORATION,
+    dirichlet_alpha: float = DIRICHLET_ALPHA,
+    dirichlet_epsilon: float = DIRICHLET_EPSILON,
     rng: Optional[random.Random] = None,
 ) -> Tuple[List[Example], GameState]:
     """
@@ -77,18 +81,21 @@ def play_game(
     search - the randomness moves where the games happen, not what is learned from them.
     """
     rng = rng or random.Random()
-    mcts = MCTS(evaluator, encoder, simulations=simulations, rng=rng)
+    mcts = MCTS(
+        evaluator, encoder, simulations=simulations, exploration=exploration,
+        dirichlet_alpha=dirichlet_alpha, dirichlet_epsilon=dirichlet_epsilon, rng=rng,
+    )
 
     state = _opening(game, opening_plies, rng)
     played: List[Tuple[Any, Sequence[float], bool]] = []
 
     while not state.is_game_over:
         result = mcts.search(state, noise=True)
-        temperature = TEMPERATURE if len(played) < temperature_moves else 0.0
+        tau = temperature if len(played) < temperature_moves else 0.0
 
         # Recorded before the move: the example belongs to the position it was searched from.
         played.append((encoder.planes(state), result.policy, state.turn))
-        state.make_move(mcts.sample(result.visits, temperature))
+        state.make_move(mcts.sample(result.visits, tau))
 
     outcome = state.result
     examples = [

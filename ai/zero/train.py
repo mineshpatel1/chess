@@ -35,7 +35,10 @@ from games.base import GameState
 from ai.oracle import benchmark
 from ai.zero.checkpoint import save
 from ai.zero.net import ZeroNet, evaluate, to_tensor
-from ai.zero.selfplay import OPENING_PLIES, Example, augment, play_game
+from ai.zero.mcts import DIRICHLET_EPSILON, EXPLORATION
+from ai.zero.selfplay import (
+    OPENING_PLIES, TEMPERATURE_MOVES, Example, augment, play_game,
+)
 
 LEARNING_RATE = 1e-3
 WEIGHT_DECAY = 1e-4
@@ -82,6 +85,9 @@ def train(
     steps: int = STEPS_PER_GENERATION,
     batch_size: int = BATCH_SIZE,
     opening_plies: int = OPENING_PLIES,
+    temperature_moves: int = TEMPERATURE_MOVES,
+    exploration: float = EXPLORATION,
+    dirichlet_epsilon: float = DIRICHLET_EPSILON,
     learning_rate: float = LEARNING_RATE,
     checkpoint_path: Optional[str] = None,
     seed: int = 0,
@@ -111,7 +117,8 @@ def train(
         started = time.perf_counter()
 
         fresh, drawn = _self_play(
-            net, encoder, game, games_per_generation, simulations, opening_plies, rng)
+            net, encoder, game, games_per_generation, simulations, opening_plies,
+            temperature_moves, exploration, dirichlet_epsilon, rng)
         buffer.extend(augment(fresh, encoder))
 
         loss, policy_loss, value_loss = _learn(net, optimiser, buffer, steps, batch_size, rng)
@@ -144,7 +151,8 @@ def train(
     return net
 
 
-def _self_play(net, encoder, game, count, simulations, opening_plies, rng):
+def _self_play(net, encoder, game, count, simulations, opening_plies,
+               temperature_moves, exploration, dirichlet_epsilon, rng):
     """One generation's games, and how many of them were drawn."""
     def evaluator(state):
         return evaluate(net, state, encoder)
@@ -153,7 +161,9 @@ def _self_play(net, encoder, game, count, simulations, opening_plies, rng):
     drawn = 0
     for _ in range(count):
         played, finished = play_game(
-            evaluator, encoder, game, simulations, opening_plies=opening_plies, rng=rng)
+            evaluator, encoder, game, simulations, opening_plies=opening_plies,
+            temperature_moves=temperature_moves, exploration=exploration,
+            dirichlet_epsilon=dirichlet_epsilon, rng=rng)
         examples.extend(played)
         drawn += int(finished.result.winner is None)
     return examples, drawn
