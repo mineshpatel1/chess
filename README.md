@@ -226,20 +226,30 @@ positional term tried on top of it.
 
 ## Playing against other engines
 
-`games/chess/run_engine.py` plays Mildred against a third-party UCI engine using the async
-client in `games/chess/uci/`. Drop engine binaries under `third-party-engines/` (gitignored)
-and set `ENGINE`:
+`games/chess/run_engine.py` plays Mildred against a third-party UCI engine, using the async
+client in `games/chess/uci/`. It is the only external yardstick here — everything else the
+project measures, it measures against itself.
 
-```python
-STOCKFISH = 'stockfish/Mac/stockfish-11-64'  # 3495 ELO
-SARUMAN   = 'saruman/engine/Saruman'         # 1457 ELO
-FEEKS     = 'feeks/feeks.sh'                 #  970 ELO
-POS       = 'pos/pos.sh'                     #  111 ELO
-```
+The engines are not in the repository. Drop the binaries under `third-party-engines/`, which is
+gitignored, and name one with `--engine`, either by key or by path:
+
+| Key | Path | Reputed |
+|---|---|---|
+| `stockfish` | `stockfish/Mac/stockfish-11-64` | 3495 ELO |
+| `saruman` | `saruman/engine/Saruman` | 1457 ELO |
+| `feeks` | `feeks/feeks.sh` | 970 ELO |
+| `pos` | `pos/pos.sh` | 111 ELO |
 
 ```bash
-python3 -m games.chess.run_engine
+python3 -m games.chess.run_engine                     # one game against Stockfish
+python3 -m games.chess.run_engine -e saruman -n 20    # twenty games, alternating colours
+python3 -m games.chess.run_engine --depth 5 --skill 3 # deeper, against a stronger setting
 ```
+
+It reports as a match rather than a game, reusing `MatchResult` from `ai/match.py`, because one
+game against an engine says almost nothing — the result is dominated by colour and opening, and
+the standard error makes that obvious rather than leaving it to be forgotten. Colours alternate
+each game for the same reason.
 
 ## Development
 
