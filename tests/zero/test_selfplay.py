@@ -97,28 +97,35 @@ class TestPlayGame(unittest.TestCase):
 
 class TestRandomOpenings(unittest.TestCase):
     """
-    Coverage, and the reason it is needed.
+    Coverage, for a caller that wants it.
 
-    On-policy self-play is what makes AlphaZero work, and it is also why a trained network only
-    ever sees the positions it plays into - measured on tic-tac-toe, 366 of 4,520. Starting some
-    games elsewhere is the cheapest way to make a network that has *seen the game* rather than
-    one that has seen its own habits.
+    Off by default now: raising `c_puct` reached the same coverage through PUCT and root noise,
+    which is where an AlphaZero is supposed to get it. These tests name their own ply count rather
+    than reading OPENING_PLIES, so they go on testing the mechanism after the default changed -
+    a test that follows a constant is a test that stops checking anything when the constant is
+    turned off.
     """
+
+    PLIES = 4
 
     def test_an_opening_leaves_a_playable_position(self):
         rng = random.Random(0)
         for _ in range(50):
-            state = _opening(TicTacToe, OPENING_PLIES, rng)
+            state = _opening(TicTacToe, self.PLIES, rng)
             self.assertFalse(state.is_game_over, str(state))
             self.assertTrue(list(state.legal_moves))
 
     def test_zero_plies_is_a_new_game(self):
         self.assertEqual(TicTacToe().signature, _opening(TicTacToe, 0, random.Random()).signature)
 
+    def test_it_is_off_by_default(self):
+        """Self-play starts from a new game unless a caller asks otherwise."""
+        self.assertEqual(0, OPENING_PLIES)
+
     def test_openings_land_at_a_range_of_depths(self):
         """Drawn per game rather than fixed, or every opening would pile up at one depth."""
         rng = random.Random(0)
-        depths = {len(_opening(TicTacToe, OPENING_PLIES, rng).move_stack) for _ in range(60)}
+        depths = {len(_opening(TicTacToe, self.PLIES, rng).move_stack) for _ in range(60)}
         self.assertGreater(len(depths), 1, f'openings all landed at the same depth: {depths}')
 
     def test_nothing_from_the_opening_is_recorded(self):

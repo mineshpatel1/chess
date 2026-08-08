@@ -308,32 +308,38 @@ hundred positions and still be impossible to beat. `zero.py benchmark` reports b
 
 ### Results
 
-The committed checkpoint, trained for 250 generations of 80 self-play games at 150 simulations —
-**17 minutes on four CPU threads**, and 27KB of weights.
+The committed checkpoint, trained for 300 generations of 80 self-play games at 50 simulations —
+**19 minutes on four CPU threads**, and 27KB of weights. Purely on-policy: no random openings, no
+supervision, nothing but self-play.
 
 **Can it be beaten? No — not even with the search switched off.**
 
 | Player | vs perfect play | vs *any* opponent |
 |---|---|---|
-| **Raw policy, no search** | first: 8 lines, second: 107 — **unbeaten** | 620W / 126D — **0 losses** |
-| + 25 simulations | first: 10, second: 130 — **unbeaten** | 625W / 140D — **0 losses** |
+| **Raw policy, no search** | first: 8 lines, second: 163 — **unbeaten** | 592W / 171D — **0 losses** |
+| + 200 simulations | first: 5, second: 135 — **unbeaten** | 524W / 140D — **0 losses** |
 
 Every line, both seats, no losses. The network alone holds a draw against perfect play and beats
 everything that misplays — which is the whole of what tic-tac-toe asks of a player.
 
 **Does it know the game?** Less completely, and that is where the remaining gap is:
 
-| Player | Overall | As first | As second | Wrong |
-|---|---|---|---|---|
-| Raw policy, no search | 97.90% | 97.32% | 98.47% | 97 |
-| + 25 simulations | 99.34% | 99.17% | 99.52% | 30 |
-| + 200 simulations | 99.78% | 99.63% | 99.95% | 10 |
-| + 800 simulations | 99.87% | 99.75% | **100.00%** | 6 |
-| `minimax:9` (perfect by construction) | 100% | 100% | 100% | 0 |
+| Player | Overall | As first | As second | Wrong (of 4,520) | Wrong up to symmetry (of 627) |
+|---|---|---|---|---|---|
+| Raw policy, no search | 97.54% | 97.28% | 97.85% | 111 | 34 |
+| + 25 simulations | 99.31% | 99.26% | 99.38% | 31 | 9 |
+| + 200 simulations | **99.96%** | 99.92% | **100.00%** | **2** | 2 |
+| `minimax:9` (perfect by construction) | 100% | 100% | 100% | 0 | 0 |
 
-The 97 raw-policy mistakes are all at plies 3–7, and 91 of them throw away a draw rather than a
-win. Every one is in a position the model never reaches when it is the one playing — which is
-exactly why the table above reads "unbeaten" while this one does not read 100%.
+The raw-policy mistakes are all mid-game, and nearly all throw away a draw rather than a win.
+Every one is in a position the model never reaches when it is the one playing — which is exactly
+why the table above reads "unbeaten" while this one does not read 100%.
+
+The last two columns are the same model counted two ways, and the gap between them is a trap
+worth naming. Tic-tac-toe's 4,520 decision positions collapse to **627 distinct boards** once the
+eight symmetries are folded together, so "31 wrong" and "9 wrong" describe the same network. Any
+comparison against another implementation has to agree on which is being counted before the
+numbers mean anything.
 
 Being able to run the network with search switched off is why `simulations` is a parameter rather
 than two implementations. A network that only plays well with 500 simulations has learned to be a
@@ -374,27 +380,48 @@ its own — and that it climbs, which is the property the 2021 version lacked. B
 without a single trained weight, which is exactly the test whose absence let that version stay
 broken.
 
-### Coverage, and an honest caveat
+### The tuning, and a wrong turn worth recording
 
-On-policy self-play is what makes AlphaZero work, and it is also why a trained network only ever
-sees the positions it plays into. Measured here: self-play reached **366 of the 4,520** decision
-positions, and the network scored 96.7% on those and 78.8% on everything else.
+The first version of this reached only 80.3% on-policy. Forcing a share of self-play games to
+start from a random position took it to 96.8%, which looked like the single largest improvement in
+the implementation.
 
-Starting a share of self-play games from a random position (`OPENING_PLIES`) took the
-all-positions score from 80.3% to 96.8% — the largest single improvement measured here, larger
-than any change to the network, the loss or the search. Nothing played during those plies is
-recorded, so every training target still comes from a real search.
+It was not an improvement. It was covering for two exploration parameters being set wrong, and
+finding that out took measuring each one:
 
-**But it is worth being suspicious of that number.** It moved the "knows the game" score a long
-way and the "cannot be beaten" score not at all — the network was already unbeatable without it.
-A correct AlphaZero is supposed to reach the state space through `c_puct` and root Dirichlet
-noise, so needing to force random starts is at least as likely to be evidence that the exploration
-is not pulling its weight as it is a genuine improvement. Random openings also bias the training
-distribution toward positions real play never reaches, which is a real cost paid for a metric of
-debatable value.
+| Change | On-policy agreement |
+|---|---|
+| Starting point | 80.3% |
+| Temperature over the whole game, not the first 3 plies | 93.7% |
+| `c_puct` 1.5 → 5.0 | **97.5%** |
+| *(random openings, for comparison)* | *96.8%* |
 
-All three knobs — the temperature schedule, `c_puct` and the Dirichlet weight — are parameters of
-`train()` so the alternative can be measured rather than argued about.
+`c_puct` alone, measured over 90 generations at 50 simulations, is an inverted U with a clear peak:
+
+| c_puct | 1.5 | 3.0 | **5.0** | 8.0 |
+|---|---|---|---|---|
+| Agreement | 92.83% | 95.38% | **95.84%** | 94.65% |
+
+At 1.5 the visit counts were concentrating before the alternatives had been checked, so the
+network was fitting targets that were confidently slightly wrong — and its policy loss sat at the
+entropy floor of those targets, which is what "fitting them perfectly" looks like. **Random
+openings are now off by default.** A correct AlphaZero reaches the state space through PUCT and
+root noise; needing to force random starts on top is a sign that one of those is mistuned.
+
+Simulations during self-play turned out to matter far less than the cost suggests:
+
+| Simulations | 25 | **50** | 100 | 150 | 200 |
+|---|---|---|---|---|---|
+| Agreement | 87.4% | **92.8%** | 91.7% | 93.7% | 93.8% |
+| Time | 276s | **337s** | 590s | 804s | 1044s |
+
+Going 50 → 200 costs 3.1× the time for 1.0 point, so the default is 50. More search does sharpen
+the visit counts (target entropy 0.92 → 0.73) and does narrow self-play coverage by ~20% (546 →
+434 distinct positions), but the sharper targets more than pay for the lost breadth — the effect
+is real and the sign is the opposite of a problem.
+
+Every one of these is a parameter of `train()`, which is the only reason any of it could be
+measured rather than argued about.
 
 ## Benchmarks
 

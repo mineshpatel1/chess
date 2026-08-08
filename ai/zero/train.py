@@ -35,7 +35,7 @@ from games.base import GameState
 from ai.oracle import benchmark
 from ai.zero.checkpoint import save
 from ai.zero.net import ZeroNet, evaluate, to_tensor
-from ai.zero.mcts import DIRICHLET_EPSILON, EXPLORATION
+from ai.zero.mcts import DIRICHLET_EPSILON
 from ai.zero.selfplay import (
     OPENING_PLIES, TEMPERATURE_MOVES, Example, augment, play_game,
 )
@@ -56,9 +56,24 @@ BUFFER_SIZE = 20_000
 # right when the answer is already known and the run just has to finish.
 BENCHMARK_EVERY = 1
 
+# How hard PUCT explores *while learning*, which is not the same question as how hard it should
+# explore while playing. Learning wants the search to check alternatives it currently believes are
+# worse, because that is where the training signal comes from; playing wants it to trust a prior
+# that is now good. `ai.zero.mcts.EXPLORATION` stays at the lower value for play.
+#
+# Measured over 90 generations at 50 simulations, on-policy:
+#
+#     c_puct   1.5      3.0      5.0      8.0
+#     agree   92.83%   95.38%   95.84%   94.65%
+#
+# An inverted U with a clear peak, and the default was sitting well below it - visit counts were
+# concentrating before the alternatives had been checked, so the network fit targets that were
+# confidently slightly wrong.
+SELF_PLAY_EXPLORATION = 5.0
+
 GENERATIONS = 30
 GAMES_PER_GENERATION = 40
-SIMULATIONS = 60
+SIMULATIONS = 50
 
 
 class Progress(NamedTuple):
@@ -92,7 +107,7 @@ def train(
     batch_size: int = BATCH_SIZE,
     opening_plies: int = OPENING_PLIES,
     temperature_moves: int = TEMPERATURE_MOVES,
-    exploration: float = EXPLORATION,
+    exploration: float = SELF_PLAY_EXPLORATION,
     dirichlet_epsilon: float = DIRICHLET_EPSILON,
     learning_rate: float = LEARNING_RATE,
     benchmark_every: int = BENCHMARK_EVERY,

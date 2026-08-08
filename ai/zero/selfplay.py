@@ -28,24 +28,30 @@ from ai.zero.mcts import DIRICHLET_ALPHA, DIRICHLET_EPSILON, EXPLORATION, MCTS, 
 
 # Plies played by sampling from the visit counts rather than taking the best move. Without this
 # every self-play game from a deterministic network is the same game, and the buffer fills with
-# one line repeated. Tic-tac-toe games are nine plies, so this is most of the opening.
-TEMPERATURE_MOVES = 3
+# one line repeated.
+#
+# AlphaZero's number, which for a game of 200 moves is an opening and for tic-tac-toe is all nine
+# plies. Sampling the whole of a short game is what it should mean: measured here, cutting it to
+# three plies cost 10 points of agreement with perfect play (83.8% against 93.7%), because a
+# nine-ply game played greedily from ply four is very nearly one game repeated.
+TEMPERATURE_MOVES = 30
 TEMPERATURE = 1.0
 
 # Random plies played before a game starts being recorded, drawn uniformly from 0 to this.
 #
-# Pure self-play is on-policy, and that is what makes AlphaZero work - the network trains on the
-# positions it will actually face. It also means a network that has learned to play well stops
-# visiting anything else: measured on tic-tac-toe, self-play reached 366 of the game's 4,520
-# decision positions, and the network scored 96.7% on those and 78.8% on the rest.
+# **Off by default, and the history of that is worth keeping.** Self-play is on-policy, so a
+# network that has learned to play well stops visiting anything else - measured here, it reached
+# 366 of the game's 4,520 decision positions. Forcing a share of games to start somewhere random
+# fixed that, and looked like the single largest improvement in the implementation: 80.3% -> 96.8%.
 #
-# Which of those numbers is "the" score depends on the question. For playing a game, the on-policy
-# one is honest - nobody reaches those positions. For *knowing the game*, which is what grading
-# against a solver asks, the network has to have seen more of it. So a share of games start from
-# a random position, which costs nothing but breadth and uses no knowledge from outside the game.
-# `ai.match` randomises its openings for the same reason: without it, a deterministic player
-# plays one game repeatedly.
-OPENING_PLIES = 4
+# It was not. It was covering for `EXPLORATION` being set too low. Raising c_puct from 1.5 to 5.0
+# reached 97.5% with this at zero - the same result, no crutch, and a better value head with it.
+# A correct AlphaZero explores through PUCT and root noise; needing random starts on top is a sign
+# that one of those is mistuned, not a technique to reach for.
+#
+# Kept because it is genuinely useful when a *benchmark* wants coverage of positions real play
+# never reaches, which is a different goal from training a player.
+OPENING_PLIES = 0
 
 
 class Example(NamedTuple):
