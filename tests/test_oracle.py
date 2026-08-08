@@ -107,7 +107,10 @@ class TestBenchmarkCalibration(unittest.TestCase):
         `alpha_beta` at SOLVED_DEPTH is proved perfect by tests/tictactoe/test_perfect_play.py,
         so anything short of 100% here is the benchmark being wrong, not the player.
         """
-        report = benchmark(lambda s: alpha_beta(s, depth=TicTacToe.SOLVED_DEPTH), TicTacToe)
+        report = benchmark(
+            lambda s: alpha_beta(s, depth=TicTacToe.SOLVED_DEPTH),
+            enumerate_positions(TicTacToe),
+        )
 
         self.assertEqual(1.0, report.overall.rate)
         self.assertEqual(0, report.overall.blunders)
@@ -120,7 +123,10 @@ class TestBenchmarkCalibration(unittest.TestCase):
         player and hopeless as the second - which is what a previous learned player in this
         project actually was - and only the per-seat rates say so.
         """
-        report = benchmark(lambda s: alpha_beta(s, depth=TicTacToe.SOLVED_DEPTH), TicTacToe)
+        report = benchmark(
+            lambda s: alpha_beta(s, depth=TicTacToe.SOLVED_DEPTH),
+            enumerate_positions(TicTacToe),
+        )
 
         self.assertEqual(1.0, report.by_seat[True].rate)
         self.assertEqual(1.0, report.by_seat[False].rate)
@@ -128,33 +134,33 @@ class TestBenchmarkCalibration(unittest.TestCase):
 
     def test_a_shallow_search_scores_well_but_not_perfectly(self):
         """Depth 2 cannot see a fork coming, so it must land between random and perfect."""
-        report = benchmark(lambda s: alpha_beta(s, depth=2), TicTacToe)
+        report = benchmark(lambda s: alpha_beta(s, depth=2), enumerate_positions(TicTacToe))
         self.assertLess(report.overall.rate, 1.0)
         self.assertGreater(report.overall.rate, 0.8)
         self.assertGreater(report.overall.blunders, 0)
 
     def test_a_random_player_scores_poorly(self):
         random.seed(0)
-        report = benchmark(random_move, TicTacToe)
+        report = benchmark(random_move, enumerate_positions(TicTacToe))
 
         self.assertLess(report.overall.rate, 0.8)
         self.assertGreater(report.overall.blunders, 100)
         self.assertTrue(report.worst, 'a blundering player should have examples recorded')
 
     def test_every_ply_is_graded(self):
-        report = benchmark(lambda s: alpha_beta(s, depth=2), TicTacToe)
+        report = benchmark(lambda s: alpha_beta(s, depth=2), enumerate_positions(TicTacToe))
         self.assertEqual(set(range(CELLS)), set(report.by_ply))
 
     def test_an_illegal_move_is_refused_rather_than_scored(self):
         """A player returning nonsense should fail loudly, not quietly score zero for it."""
         with self.assertRaises(ValueError):
-            benchmark(lambda s: 'not a move', TicTacToe)
+            benchmark(lambda s: 'not a move', enumerate_positions(TicTacToe))
 
     def test_a_value_function_is_graded_separately(self):
         """The true value scored against itself must have no error at all."""
         report = benchmark(
             lambda s: alpha_beta(s, depth=TicTacToe.SOLVED_DEPTH),
-            TicTacToe,
+            enumerate_positions(TicTacToe),
             value_fn=lambda state: float(solve(state)),
         )
         self.assertAlmostEqual(0.0, report.value_error)
@@ -199,7 +205,7 @@ class TestPlayEveryLine(unittest.TestCase):
         against the solver and is still losable to - and a player can equally be unbeatable while
         scoring poorly, by never reaching the positions it would get wrong.
         """
-        graded = benchmark(lambda s: alpha_beta(s, depth=1), TicTacToe)
+        graded = benchmark(lambda s: alpha_beta(s, depth=1), enumerate_positions(TicTacToe))
         played = play_every_line(lambda s: alpha_beta(s, depth=1), TicTacToe, NOUGHT)
 
         self.assertGreater(graded.overall.rate, 0.5)

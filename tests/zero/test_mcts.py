@@ -19,25 +19,25 @@ that failed in 2021 is testable with nothing but the standard library.
 import random
 import unittest
 
-from ai.oracle import benchmark, move_values, optimal_moves, solve
+from ai.oracle import Table, benchmark, enumerate_positions, move_values, optimal_moves, solve
 from ai.zero.mcts import MCTS, Node, terminal_value
 from games.tictactoe.board import TicTacToe
 from games.tictactoe.encoding import TicTacToeEncoder
 from tests.tictactoe.corpus import DRAWN_GAME, NOUGHT_WIN, ROW_WIN
 
-MEMO = {}
+TABLE = Table()
 
 
 def perfect_evaluator(state):
     """The oracle wearing a network's interface: exact priors, exact value."""
-    values = move_values(state, MEMO)
+    values = move_values(state, TABLE)
     best = max(values.values()) if values else 0
     winners = [move for move, value in values.items() if value == best]
 
     priors = [0.0] * TicTacToeEncoder.POLICY_SIZE
     for move in winners:
         priors[TicTacToeEncoder.action_index(move)] = 1.0 / len(winners)
-    return priors, float(solve(state, MEMO))
+    return priors, float(solve(state, TABLE))
 
 
 def ignorant_evaluator(state):
@@ -71,14 +71,14 @@ class TestSearchWithPerfectKnowledge(unittest.TestCase):
     def test_it_plays_perfectly_at_every_simulation_count(self):
         for simulations in (1, 2, 10, 50):
             search = MCTS(perfect_evaluator, TicTacToeEncoder, simulations=simulations)
-            report = benchmark(lambda s: search.search(s).move, TicTacToe)
+            report = benchmark(lambda s: search.search(s).move, enumerate_positions(TicTacToe))
 
             self.assertEqual(1.0, report.overall.rate, f'{simulations} simulations')
 
     def test_it_plays_perfectly_from_both_seats(self):
         """The split the 2021 player failed. An average over seats would have hidden it."""
         search = MCTS(perfect_evaluator, TicTacToeEncoder, simulations=25)
-        report = benchmark(lambda s: search.search(s).move, TicTacToe)
+        report = benchmark(lambda s: search.search(s).move, enumerate_positions(TicTacToe))
 
         self.assertEqual(1.0, report.by_seat[True].rate)
         self.assertEqual(1.0, report.by_seat[False].rate)
@@ -113,7 +113,10 @@ class TestSearchWithNoKnowledge(unittest.TestCase):
         for simulations in (10, 50, 200):
             search = MCTS(ignorant_evaluator, TicTacToeEncoder, simulations=simulations,
                           rng=random.Random(0))
-            rates.append(benchmark(lambda s: search.search(s).move, TicTacToe).overall.rate)
+            rates.append(
+                benchmark(lambda s: search.search(s).move,
+                          enumerate_positions(TicTacToe)).overall.rate
+            )
 
         self.assertEqual(rates, sorted(rates), f'search got worse with more thinking: {rates}')
         self.assertGreater(rates[-1], 0.98, 'pure search should nearly solve tic-tac-toe')

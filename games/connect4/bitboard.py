@@ -119,6 +119,25 @@ def is_win(position: Bitboard) -> bool:
     return any(has_run(position, delta) for delta in DIRECTIONS)
 
 
+def mirror(bb: Bitboard) -> Bitboard:
+    """
+    A bitboard reflected in the board's central column.
+
+    The one symmetry Connect 4 has, and the reason it is worth naming: a position and its mirror
+    image are worth exactly the same, so the exact solver in `ai.oracle` can share value bounds
+    between them and halve its table. `Connect4.canonical_key` is what uses it.
+
+    Column-wise rather than bit-wise, because the layout is column-major with a sentinel - a
+    whole column is a contiguous run of STRIDE bits, so reflecting the board is reordering those
+    runs. Doing it a bit at a time would have to skip the sentinels.
+    """
+    flipped = 0
+    for column in range(COLS):
+        block = (bb >> (column * STRIDE)) & ((1 << STRIDE) - 1)
+        flipped |= block << ((COLS - 1 - column) * STRIDE)
+    return flipped
+
+
 def bitboard_to_str(bb: Bitboard, marker: str = 'x') -> str:
     """A picture of which cells are set, for reading a mask in a failing test."""
     lines = []

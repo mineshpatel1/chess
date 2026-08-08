@@ -197,6 +197,39 @@ class GameState(ABC):
         """
         return None
 
+    @property
+    def solver_key(self) -> Any:
+        """
+        What makes two positions the same question, as cheaply as the game can say it.
+
+        Used to key the exact solver's transposition table in `ai.oracle`, which touches it once
+        per node - so on a game with millions of nodes this is a hot path and the default is a
+        poor one. `signature` is a string, and building and hashing a string per node costs more
+        than the rest of a node put together.
+
+        The turn is folded in because a signature need not carry it, and a position with the
+        other player to move is a different question with a different answer.
+
+        Games override with something the machine can hash in one instruction. Connect 4 has an
+        integer that identifies a position outright, so it does.
+        """
+        return self.signature, self.turn
+
+    @property
+    def canonical_key(self) -> Any:
+        """
+        A key that a position and its mirror image share, for a game with a symmetry.
+
+        Only sound for *values*: a position and its reflection are worth exactly the same, so a
+        table of values can be shared between them and halve its size. It is **not** sound for
+        moves - the winning move in a mirrored position is the mirrored move - and `ai.oracle`
+        therefore never reads a move out of an entry keyed by this.
+
+        The default claims no symmetry, which is always correct and never useful. Chess has none
+        worth having (castling rights are not mirror-symmetric); Connect 4 has a left-right flip.
+        """
+        return self.solver_key
+
     def parse_move(self, text: str) -> Any:
         """
         The move a person meant by typing `text`, for a game loop reading from a terminal.

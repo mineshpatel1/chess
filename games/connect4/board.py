@@ -20,6 +20,7 @@ from games.connect4.bitboard import (
     index,
     is_win,
     landing_square,
+    mirror,
 )
 from games.connect4.constants import (
     CENTRE_FIRST,
@@ -96,6 +97,34 @@ class Connect4(GameState):
         conformance suite asks for this once per move of every position it walks.
         """
         return f'{self.discs[YELLOW]}/{self.discs[RED]}'
+
+    @property
+    def solver_key(self) -> int:
+        """
+        The whole position as one integer, for the exact solver's transposition table.
+
+        `discs[turn] + occupied` is a standard Connect 4 encoding and it is exact rather than a
+        hash: the mover's discs plus every occupied cell recovers both players' discs and whose
+        turn it is, because the carry from adding the two puts a marker one cell above each
+        column's stack. Two positions with the same value are the same position.
+
+        The inherited default is `(signature, turn)`, which builds and hashes a string once per
+        node. The solver touches this millions of times in a single position, so an integer that
+        hashes to itself is worth having.
+        """
+        return self.discs[self.turn] + self.occupied
+
+    @property
+    def canonical_key(self) -> int:
+        """
+        The same key for a position and its left-right mirror, whichever is smaller.
+
+        A Connect 4 board reflected in its central column is worth exactly what the original is,
+        so the solver can share value bounds between the two and halve its table. It shares only
+        values: the *moves* mirror too, and reading a move from a reflected entry would return a
+        move for the wrong side of the board.
+        """
+        return min(self.solver_key, mirror(self.discs[self.turn]) + mirror(self.occupied))
 
     def copy(self) -> 'Connect4':
         """

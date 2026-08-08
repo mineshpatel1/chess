@@ -23,7 +23,7 @@ from typing import Optional, Type
 
 import log
 from ai.match import play_match
-from ai.oracle import benchmark, optimal_moves, play_every_line
+from ai.oracle import benchmark, enumerate_positions, optimal_moves, play_every_line
 from ai.players import describe, player, UnknownPlayer
 from games import GAMES
 from games.base import GameState
@@ -84,7 +84,7 @@ def grade(args) -> None:
         value_fn = model_value(args.player.split('+')[0][len('model:'):])
 
     log.info(f'Grading {describe(args.player)} on {game.__name__} against perfect play...')
-    report = benchmark(chooser, game, value_fn=value_fn)
+    report = benchmark(chooser, enumerate_positions(game), value_fn=value_fn)
     log.newline()
     log.info('Knowing the game — every position, against the solver:')
     log.info(str(report))

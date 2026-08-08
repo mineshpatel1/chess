@@ -177,7 +177,7 @@ class TestTrainingLearns(unittest.TestCase):
         is that the loop is wired up and pointing the right way, which is exactly what could not
         be said of the 2021 implementation.
         """
-        from ai.oracle import benchmark
+        from ai.oracle import benchmark, enumerate_positions
         from ai.zero.net import ZeroNet, evaluate
         from ai.zero.train import train
 
@@ -186,7 +186,7 @@ class TestTrainingLearns(unittest.TestCase):
                 priors, _ = evaluate(net, state, Encoder)
                 return max(state.legal_moves,
                            key=lambda move: priors[Encoder.action_index(move)])
-            return benchmark(raw, TicTacToe).overall.rate
+            return benchmark(raw, enumerate_positions(TicTacToe)).overall.rate
 
         torch.manual_seed(0)
         before = rate(ZeroNet(Encoder.PLANE_SHAPE, Encoder.POLICY_SIZE))
