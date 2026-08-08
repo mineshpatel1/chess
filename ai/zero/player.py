@@ -36,6 +36,7 @@ def model_player(path: str, simulations: int = 0) -> Callable[[GameState], Any]:
         encoder = state.ENCODER
         if encoder is None:
             raise ValueError(f'{type(state).__name__} has no ENCODER, so it cannot be learned')
+        _check_shape(blob, encoder, path)
 
         if simulations <= 0:
             return _raw_move(net, state, encoder)
@@ -46,6 +47,33 @@ def model_player(path: str, simulations: int = 0) -> Callable[[GameState], Any]:
     chooser.checkpoint = path  # type: ignore[attr-defined]  Useful in logs and reports
     chooser.simulations = simulations  # type: ignore[attr-defined]
     return chooser
+
+
+def _check_shape(blob, encoder, path: str) -> None:
+    """
+    Refuses a checkpoint whose network does not fit the encoder now in the source.
+
+    An encoding is part of a trained network, not a detail around it: change the planes and every
+    weight in the first layer means something else. Without this the mismatch surfaces as
+    `mat1 and mat2 shapes cannot be multiplied (1x9 and 18x64)` from inside torch, which says
+    nothing about what to do - and if the shapes happened to still line up it would not surface
+    at all, it would just play badly.
+    """
+    config = blob.get('config', {})
+    stored = tuple(config.get('plane_shape', ()))
+    current = tuple(encoder.PLANE_SHAPE)
+
+    if stored != current:
+        raise ValueError(
+            f'{path} was trained on planes of {stored}, but {encoder.__name__} now produces '
+            f'{current}. The encoding changed since this was trained - retrain it.'
+        )
+
+    if config.get('policy_size') != encoder.POLICY_SIZE:
+        raise ValueError(
+            f'{path} has {config.get("policy_size")} actions, but {encoder.__name__} has '
+            f'{encoder.POLICY_SIZE}. Retrain it.'
+        )
 
 
 def _evaluator(net, encoder):
