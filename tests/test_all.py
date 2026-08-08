@@ -92,6 +92,7 @@ from tests.test_oracle import (
     TestSolver,
     TestEnumeration,
     TestBenchmarkCalibration,
+    TestPlayEveryLine,
     TestGrade,
 )
 from tests.zero.test_mcts import (
