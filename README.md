@@ -26,13 +26,13 @@ Requires Python 3.7+. Nothing to install.
 ```bash
 python3 -m unittest tests.test_all -v     # run the test suite
 python3 play.py                           # play either game in the terminal
-python3 main.py                           # start the UCI engine on stdin
+python3 -m games.chess.uci                # start the UCI engine on stdin
 ```
 
 Talking to it directly:
 
 ```
-$ python3 main.py
+$ python3 -m games.chess.uci
 uci
 id name Mildred
 id author Nesh Patel
@@ -54,7 +54,7 @@ GUI at a launcher script:
 
 ```bash
 #!/bin/sh
-exec python3 /path/to/chess/main.py
+cd /path/to/chess && exec python3 -m games.chess.uci
 ```
 
 ### Options
@@ -74,6 +74,8 @@ Search time grows steeply with depth — see the benchmarks below.
 | `games/chess/board.py` | `ChessBoard`: position, move generation, legality, FEN, draws |
 | `games/chess/evaluation.py` | Material and piece-square evaluation |
 | `games/chess/move.py`, `piece.py`, `square.py` | Value types |
+| `games/chess/uci/` | Mildred's own UCI server, plus an async UCI *client* for driving others |
+| `games/chess/run_engine.py` | Playing Mildred against a third-party engine |
 | `games/connect4/constants.py` | The board's shape, and every mask derived from it |
 | `games/connect4/bitboard.py` | The carry that drops a disc, and the shifts that find four in a row |
 | `games/connect4/board.py` | `Connect4`: two integers, move generation, make/unmake, win detection |
@@ -82,8 +84,6 @@ Search time grows steeply with depth — see the benchmarks below.
 | `ai/perft.py`, `ai/simulate.py` | Move enumeration, and playing two move-choosers off |
 | `ai/match.py` | Playing them off a few hundred times, which is how an evaluation is judged |
 | `play.py` | A terminal front end for any game in the registry |
-| `uci/engine.py` | Mildred's own UCI server (`main.py` runs this) |
-| `uci/protocol.py`, `uci/stockfish.py` | An async UCI *client*, for driving other engines |
 | `tests/conformance.py` | The tests every game must pass |
 | `tests/chess/` | Rules, replay/undo, perft, and search scores, all driven by chess positions |
 | `tests/connect4/` | The same, plus the exhaustive win-detection oracle and the eval properties |
@@ -226,8 +226,9 @@ positional term tried on top of it.
 
 ## Playing against other engines
 
-`run_engine.py` plays Mildred against a third-party UCI engine using the async client in
-`uci/`. Drop engine binaries under `third-party-engines/` (gitignored) and set `ENGINE`:
+`games/chess/run_engine.py` plays Mildred against a third-party UCI engine using the async
+client in `games/chess/uci/`. Drop engine binaries under `third-party-engines/` (gitignored)
+and set `ENGINE`:
 
 ```python
 STOCKFISH = 'stockfish/Mac/stockfish-11-64'  # 3495 ELO
@@ -237,7 +238,7 @@ POS       = 'pos/pos.sh'                     #  111 ELO
 ```
 
 ```bash
-python3 run_engine.py
+python3 -m games.chess.run_engine
 ```
 
 ## Development

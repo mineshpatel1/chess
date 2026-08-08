@@ -1,3 +1,12 @@
+"""
+Plays Mildred against a third-party UCI engine.
+
+    python3 -m games.chess.run_engine
+
+Run from the repository root: ENGINE_DIR is relative to the working directory, not to this
+file, and the binaries it points at are gitignored.
+"""
+
 import os
 import asyncio
 
@@ -5,7 +14,7 @@ import log
 from games.chess.board import *
 from ai.search import random_move, alpha_beta
 from ai.simulate import simulate_game_async
-from uci.stockfish import start_engine
+from games.chess.uci.stockfish import start_engine
 
 ENGINE_DIR = 'third-party-engines'
 STOCKFISH = 'stockfish/Mac/stockfish-11-64'  # 3495 ELP
