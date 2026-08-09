@@ -247,6 +247,28 @@ class TestResuming(unittest.TestCase):
             self.assertNotEqual(before, evaluate(resumed, state, Encoder),
                                 'the resumed run should have moved the weights on')
 
+    def test_the_hook_sees_a_checkpoint_that_matches_the_generation_it_is_told_about(self):
+        """
+        The pair a hook copies has to be consistent, since `--commit-every` copies it somewhere
+        a resume will read it from. Called before the save, the hook gets generation N's metrics
+        line and generation N-1's weights, and resuming from that pair replays a generation and
+        writes its number into the metrics file twice.
+        """
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        seen = []
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            train(
+                TicTacToe, generations=3, games_per_generation=4, simulations=5, steps=2,
+                benchmark_every=1000, latest_path=latest, seed=0,
+                on_generation=lambda progress: seen.append(
+                    (progress.generation, load(latest)['generation'])),
+            )
+
+        self.assertEqual([(1, 1), (2, 2), (3, 3)], seen)
+
     def test_resuming_a_finished_run_does_nothing_rather_than_starting_over(self):
         """Relaunching a run that already finished should be a no-op, not four more hours."""
         from ai.zero.metrics import read

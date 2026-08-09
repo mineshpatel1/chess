@@ -37,7 +37,7 @@ from ai import corpus
 from ai.oracle import Grade, Report, Table, benchmark, enumerate_positions, move_values
 from ai.zero import checkpoint
 from ai.zero.checkpoint import save
-from ai.zero.metrics import Recorder
+from ai.zero.metrics import Recorder, truncate_after
 from ai.zero.net import ZeroNet, evaluate, evaluate_batch, for_game as architecture, to_tensor
 from ai.zero.mcts import DIRICHLET_EPSILON
 from ai.zero.selfplay import (
@@ -284,6 +284,14 @@ def train(
         best_state = {k: v.clone() for k, v in net.state_dict().items()}
         log.info(f'Resuming {resume_from} from generation {first}, best so far {best_rate:.2%}')
 
+        # The metrics file can be one generation ahead of the checkpoint: a generation is recorded
+        # before its weights are written, because the record is what says the generation happened.
+        # A run killed inside that window would otherwise record the same generation number twice.
+        if metrics_path:
+            dropped = truncate_after(metrics_path, blob['generation'])
+            if dropped:
+                log.info(f'dropped {dropped} recorded generation(s) past the checkpoint')
+
     recorder = Recorder(metrics_path, append=bool(resume_from))
     last_report = _EMPTY_REPORT
 
@@ -329,8 +337,6 @@ def train(
         )
         log.info(str(progress))
         recorder.write(progress._asdict())
-        if on_generation:
-            on_generation(progress)
 
         # Written every generation whether or not it improved, because this is the file a
         # resume reads. `checkpoint_path` holds the *best* network, which is what you want to
@@ -340,6 +346,14 @@ def train(
                  metadata={'best_rate': max(best_rate, report.overall.rate),
                            'simulations': simulations},
                  optimiser=optimiser)
+
+        # After the checkpoint, not before. A hook that copies the run somewhere - which is what
+        # `zero.py train --commit-every` does - would otherwise take generation N's metrics line
+        # together with generation N-1's weights, and a resume from that pair replays a generation
+        # and records its number twice. Caught in flight: the first automatic commit of a long run
+        # carried the metrics and no checkpoint at all, because the checkpoint had not changed yet.
+        if on_generation:
+            on_generation(progress)
 
         rate = report.overall.rate
         if graded and rate > best_rate:

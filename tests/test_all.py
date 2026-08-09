@@ -133,7 +133,7 @@ from tests.zero.test_mcts import (
     TestTheTreeIsPaths,
     TestPolicyOutput,
 )
-from tests.zero.test_metrics import TestRecording, TestThePlotter
+from tests.zero.test_metrics import TestRecording, TestTruncating, TestThePlotter
 from tests.zero.test_selfplay import (
     TestBatchingDoesNotChangeTheGames,
     TestValueTargets,
