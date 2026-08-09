@@ -13,6 +13,7 @@ import random
 import unittest
 
 from ai.zero.selfplay import (
+    play_games,
     Example,
     OPENING_PLIES,
     _opening,
@@ -167,3 +168,56 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+class TestBatchingDoesNotChangeTheGames(unittest.TestCase):
+    """
+    The invariant the whole speedup rests on.
+
+    Self-play evaluates many games' pending positions in one pass, which is worth roughly five
+    times the throughput on Connect 4. It is only allowed to be a *speed* change: each game runs
+    an ordinary sequential search and must come out with exactly the tree, the moves and the
+    examples it would have had alone. Batching across games can only break that by leaking state
+    between them, and this is what would catch it.
+
+    Each game keeps its own random stream, seeded from its index, which is what makes the
+    statement true at all - games sharing one stream would draw from it in whatever order they
+    happened to reach it, and the batch size would silently change what was played.
+    """
+
+    @staticmethod
+    def flat(states):
+        return [([1.0] * TicTacToeEncoder.POLICY_SIZE, 0.0) for _ in states]
+
+    def played(self, batch_size):
+        games = play_games(
+            self.flat, TicTacToeEncoder, TicTacToe, count=12, simulations=25,
+            batch_size=batch_size, seed=0,
+        )
+        return [
+            ([(tuple(e.policy), e.value) for e in examples], state.signature)
+            for examples, state in games
+        ]
+
+    def test_a_batch_of_many_plays_what_a_batch_of_one_plays(self):
+        alone = self.played(1)
+        for batch_size in (2, 5, 12, 64):
+            self.assertEqual(alone, self.played(batch_size), f'batch of {batch_size} differs')
+
+    def test_the_games_come_back_in_a_fixed_order(self):
+        """
+        Games finish out of order when they run concurrently, so completion order depends on the
+        batch size. A caller seeing that would find its replay buffer - and so its training -
+        quietly depending on a throughput setting.
+        """
+        self.assertEqual(
+            [state for _, state in self.played(1)],
+            [state for _, state in self.played(7)],
+        )
+
+    def test_every_game_asked_for_is_played(self):
+        self.assertEqual(12, len(self.played(5)))
+
+    def test_the_games_are_not_all_the_same_game(self):
+        """Otherwise the comparison above would hold trivially and prove nothing."""
+        self.assertGreater(len({state for _, state in self.played(4)}), 1)

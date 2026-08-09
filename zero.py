@@ -60,6 +60,8 @@ def train(args) -> None:
     log.info(f'Training {game.__name__}: {args.generations} generations of {args.games} games '
              f'at {args.simulations} simulations.')
     extra = {} if args.exploration is None else {'exploration': args.exploration}
+    if args.games_in_flight:
+        extra['games_in_flight'] = args.games_in_flight
     run(
         game,
         generations=args.generations,
@@ -69,6 +71,7 @@ def train(args) -> None:
         symmetries=args.symmetries,
         benchmark_every=args.benchmark_every,
         checkpoint_path=args.out,
+        metrics_path=args.metrics,
         seed=args.seed,
         **extra,
     )
@@ -226,6 +229,10 @@ def main(argv: Optional[list] = None) -> None:
     trainer.add_argument('--benchmark-every', type=int, default=2,
                          help='grade against the oracle every N generations')
     trainer.add_argument('--out', default=DEFAULT_CHECKPOINT)
+    trainer.add_argument('--metrics', default=None,
+                         help='append per-generation metrics here as JSON lines, for plot.py')
+    trainer.add_argument('--games-in-flight', type=int, default=None,
+                         help='self-play games advanced together (throughput only)')
     trainer.add_argument('--seed', type=int, default=1)
     trainer.set_defaults(run=train)
 

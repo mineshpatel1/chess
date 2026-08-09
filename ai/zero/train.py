@@ -22,22 +22,25 @@ sides getting worse together. A run that is working shows it climbing; a run tha
 so plainly.
 """
 
+import math
 import random
 import time
 from collections import deque
-from typing import Callable, Deque, List, NamedTuple, Optional, Type
+from typing import Callable, Deque, List, NamedTuple, Optional, Tuple, Type
 
 import torch
 import torch.nn.functional as F
 
 import log
 from games.base import GameState
-from ai.oracle import benchmark, enumerate_positions
+from ai import corpus
+from ai.oracle import Grade, Report, Table, benchmark, enumerate_positions, move_values
 from ai.zero.checkpoint import save
-from ai.zero.net import ZeroNet, evaluate, to_tensor
+from ai.zero.metrics import Recorder
+from ai.zero.net import ZeroNet, evaluate, evaluate_batch, for_game as architecture, to_tensor
 from ai.zero.mcts import DIRICHLET_EPSILON
 from ai.zero.selfplay import (
-    OPENING_PLIES, TEMPERATURE_MOVES, Example, augment, play_game,
+    OPENING_PLIES, TEMPERATURE_MOVES, Example, augment, play_games,
 )
 
 LEARNING_RATE = 1e-3
@@ -49,6 +52,12 @@ STEPS_PER_GENERATION = 40
 # the game results in them are just as true - but not forever, or the network spends its capacity
 # imitating a version of itself it has outgrown.
 BUFFER_SIZE = 20_000
+
+# Self-play games advanced together, so their pending positions go through the network in one
+# pass. Purely a throughput setting: every game gets the same tree it would have got alone, and
+# `tests/zero/test_selfplay.py` asserts that a batch of sixty-four plays what a batch of one plays.
+# One runs exactly the position-at-a-time path that existed before batching.
+GAMES_IN_FLIGHT = 32
 
 # How often to grade the network against the oracle. Exact and useful, but it is instrumentation
 # rather than training: measured at 80 games and 150 simulations it was 32% of a generation's wall
@@ -93,13 +102,43 @@ SELF_PLAY_EXPLORATION = 5.0
 # spends parameters learning the symmetry group instead of learning positions.
 SYMMETRIES = False
 
+# Which corpus tier a game without an enumerable state space is graded on. See `grading_set`.
+GRADING_TIER = 'E'
+
+# Positions per forward pass when grading. Large enough that per-call overhead is amortised away,
+# small enough that a five-block tower's activations for the batch still fit comfortably.
+GRADING_CHUNK = 2048
+
 GENERATIONS = 30
 GAMES_PER_GENERATION = 40
 SIMULATIONS = 50
 
+# What a generation reports before it has been graded, so the first ungraded generations have
+# something to carry rather than a special case at every use.
+_EMPTY_REPORT = Report(overall=Grade(0, 0, 0, 0), by_seat={}, by_ply={}, worst=[], value_error=0.0)
+
+
+def _entropy(examples) -> float:
+    """
+    Mean entropy of the search's policy targets, in nats.
+
+    The number that tells a stalled run apart from a finished one. Policy loss cannot fall below
+    the entropy of the targets it is fitting, so a loss that has flattened *at* this value is a
+    network fitting its targets perfectly - and the fault is then in the search producing them,
+    not in the network. Tic-tac-toe's c_puct being too low looked exactly like that: confident,
+    slightly wrong targets, learned faithfully.
+    """
+    if not examples:
+        return 0.0
+
+    total = 0.0
+    for example in examples:
+        total -= sum(p * math.log(p) for p in example.policy if p > 0.0)
+    return total / len(examples)
+
 
 class Progress(NamedTuple):
-    """One generation's report."""
+    """One generation's report. `ai.zero.metrics` says why each field is here."""
 
     generation: int
     examples: int
@@ -109,6 +148,15 @@ class Progress(NamedTuple):
     draw_rate: float
     optimal_rate: float
     seconds: float
+    value_mse: float = 0.0
+    first_rate: float = 0.0
+    second_rate: float = 0.0
+    target_entropy: float = 0.0
+    distinct_positions: int = 0
+    game_length: float = 0.0
+    self_play_seconds: float = 0.0
+    learn_seconds: float = 0.0
+    grade_seconds: float = 0.0
 
     def __str__(self) -> str:
         return (
@@ -116,6 +164,7 @@ class Progress(NamedTuple):
             f'(policy {self.policy_loss:6.4f}, value {self.value_loss:6.4f})  '
             f'self-play drawn {self.draw_rate:5.1%}  '
             f'vs perfect play {self.optimal_rate:6.2%}  '
+            f'value mse {self.value_mse:5.3f}  '
             f'{self.seconds:5.1f}s'
         )
 
@@ -127,6 +176,7 @@ def train(
     simulations: int = SIMULATIONS,
     steps: int = STEPS_PER_GENERATION,
     batch_size: int = BATCH_SIZE,
+    games_in_flight: int = GAMES_IN_FLIGHT,
     opening_plies: int = OPENING_PLIES,
     temperature_moves: int = TEMPERATURE_MOVES,
     exploration: float = SELF_PLAY_EXPLORATION,
@@ -135,6 +185,7 @@ def train(
     benchmark_every: int = BENCHMARK_EVERY,
     symmetries: bool = SYMMETRIES,
     checkpoint_path: Optional[str] = None,
+    metrics_path: Optional[str] = None,
     seed: int = 0,
     on_generation: Optional[Callable[[Progress], None]] = None,
 ) -> ZeroNet:
@@ -152,25 +203,35 @@ def train(
     rng = random.Random(seed)
     torch.manual_seed(seed)
 
-    net = ZeroNet(encoder.PLANE_SHAPE, encoder.POLICY_SIZE)
+    net = ZeroNet(encoder.PLANE_SHAPE, encoder.POLICY_SIZE, **architecture(game.__name__))
+    positions, values = grading_set(game)
+    recorder = Recorder(metrics_path)
     optimiser = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
     buffer: Deque[Example] = deque(maxlen=BUFFER_SIZE)
 
-    best_state, best_rate, last_rate = None, -1.0, 0.0
+    best_state, best_rate = None, -1.0
+    last_report = _EMPTY_REPORT
 
     for generation in range(1, generations + 1):
         started = time.perf_counter()
 
-        fresh, drawn = _self_play(
+        play_started = time.perf_counter()
+        fresh, drawn, lengths = _self_play(
             net, encoder, game, games_per_generation, simulations, opening_plies,
-            temperature_moves, exploration, dirichlet_epsilon, rng)
+            temperature_moves, exploration, dirichlet_epsilon, batch_size=games_in_flight,
+            seed=f'{seed}:{generation}')
+        play_seconds = time.perf_counter() - play_started
         buffer.extend(augment(fresh, encoder) if symmetries else fresh)
 
+        learn_started = time.perf_counter()
         loss, policy_loss, value_loss = _learn(net, optimiser, buffer, steps, batch_size, rng)
+        learn_seconds = time.perf_counter() - learn_started
 
         graded = generation % max(benchmark_every, 1) == 0 or generation == generations
-        rate = _optimal_rate(net, encoder, game) if graded else last_rate
-        last_rate = rate
+        grade_started = time.perf_counter()
+        report = _optimal_rate(net, encoder, positions, values) if graded else last_report
+        grade_seconds = time.perf_counter() - grade_started
+        last_report = report
 
         progress = Progress(
             generation=generation,
@@ -179,13 +240,24 @@ def train(
             policy_loss=policy_loss,
             value_loss=value_loss,
             draw_rate=drawn / max(games_per_generation, 1),
-            optimal_rate=rate,
+            optimal_rate=report.overall.rate,
             seconds=time.perf_counter() - started,
+            value_mse=report.value_error or 0.0,
+            first_rate=report.by_seat[True].rate if True in report.by_seat else 0.0,
+            second_rate=report.by_seat[False].rate if False in report.by_seat else 0.0,
+            target_entropy=_entropy(fresh),
+            distinct_positions=len({str(example.planes) for example in buffer}),
+            game_length=sum(lengths) / max(len(lengths), 1),
+            self_play_seconds=play_seconds,
+            learn_seconds=learn_seconds,
+            grade_seconds=grade_seconds,
         )
         log.info(str(progress))
+        recorder.write(progress._asdict())
         if on_generation:
             on_generation(progress)
 
+        rate = report.overall.rate
         if graded and rate > best_rate:
             best_rate = rate
             best_state = {k: v.clone() for k, v in net.state_dict().items()}
@@ -193,6 +265,7 @@ def train(
                 save(net, checkpoint_path, game=game.__name__, generation=generation,
                      metadata={'optimal_rate': rate, 'simulations': simulations})
 
+    recorder.close()
     if best_state is not None:
         net.load_state_dict(best_state)
     log.info(f'best raw-policy agreement with perfect play: {best_rate:.2%}')
@@ -200,21 +273,31 @@ def train(
 
 
 def _self_play(net, encoder, game, count, simulations, opening_plies,
-               temperature_moves, exploration, dirichlet_epsilon, rng):
-    """One generation's games, and how many of them were drawn."""
-    def evaluator(state):
-        return evaluate(net, state, encoder)
+               temperature_moves, exploration, dirichlet_epsilon, batch_size, seed):
+    """
+    One generation's games, played concurrently and evaluated in batches.
+
+    `batch_size` games are in flight at once and the positions they are waiting on go through the
+    network together. It changes nothing about any individual game - each runs an ordinary
+    sequential search and gets the tree it would have got alone - and it is most of the difference
+    between a Connect 4 generation costing seven minutes and costing one.
+    """
+    def batch_evaluator(states):
+        return evaluate_batch(net, states, encoder)
+
+    played = play_games(
+        batch_evaluator, encoder, game, count, simulations,
+        batch_size=batch_size, seed=seed, opening_plies=opening_plies,
+        temperature_moves=temperature_moves, exploration=exploration,
+        dirichlet_epsilon=dirichlet_epsilon)
 
     examples: List[Example] = []
-    drawn = 0
-    for _ in range(count):
-        played, finished = play_game(
-            evaluator, encoder, game, simulations, opening_plies=opening_plies,
-            temperature_moves=temperature_moves, exploration=exploration,
-            dirichlet_epsilon=dirichlet_epsilon, rng=rng)
-        examples.extend(played)
+    drawn, lengths = 0, []
+    for examples_from_game, finished in played:
+        examples.extend(examples_from_game)
         drawn += int(finished.result.winner is None)
-    return examples, drawn
+        lengths.append(len(examples_from_game))
+    return examples, drawn, lengths
 
 
 def _learn(net, optimiser, buffer, steps, batch_size, rng):
@@ -254,15 +337,80 @@ def _learn(net, optimiser, buffer, steps, batch_size, rng):
     return tuple(total / steps for total in totals)
 
 
-def _optimal_rate(net, encoder, game) -> float:
+def grading_set(game):
     """
-    How often the raw policy picks a best move, over every position in the game.
+    The positions a game is graded over each generation, and how to value them.
+
+    Built once and reused, because the alternative for Connect 4 is re-reading a 33,300-line file
+    and rebuilding 22,100 boards every generation.
+
+    Dispatches the way `zero.py grade` does. A game that declares `SOLVED_DEPTH` can be searched to
+    the end of itself, so its whole state space is walkable and solvable on the spot. Anything
+    larger needs answers computed in advance - Connect 4's tree is 4.5e12 positions and
+    `enumerate_positions` would never return.
+
+    Connect 4 is graded on the **enumerated opening tier alone**: every distinct position out to
+    six discs, 22,100 of them. Exhaustive rather than sampled, so the number carries no sampling
+    noise - which matters when it is choosing which checkpoint to keep, generation after
+    generation. It is also the region with the most room to show improvement, `minimax:4` scoring
+    79.1% there against 95.5% on deep random positions.
+    """
+    if game.SOLVED_DEPTH is not None:
+        # `.copy()` is not optional. `enumerate_positions` yields the *live* state as it walks the
+        # tree, so keeping the references without copying leaves every entry pointing at one
+        # object in whatever position the walk finished in - a grading set of 5,478 empty boards,
+        # which scores 100% and takes eighty seconds to say so.
+        positions = [(state.copy(), ply) for state, ply in enumerate_positions(game)]
+
+        # Solved once here rather than on demand every generation. The answers are properties of
+        # the game and cannot change, so re-deriving them each time is the same work repeated for
+        # the length of the run - and a shared table makes the one pass nearly free.
+        table = Table()
+        solved = {
+            state.solver_key: move_values(state, table)
+            for state, _ in positions if not state.is_game_over
+        }
+        return positions, lambda state: solved[state.solver_key]
+
+    path = corpus.CORPORA.get(game.__name__)
+    if path is None:
+        raise ValueError(
+            f'{game.__name__} can neither be enumerated nor has a solved corpus, so a training '
+            f'run has nothing to grade itself against'
+        )
+
+    entries = corpus.load(path, tiers=(GRADING_TIER,))
+    return list(corpus.positions(entries, game)), corpus.values(entries)
+
+
+def _optimal_rate(net, encoder, positions, values):
+    """
+    How often the raw policy picks a best move, and how wrong the value head is.
 
     The network alone, with no search - which is the honest measure of what has actually been
-    learned, and is one forward pass per position, so it costs a fraction of a second.
-    """
-    def raw(state):
-        priors, _ = evaluate(net, state, encoder)
-        return max(state.legal_moves, key=lambda move: priors[encoder.action_index(move)])
+    learned. Search papers over a weak prior, so grading with it on would flatter a network that
+    is not improving.
 
-    return benchmark(raw, enumerate_positions(game)).overall.rate
+    **Every position in one forward pass.** Asked one at a time this is 22,100 batch-1 calls for
+    Connect 4, about 37 seconds, or roughly a third of a generation. There is no tree here, just
+    independent positions, so batching cannot change an answer - it is the one place in the whole
+    system where speed is free.
+    """
+    states = [state for state, _ in positions]
+
+    # In chunks rather than one pass over all 22,100. A single batch that large allocates
+    # activations for every position at once - for a five-block tower that is gigabytes - and
+    # spends longer in memory traffic than it saves in dispatch. A couple of thousand is well past
+    # the point where per-call overhead stops mattering.
+    answers = []
+    for start in range(0, len(states), GRADING_CHUNK):
+        answers.extend(evaluate_batch(net, states[start:start + GRADING_CHUNK], encoder))
+
+    priors = {id(state): answer[0] for state, answer in zip(states, answers)}
+    heads = {id(state): answer[1] for state, answer in zip(states, answers)}
+
+    def raw(state):
+        prior = priors[id(state)]
+        return max(state.legal_moves, key=lambda move: prior[encoder.action_index(move)])
+
+    return benchmark(raw, positions, values=values, value_fn=lambda state: heads[id(state)])

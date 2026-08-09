@@ -30,7 +30,17 @@ the 2021 search stay broken for months.
 
 import math
 import random
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 from games.base import Encoder, GameState
 
@@ -99,6 +109,22 @@ def terminal_value(state: GameState) -> float:
     return 1.0 if result.winner == state.turn else -1.0
 
 
+def drive(steps: Iterator[GameState], evaluator: Evaluator) -> Result:
+    """
+    Runs a suspended search to completion, answering it one position at a time.
+
+    The simple driver, and the one every existing caller gets. `ai.zero.selfplay` has the other:
+    many searches advanced together and answered in one batched pass. Both are drivers only -
+    neither knows anything about the tree - so the search cannot behave differently under them.
+    """
+    try:
+        request = next(steps)
+        while True:
+            request = steps.send(evaluator(request))
+    except StopIteration as finished:
+        return finished.value
+
+
 class MCTS:
     """
     A PUCT search over a game, driven by an injected evaluator.
@@ -132,6 +158,35 @@ class MCTS:
         `noise` adds Dirichlet noise to the root priors and belongs to self-play only. At
         evaluation it would make the player worse for no reason: its whole purpose is to make
         repeated self-play games differ, and a benchmark wants the player's actual opinion.
+
+        A thin driver over `steps`, feeding it the injected evaluator one position at a time.
+        There is only one search in this file - this is the convenient way to call it, and
+        `ai.zero.selfplay` has another that answers many searches with a single batched forward
+        pass. Neither can drift from the other, because neither contains any tree logic.
+        """
+        return drive(self.steps(state, noise), self.evaluator)
+
+    def steps(self, state: GameState, noise: bool = False) -> 'Iterator[GameState]':
+        """
+        The search as a generator: it yields each position it needs evaluated and is sent back
+        `(priors, value)`. Returns a `Result` when the simulations are done.
+
+        Why the search is inside out. Evaluating one position at a time costs 1101us on a Connect
+        4 network against 111us amortised in a batch of sixty-four, and MCTS asks once per
+        simulation, so batch-1 inference is very nearly the whole cost of training. What cannot be
+        batched is *one* tree's simulations, which are sequential by construction: each one goes
+        where the previous ones' statistics send it. Collecting several leaves from a single tree
+        needs virtual loss to stop them all choosing the same branch, and that changes what the
+        tree explores.
+
+        Suspending instead sidesteps all of it. A caller runs sixty-four *separate* games, each an
+        ordinary sequential search, and evaluates their sixty-four pending positions together -
+        the batching happens between games, where there is no tree to disturb. Every tree comes
+        out bit-identical to one searched alone, which is what `tests/zero/test_mcts.py` asserts
+        by visit count rather than by chosen move.
+
+        The state yielded is the live one and the search mutates it on resumption, so a driver
+        must read everything it needs from every pending position *before* resuming any of them.
         """
         root = Node(prior=1.0)
 
@@ -140,14 +195,14 @@ class MCTS:
         # simulation selects, `sqrt(N_parent)` zeroes the exploration term for every child, and
         # the search picks the first move generated while ignoring the priors entirely - so a
         # one-simulation search is blind no matter how good the network is.
-        root.value_sum = self._expand(state, root)
+        root.value_sum = yield from self._expand(state, root)
         root.visits = 1
 
         if noise:
             self._add_noise(root)
 
         for _ in range(self.simulations):
-            self._simulate(state, root)
+            yield from self._simulate(state, root)
 
         visits = {move: child.visits for move, child in root.children.items()}
         return Result(
@@ -159,15 +214,17 @@ class MCTS:
 
     # ---- the tree ----------------------------------------------------------------------
 
-    def _expand(self, state: GameState, node: Node) -> float:
+    def _expand(self, state: GameState, node: Node) -> 'Iterator[GameState]':
         """
         Asks the evaluator about a position and hangs its legal moves off `node` as children.
 
         Returns the position's value to its own mover, which is what the caller backs up. Priors
         are renormalised over the legal moves only: the evaluator is free to spend mass on moves
         that do not exist here, and the search must not.
+
+        The one place the search needs the outside world, and so the one `yield` in the file.
         """
-        priors, value = self.evaluator(state)
+        priors, value = yield state
 
         moves = list(state.legal_moves)
         weights = [max(priors[self.encoder.action_index(move)], 0.0) for move in moves]
@@ -196,21 +253,25 @@ class MCTS:
         for child, sample in zip(root.children.values(), noise):
             child.prior = (1 - DIRICHLET_EPSILON) * child.prior + DIRICHLET_EPSILON * sample / total
 
-    def _simulate(self, state: GameState, node: Node) -> float:
+    def _simulate(self, state: GameState, node: Node) -> 'Iterator[GameState]':
         """
         One simulation, returning the value of `state` to the player to move in it.
 
         Recursive on purpose. The caller negates what it gets back, so the perspective flip lives
         in exactly one place and no node needs to remember whose value it is holding.
+
+        `yield from` is what lets the recursion survive being suspendable: the evaluator request
+        travels up and out through every frame and the answer comes back down to where it was
+        asked for, so the order of operations is exactly what it was when the call was inline.
         """
         if state.is_game_over:
             value = terminal_value(state)
         elif not node.expanded:
-            value = self._expand(state, node)
+            value = yield from self._expand(state, node)
         else:
             move = self._select(node)
             state.make_move(move)
-            value = -self._simulate(state, node.children[move])
+            value = -(yield from self._simulate(state, node.children[move]))
             state.unmake_move()
 
         node.visits += 1

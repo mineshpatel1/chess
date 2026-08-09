@@ -21,10 +21,26 @@ worth being explicit about what is correct here:
 """
 
 import random
-from typing import Any, Callable, List, NamedTuple, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+)
 
 from games.base import Encoder, GameState
-from ai.zero.mcts import DIRICHLET_ALPHA, DIRICHLET_EPSILON, EXPLORATION, MCTS, Evaluator
+from ai.zero.mcts import (
+    DIRICHLET_ALPHA,
+    DIRICHLET_EPSILON,
+    EXPLORATION,
+    MCTS,
+    Evaluator,
+    drive,
+)
 
 # Plies played by sampling from the visit counts rather than taking the best move. Without this
 # every self-play game from a deterministic network is the same game, and the buffer fills with
@@ -62,8 +78,7 @@ class Example(NamedTuple):
     value: float
 
 
-def play_game(
-    evaluator: Evaluator,
+def game_steps(
     encoder: Encoder,
     game: Callable[[], GameState],
     simulations: int,
@@ -74,13 +89,19 @@ def play_game(
     dirichlet_alpha: float = DIRICHLET_ALPHA,
     dirichlet_epsilon: float = DIRICHLET_EPSILON,
     rng: Optional[random.Random] = None,
-) -> Tuple[List[Example], GameState]:
+) -> Iterator[GameState]:
     """
-    Plays one game, returning an example per position and the finished game itself.
+    A whole game as a generator: it yields every position it needs evaluated and returns
+    `(examples, finished state)`.
 
-    The finished state comes back so a caller can report on the games as well as learn from them
-    - how many were drawn is the single most informative number in tic-tac-toe self-play, since
-    a healthy run converges on drawing almost everything.
+    Suspendable for the same reason the search is - so that many games can be advanced together
+    and their pending positions evaluated in one batched pass instead of one at a time. All this
+    needs to say about that is `yield from`: the search's requests travel out through this frame
+    untouched, and the answers come back to where they were asked for.
+
+    The finished state comes back so a caller can report on the games as well as learn from them -
+    how many were drawn is the single most informative number in tic-tac-toe self-play, since a
+    healthy run converges on drawing almost everything.
 
     `opening_plies` puts the game somewhere random before any of it is recorded. Nothing played
     during those plies becomes an example, so every training target still comes from a real
@@ -88,7 +109,7 @@ def play_game(
     """
     rng = rng or random.Random()
     mcts = MCTS(
-        evaluator, encoder, simulations=simulations, exploration=exploration,
+        _refuses, encoder, simulations=simulations, exploration=exploration,
         dirichlet_alpha=dirichlet_alpha, dirichlet_epsilon=dirichlet_epsilon, rng=rng,
     )
 
@@ -96,7 +117,7 @@ def play_game(
     played: List[Tuple[Any, Sequence[float], bool]] = []
 
     while not state.is_game_over:
-        result = mcts.search(state, noise=True)
+        result = yield from mcts.steps(state, noise=True)
         tau = temperature if len(played) < temperature_moves else 0.0
 
         # Recorded before the move: the example belongs to the position it was searched from.
@@ -109,6 +130,90 @@ def play_game(
         for planes, policy, mover in played
     ]
     return examples, state
+
+
+def _refuses(state: GameState):
+    """
+    The evaluator an `MCTS` built for `game_steps` will never call.
+
+    `MCTS.search` drives its own injected evaluator; `MCTS.steps` hands every request to whoever
+    is driving it, and here that is the batched caller. Passing something that raises rather than
+    something plausible means a stray call to `search()` fails loudly instead of quietly using a
+    different evaluator from the rest of the run.
+    """
+    raise RuntimeError('this search is driven by its caller and has no evaluator of its own')
+
+
+def play_game(
+    evaluator: Evaluator,
+    encoder: Encoder,
+    game: Callable[[], GameState],
+    simulations: int,
+    **kwargs,
+) -> Tuple[List[Example], GameState]:
+    """One game, answering the search one position at a time. `play_games` is the batched form."""
+    return drive(game_steps(encoder, game, simulations, **kwargs), evaluator)
+
+
+def play_games(
+    batch_evaluator: Callable[[Sequence[GameState]], Sequence[Tuple[Sequence[float], float]]],
+    encoder: Encoder,
+    game: Callable[[], GameState],
+    count: int,
+    simulations: int,
+    batch_size: int = 1,
+    seed: int = 0,
+    **kwargs,
+) -> List[Tuple[List[Example], GameState]]:
+    """
+    Plays `count` games, keeping up to `batch_size` of them in flight and evaluating the positions
+    they are waiting on together.
+
+    This is where the training time goes and where it is won back. A Connect 4 forward pass costs
+    1101us on its own and 111us amortised in a batch of sixty-four, and the search asks once per
+    simulation, so answering one position at a time spends nearly all of a run's wall clock in
+    calls too small to use the machine.
+
+    **Each game keeps its own random stream**, seeded from `seed` and the game's index. Without
+    that the results would depend on the interleaving - games sharing one stream draw from it in
+    whatever order they happen to reach it - and `batch_size` would silently change what was
+    played. With it, a batch of sixty-four plays exactly the games a batch of one plays, which is
+    what `tests/zero/test_selfplay.py` asserts.
+
+    The evaluator is handed every pending position at once and must read what it needs from all of
+    them before returning: the states are live and resuming a game mutates its own.
+    """
+    started, done = 0, {}
+    active: List[Tuple[int, Iterator[GameState], GameState]] = []
+
+    while started < count or active:
+        while started < count and len(active) < batch_size:
+            steps = game_steps(
+                encoder, game, simulations, rng=random.Random(f'{seed}:{started}'), **kwargs)
+            _advance(started, steps, None, active, done)
+            started += 1
+
+        if not active:
+            break
+
+        # Every pending position, answered in one pass, before any of them is resumed.
+        answers = batch_evaluator([pending for _, _, pending in active])
+        waiting, active = active, []
+        for (index, steps, _), answer in zip(waiting, answers):
+            _advance(index, steps, answer, active, done)
+
+    # By game index rather than by whoever finished first. Games run concurrently and end out of
+    # order, so completion order is a function of `batch_size` - and a caller that saw it would
+    # find its buffer, and therefore its training, quietly depending on the batch size.
+    return [done[index] for index in range(count)]
+
+
+def _advance(index, steps, answer, active, done) -> None:
+    """Pushes one game forward, onto `active` if it wants another position or `done` if finished."""
+    try:
+        active.append((index, steps, steps.send(answer)))
+    except StopIteration as finished:
+        done[index] = finished.value
 
 
 def _opening(game: Callable[[], GameState], plies: int, rng: random.Random) -> GameState:
