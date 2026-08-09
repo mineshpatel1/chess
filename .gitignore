@@ -5,6 +5,10 @@ third-party-engines/*
 # Generated from a run's metrics by plot.py; the .jsonl beside it is the record worth keeping.
 runs/*.html
 
+# A tee of a run's console output, kept only so a live run can be tailed. Everything in it that
+# matters is already in the .jsonl, in a form something can read.
+runs/*.log
+
 # Connect 4 checkpoints. The tic-tac-toe one is committed because it is near-perfect and 25KB;
 # these are 5MB apiece with their optimiser state and, so far, only evidence that the curve rises.
 models/connect4*.pt
