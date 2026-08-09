@@ -9,7 +9,6 @@ runs/*.html
 # these are 1.9MB apiece and, so far, only evidence that the curve rises.
 models/connect4*.pt
 
-# One-off experiment runners and their output. The findings get written down; the scratch that
-# produced them does not need to live at the repo root.
+# One-off experiment runners. The findings get written down; the scratch does not need to live
+# at the repo root. Their metrics under runs/ are kept, being the evidence behind the findings.
 _*.py
-runs/grid/

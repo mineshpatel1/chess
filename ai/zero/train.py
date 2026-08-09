@@ -88,8 +88,29 @@ BENCHMARK_EVERY = 1
 # against the 73.5% scored by "always play nearest the centre".
 #
 # Tic-tac-toe gets away with a high value because it is nine plies deep and terminal values reach
-# the root almost immediately, so Q is a strong signal from the first visits. `REFERENCE_CONNECT4`
-# below records what a working Connect 4 implementation uses instead.
+# the root almost immediately, so Q is a strong signal from the first visits.
+#
+# **And yet changing it does nothing here, which was worth finding out.** A grid of twelve-
+# generation Connect 4 runs, one seed each, metrics under `runs/grid/`:
+#
+#     c_puct  sims   target entropy   agreement   value mse   game plies
+#        1.5    50      64% of unif       69.0%       0.759         18.6
+#        2.5    50      74%               70.7%       0.812         17.4
+#        5.0    50      87%               69.9%       0.704         17.1
+#        1.5   200      55%               69.9%       0.789         20.2
+#        2.5   200      63%               69.1%       0.864         20.3
+#        2.0   600      47%               72.9%       0.683         24.2
+#
+# c_puct moves the entropy of the search's targets across a wide range and moves nothing else:
+# agreement sits in a 1.7-point band that a single seed cannot separate. Near-uniform targets were
+# a symptom, not the cause. Simulations do matter, but not between 50 and 200 - only at 600, which
+# is the `REFERENCE_CONNECT4` setting and best on all four columns.
+#
+# It is still not worth paying for. Thirty generations at 50 simulations reached 74.6% in 10.7
+# minutes; twelve at 600 reached 72.9% in 62 minutes. Cheap search bought a better number in a
+# sixth of the time, so generations are the thing to buy on a CPU. A GPU amortising deep searches
+# over 5,000 games an iteration is a different trade, which is why the reference makes the other
+# choice.
 SELF_PLAY_EXPLORATION = 5.0
 
 # What a published Connect 4 AlphaZero uses, for reference rather than as configuration.
