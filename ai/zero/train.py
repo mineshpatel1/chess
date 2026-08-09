@@ -38,7 +38,9 @@ from ai.oracle import Grade, Report, Table, benchmark, enumerate_positions, move
 from ai.zero import checkpoint
 from ai.zero.checkpoint import save
 from ai.zero.metrics import Recorder, truncate_after
-from ai.zero.net import ZeroNet, evaluate, evaluate_batch, for_game as architecture, to_tensor
+from ai.zero.net import (
+    ZeroNet, evaluate, evaluate_batch, flush_denormals, for_game as architecture, to_tensor,
+)
 from ai.zero.mcts import DIRICHLET_EPSILON
 from ai.zero.selfplay import (
     FINAL_TEMPERATURE, OPENING_PLIES, TEMPERATURE_MOVES, Example, augment, play_games,
@@ -219,6 +221,7 @@ class Progress(NamedTuple):
     target_entropy: float = 0.0
     distinct_positions: int = 0
     game_length: float = 0.0
+    denormal_weights: int = 0
     self_play_seconds: float = 0.0
     learn_seconds: float = 0.0
     grade_seconds: float = 0.0
@@ -317,6 +320,12 @@ def train(
 
         learn_started = time.perf_counter()
         loss, policy_loss, value_loss = _learn(net, optimiser, buffer, steps, batch_size, rng)
+
+        # Immediately after the steps that create them, so the next generation's self-play, its
+        # gradient steps and its benchmark all run on normal floats. See `flush_denormals` - left
+        # alone these accumulate under weight decay and make the whole loop several times slower
+        # while doing exactly the same work.
+        denormals = flush_denormals(net)
         learn_seconds = time.perf_counter() - learn_started
 
         graded = generation % max(benchmark_every, 1) == 0 or generation == generations
@@ -340,6 +349,7 @@ def train(
             target_entropy=_entropy(fresh),
             distinct_positions=len({str(example.planes) for example in buffer}),
             game_length=sum(lengths) / max(len(lengths), 1),
+            denormal_weights=denormals,
             self_play_seconds=play_seconds,
             learn_seconds=learn_seconds,
             grade_seconds=grade_seconds,

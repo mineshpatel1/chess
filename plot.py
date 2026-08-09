@@ -57,6 +57,11 @@ CHARTS: Sequence[Tuple[str, str, str]] = (
     ('draw_rate', 'Self-play games drawn', 'rate'),
     ('game_length', 'Mean game length, plies', 'plain'),
     ('seconds', 'Seconds per generation', 'plain'),
+    # Worth a chart of its own because its effect is on every other number's *cost* rather than on
+    # any of their values. Left unflushed these accumulate under weight decay and make the whole
+    # loop several times slower while the work is unchanged - a day was spent looking for that in
+    # the machine before looking in the weights.
+    ('denormal_weights', 'Denormal weights flushed', 'plain'),
 )
 
 WIDTH, HEIGHT = 460, 240

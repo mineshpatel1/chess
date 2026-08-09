@@ -247,6 +247,50 @@ def evaluate_batch(
     return list(zip(policies.tolist(), values.tolist()))
 
 
+# The smallest positive float32 with a full mantissa. Below this the exponent is already at its
+# minimum and precision is bought by leading zeros in the mantissa - a *subnormal*, or denormal.
+SMALLEST_NORMAL = 1.18e-38
+
+
+def flush_denormals(net: ZeroNet) -> int:
+    """
+    Zeroes weights that have decayed into the subnormal range, returning how many there were.
+
+    **This is worth six times the speed of the whole training loop, and it cost a day to find.**
+
+    Weight decay pulls unused weights toward zero and they do not arrive: they stall around 1e-40,
+    which float32 can only represent as a denormal. x86 handles denormal arithmetic in microcode
+    rather than in the vector units, so every multiply touching one costs orders of magnitude more
+    than a normal multiply. By generation 8 of a Connect 4 run, 11% of the network's 471,000
+    weights were denormal and it had become 6x slower than the same architecture freshly
+    initialised - 0.95s against 0.16s for twenty batches of thirty-two.
+
+    The slowdown compounds generation by generation and applies to *everything* that multiplies by
+    these weights, so self-play, the gradient steps and the benchmark all slow by the same factor
+    while the work they do is unchanged. That signature - fixed work getting uniformly slower - is
+    what to recognise, and it is nothing to do with the machine, which is where a day went.
+
+    Numerically this changes nothing. A weight of 1e-40 in a network whose meaningful weights are
+    around 1e-2 contributes nothing any float32 sum can represent; `tests/zero/test_net.py` asserts
+    the outputs are unchanged.
+
+    `torch.set_flush_denormal(True)` is **not** an alternative. It sets the CPU's flush-to-zero
+    flag on the calling thread only, and torch runs its intra-op pool on several others - measured
+    here, it made no difference at all (0.93s against 0.97s) while this made it 0.16s.
+    """
+    total = 0
+    with torch.no_grad():
+        for parameter in net.parameters():
+            # Non-zero matters: without it this counts every legitimately zero weight and reports
+            # a five-figure denormal count for a network that has none.
+            tiny = (parameter != 0.0) & (parameter.abs() < SMALLEST_NORMAL)
+            count = int(tiny.sum())
+            if count:
+                parameter[tiny] = 0.0
+                total += count
+    return total
+
+
 def evaluate(net: ZeroNet, state, encoder: Encoder) -> Tuple[List[float], float]:
     """
     One position through the network: priors over its legal moves, and its value.

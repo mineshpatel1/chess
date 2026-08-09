@@ -145,6 +145,7 @@ from tests.zero.test_selfplay import (
 from tests.zero.test_net import (
     TestNetwork,
     TestMasking,
+    TestFlushingDenormals,
     TestCheckpoints,
     TestPlayer,
     TestResuming,

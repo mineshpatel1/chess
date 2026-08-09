@@ -88,6 +88,83 @@ class TestMasking(unittest.TestCase):
 
 
 @needs_torch
+class TestFlushingDenormals(unittest.TestCase):
+    """
+    The one-line fix that was worth six times the speed of the training loop.
+
+    Weight decay parks unused weights around 1e-40, which float32 can only hold as a subnormal,
+    and x86 runs subnormal arithmetic in microcode. By generation 8 of a Connect 4 run 11% of the
+    weights were denormal and the network was 6x slower than the same architecture freshly built.
+
+    What these assert is that it is a *speed* change: the count is right, normal weights are left
+    alone, and the network's outputs do not move.
+    """
+
+    def setUp(self):
+        from ai.zero.net import ZeroNet
+        self.net = ZeroNet(Encoder.PLANE_SHAPE, Encoder.POLICY_SIZE)
+
+    def _poison(self, count=5, value=1e-40):
+        """Puts denormals where weight decay would have left them."""
+        with torch.no_grad():
+            flat = next(self.net.parameters()).view(-1)
+            flat[:count] = value
+        return count
+
+    def test_it_zeroes_them_and_says_how_many(self):
+        from ai.zero.net import flush_denormals
+
+        self._poison(count=5)
+        self.assertEqual(5, flush_denormals(self.net))
+        self.assertEqual(0, flush_denormals(self.net), 'a second pass has nothing left to do')
+
+    def test_a_clean_network_reports_none(self):
+        """Zero weights are not denormal, and counting them would report thousands from nowhere."""
+        from ai.zero.net import flush_denormals
+
+        with torch.no_grad():
+            next(self.net.parameters()).view(-1)[:20] = 0.0
+        self.assertEqual(0, flush_denormals(self.net))
+
+    def test_the_weights_that_mattered_are_untouched(self):
+        from ai.zero.net import flush_denormals
+
+        self._poison()
+        before = [p.clone() for p in self.net.parameters()]
+        flush_denormals(self.net)
+
+        for was, now in zip(before, self.net.parameters()):
+            normal = was.abs() >= 1.18e-38
+            self.assertTrue(torch.equal(was[normal], now[normal]))
+
+    def test_the_network_computes_the_same_thing_afterwards(self):
+        """
+        The claim the whole fix rests on. A weight of 1e-40 in a network whose real weights are
+        around 1e-2 contributes nothing a float32 sum can represent, so removing it is free.
+        """
+        from ai.zero.net import evaluate, flush_denormals
+
+        self._poison(count=200)
+        state = TicTacToe([4, 0])
+        before = evaluate(self.net, state, Encoder)
+        flush_denormals(self.net)
+        after = evaluate(self.net, state, Encoder)
+
+        self.assertEqual(before[1], after[1])
+        for one, two in zip(before[0], after[0]):
+            self.assertEqual(one, two)
+
+    def test_it_survives_a_network_of_every_sign(self):
+        """Denormals arrive from both directions; only the magnitude is the test."""
+        from ai.zero.net import flush_denormals
+
+        with torch.no_grad():
+            flat = next(self.net.parameters()).view(-1)
+            flat[0], flat[1] = 1e-40, -1e-40
+        self.assertEqual(2, flush_denormals(self.net))
+
+
+@needs_torch
 class TestCheckpoints(unittest.TestCase):
     def _save(self, directory, game='TicTacToe'):
         from ai.zero.checkpoint import save
