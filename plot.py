@@ -33,9 +33,15 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from ai.zero.metrics import read
 
 # Scores on the same positions a run is graded against, so a curve can be read against something.
-# Both measured, and recorded in the README: `zero.py --game connect4 benchmark`.
+# All measured with `zero.py benchmark` on the exact grading set, and recorded in the README.
+#
+# The middle line for Connect 4 is the important one and was nearly left out. A network that has
+# learned only "play towards the middle" - the crudest true thing about the game, and one line of
+# code - already scores 73.5% on the opening tier. Drawing only `random` at 54.1% makes a climb to
+# 74% look like most of the way to `minimax:4` when it is barely past the trivial policy. A floor
+# that flatters the curve is worse than no floor.
 REFERENCES = {
-    'Connect4': [('random', 0.541), ('minimax:4', 0.791)],
+    'Connect4': [('random', 0.541), ('centre column', 0.735), ('minimax:4', 0.791)],
     'TicTacToe': [('random', 0.678), ('minimax:9 — perfect', 1.0)],
 }
 

@@ -8,3 +8,8 @@ runs/*.html
 # Connect 4 checkpoints. The tic-tac-toe one is committed because it is near-perfect and 25KB;
 # these are 1.9MB apiece and, so far, only evidence that the curve rises.
 models/connect4*.pt
+
+# One-off experiment runners and their output. The findings get written down; the scratch that
+# produced them does not need to live at the repo root.
+_*.py
+runs/grid/

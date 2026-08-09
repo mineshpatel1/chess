@@ -78,7 +78,38 @@ BENCHMARK_EVERY = 1
 # An inverted U with a clear peak, and the default was sitting well below it - visit counts were
 # concentrating before the alternatives had been checked, so the network fit targets that were
 # confidently slightly wrong.
+#
+# **Tuned on tic-tac-toe, and it does not obviously transfer.** PUCT is
+# `Q + c * P * sqrt(N_parent) / (1 + n)`, so with 50 simulations spread over Connect 4's seven
+# columns each child gets about seven visits and the exploration term swamps Q throughout - the
+# search never commits. Measured on a 30-generation Connect 4 run, the visit distributions it
+# produced sat at 82% of the entropy of a uniform distribution, which is a search that has
+# concluded almost nothing, and the network learned almost nothing from them: 74.6% agreement
+# against the 73.5% scored by "always play nearest the centre".
+#
+# Tic-tac-toe gets away with a high value because it is nine plies deep and terminal values reach
+# the root almost immediately, so Q is a strong signal from the first visits. `REFERENCE_CONNECT4`
+# below records what a working Connect 4 implementation uses instead.
 SELF_PLAY_EXPLORATION = 5.0
+
+# What a published Connect 4 AlphaZero uses, for reference rather than as configuration.
+#
+# AlphaZero.jl's Connect 4 example: 128 filters over 5 residual blocks with 32-filter heads (about
+# 1.6M parameters), **600 simulations**, **c_puct 2.0**, Dirichlet (0.25, 1.0), temperature 1.0 for
+# 20 moves then 0.3, Adam at 2e-3, batch 1,024, and 5,000 self-play games per iteration over 15
+# iterations - one to two hours per iteration on an RTX 2070.
+#
+# Worth writing down because almost every number here differs from ours, and the two that differ
+# most are exactly the two the entropy measurement points at. It is not a target: 5,000 games an
+# iteration on a GPU is a different budget from 64 games on four CPU cores, and copying the whole
+# configuration would be reasoning by analogy rather than about the problem. It is a sanity check
+# on which direction the defaults should move.
+REFERENCE_CONNECT4 = {
+    'filters': 128, 'blocks': 5, 'head_filters': 32,
+    'simulations': 600, 'exploration': 2.0,
+    'temperature_moves': 20, 'final_temperature': 0.3,
+    'learning_rate': 2e-3, 'batch_size': 1024, 'games_per_generation': 5000,
+}
 
 # Whether to add every symmetric copy of each example, which for tic-tac-toe is eight for one.
 #
