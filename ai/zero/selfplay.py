@@ -172,6 +172,7 @@ def play_games(
     simulations: int,
     batch_size: int = 1,
     seed: int = 0,
+    on_finished: Optional[Callable[[int, int], None]] = None,
     **kwargs,
 ) -> List[Tuple[List[Example], GameState]]:
     """
@@ -191,6 +192,11 @@ def play_games(
 
     The evaluator is handed every pending position at once and must read what it needs from all of
     them before returning: the states are live and resuming a game mutates its own.
+
+    `on_finished(completed, count)` is called as each game ends. A Connect 4 generation at 600
+    simulations takes twenty minutes and until this existed it printed nothing at all for the whole
+    of it - which is fine until a run slows down, at which point there is no way to tell a slow
+    generation from a hung one without reading `/proc`.
     """
     started, done = 0, {}
     active: List[Tuple[int, Iterator[GameState], GameState]] = []
@@ -199,7 +205,7 @@ def play_games(
         while started < count and len(active) < batch_size:
             steps = game_steps(
                 encoder, game, simulations, rng=random.Random(f'{seed}:{started}'), **kwargs)
-            _advance(started, steps, None, active, done)
+            _advance(started, steps, None, active, done, on_finished, count)
             started += 1
 
         if not active:
@@ -209,7 +215,7 @@ def play_games(
         answers = batch_evaluator([pending for _, _, pending in active])
         waiting, active = active, []
         for (index, steps, _), answer in zip(waiting, answers):
-            _advance(index, steps, answer, active, done)
+            _advance(index, steps, answer, active, done, on_finished, count)
 
     # By game index rather than by whoever finished first. Games run concurrently and end out of
     # order, so completion order is a function of `batch_size` - and a caller that saw it would
@@ -217,12 +223,14 @@ def play_games(
     return [done[index] for index in range(count)]
 
 
-def _advance(index, steps, answer, active, done) -> None:
+def _advance(index, steps, answer, active, done, on_finished=None, count=0) -> None:
     """Pushes one game forward, onto `active` if it wants another position or `done` if finished."""
     try:
         active.append((index, steps, steps.send(answer)))
     except StopIteration as finished:
         done[index] = finished.value
+        if on_finished:
+            on_finished(len(done), count)
 
 
 def _opening(game: Callable[[], GameState], plies: int, rng: random.Random) -> GameState:

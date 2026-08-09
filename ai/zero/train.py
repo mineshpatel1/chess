@@ -66,6 +66,15 @@ GAMES_IN_FLIGHT = 32
 # right when the answer is already known and the run just has to finish.
 BENCHMARK_EVERY = 1
 
+# Games between progress reports during self-play, which is where a generation spends its time.
+#
+# A tic-tac-toe generation is a second and says nothing until it is done, which is right. A Connect
+# 4 generation at 600 simulations is twenty minutes, and a run that prints nothing for twenty
+# minutes is one where a slowdown and a hang look identical - the afternoon that produced this
+# constant was spent telling those apart by reading `/proc`. Reporting a *rate* rather than a bare
+# count is the point: the rate is what shows a generation getting slower while it happens.
+REPORT_EVERY = 25
+
 # How hard PUCT explores *while learning*, which is not the same question as how hard it should
 # explore while playing. Learning wants the search to check alternatives it currently believes are
 # worse, because that is where the training signal comes from; playing wants it to trust a prior
@@ -373,7 +382,7 @@ def train(
 
 def _self_play(net, encoder, game, count, simulations, opening_plies,
                temperature_moves, final_temperature, exploration, dirichlet_epsilon,
-               batch_size, seed):
+               batch_size, seed, report_every=REPORT_EVERY):
     """
     One generation's games, played concurrently and evaluated in batches.
 
@@ -381,15 +390,31 @@ def _self_play(net, encoder, game, count, simulations, opening_plies,
     network together. It changes nothing about any individual game - each runs an ordinary
     sequential search and gets the tree it would have got alone - and it is most of the difference
     between a Connect 4 generation costing seven minutes and costing one.
+
+    Progress is reported as it goes, with a rate and a projected finish. This is the only thing a
+    long generation says while it is running, and the rate is the useful part: it is what makes a
+    generation that has slowed down distinguishable from one that has hung, without which the
+    difference can only be found by inspecting the process.
     """
     def batch_evaluator(states):
         return evaluate_batch(net, states, encoder)
+
+    started = time.perf_counter()
+
+    def report(completed, total):
+        if report_every <= 0 or completed % report_every or completed == total:
+            return
+        elapsed = time.perf_counter() - started
+        rate = completed / elapsed
+        log.info(f'    self-play {completed}/{total} games, {elapsed:.0f}s elapsed, '
+                 f'{rate * 60:.1f}/min, ~{(total - completed) / rate:.0f}s left')
 
     played = play_games(
         batch_evaluator, encoder, game, count, simulations,
         batch_size=batch_size, seed=seed, opening_plies=opening_plies,
         temperature_moves=temperature_moves, final_temperature=final_temperature,
-        exploration=exploration, dirichlet_epsilon=dirichlet_epsilon)
+        exploration=exploration, dirichlet_epsilon=dirichlet_epsilon,
+        on_finished=report)
 
     examples: List[Example] = []
     drawn, lengths = 0, []

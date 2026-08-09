@@ -136,6 +136,7 @@ from tests.zero.test_mcts import (
 from tests.zero.test_metrics import TestRecording, TestTruncating, TestThePlotter
 from tests.zero.test_selfplay import (
     TestBatchingDoesNotChangeTheGames,
+    TestProgressReporting,
     TestValueTargets,
     TestPlayGame,
     TestRandomOpenings,
