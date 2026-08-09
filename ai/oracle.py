@@ -198,6 +198,52 @@ def optimal_moves(state: GameState, _table: Optional[Table] = None) -> List[Any]
     return [move for move, value in values.items() if value == best]
 
 
+def openings_at(game: Callable[[], GameState], ply: int) -> List[GameState]:
+    """
+    Every distinct position `ply` moves into the game that is still running, as independent states.
+
+    `enumerate_positions` walks the whole tree and so only suits a game small enough to have one.
+    This stops at a fixed depth, which makes it affordable for any game: Connect 4 has 4.5e12
+    positions in total and 1,120 at ply four.
+
+    Written against the contract alone - `legal_moves`, `make_move`, `unmake_move`, `copy`,
+    `solver_key`, `is_game_over` - so it works for any game, chess included, without knowing what a
+    move is.
+
+    Deduplicated by `solver_key`, which is the point of it. Two uses want *distinct* positions
+    rather than a random sample that may repeat: `ai.generate` builds the corpus's enumerated tier
+    from these, and `ai.ladder` uses them as match openings, where a repeat is worse than useless -
+    two deterministic players replaying an opening play the identical game, which adds a result to
+    the tally without adding any information to it.
+
+    Breadth-first, level by level, keeping copies. Depth-first with a visited set would work too
+    and would hold one state at a time, but it would also revisit positions reachable at several
+    depths; a level at a time is both simpler and how the counts above are naturally stated.
+
+    Finished games are dropped as they appear. A position with nothing left to play is not an
+    opening, and neither is one somebody has already won.
+    """
+    if ply < 0:
+        raise ValueError(f'a position cannot be {ply} moves into a game')
+
+    frontier: Dict[Any, GameState] = {}
+    start = game()
+    if not start.is_game_over:
+        frontier[start.solver_key] = start
+
+    for _ in range(ply):
+        deeper: Dict[Any, GameState] = {}
+        for state in frontier.values():
+            for move in list(state.legal_moves):
+                state.make_move(move)
+                if not state.is_game_over and state.solver_key not in deeper:
+                    deeper[state.solver_key] = state.copy()
+                state.unmake_move()
+        frontier = deeper
+
+    return list(frontier.values())
+
+
 def enumerate_positions(game: Callable[[], GameState]) -> Iterator[Tuple[GameState, int]]:
     """
     Every position reachable from a new game, each yielded once, with the ply it occurs at.

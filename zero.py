@@ -23,7 +23,7 @@ import sys
 from typing import Optional, Type
 
 import log
-from ai import corpus
+from ai import corpus, ladder
 from ai.match import play_match
 from ai.oracle import benchmark, enumerate_positions, optimal_moves, play_every_line
 from ai.players import describe, player, UnknownPlayer
@@ -170,6 +170,32 @@ def grade(args) -> None:
         )
 
 
+def climb_ladder(args) -> None:
+    """
+    Plays a player up a fixed sequence of opponents and says where it sits.
+
+    The other half of the pair `benchmark` starts. That one asks whether a player knows the game,
+    position by position against the exact answer; this asks whether it can be beaten, which is a
+    different question and often a differently-answered one.
+    """
+    game = _game(args.game)
+    chooser = _player(args.player)
+
+    rungs = ladder.for_game(game)
+    rungs = ladder.make(
+        args.rungs or rungs.rungs,
+        args.opening_plies or rungs.opening_plies,
+        balanced=not args.unbalanced,
+    )
+
+    log.info(f'Climbing the {game.__name__} ladder with {describe(args.player)}...')
+    random.seed(args.seed)  # For a challenger that samples; see grade()
+    standing = ladder.climb(game, chooser, rungs, games=args.games, seed=args.seed)
+
+    log.newline()
+    log.info(str(standing))
+
+
 def match(args) -> None:
     """Plays two players off against each other over many paired games."""
     game = _game(args.game)
@@ -212,6 +238,19 @@ def main(argv: Optional[list] = None) -> None:
     grader.add_argument('--seed', type=int, default=0,
                         help='seeds the global RNG, so a player that samples is reproducible')
     grader.set_defaults(run=grade)
+
+    climber = commands.add_parser('ladder', help='place a player against a fixed set of opponents')
+    climber.add_argument('--player', required=True, help='e.g. minimax:4, model:PATH+mcts:200')
+    climber.add_argument('--games', type=int, default=ladder.GAMES,
+                         help=f'games per rung (default {ladder.GAMES})')
+    climber.add_argument('--rungs', nargs='+', default=None,
+                         help='override the default sequence of opponents')
+    climber.add_argument('--opening-plies', type=int, default=None,
+                         help='how many random plies each game starts from')
+    climber.add_argument('--unbalanced', action='store_true',
+                         help='start from any opening, not only ones drawn with perfect play')
+    climber.add_argument('--seed', type=int, default=0)
+    climber.set_defaults(run=climb_ladder)
 
     matcher = commands.add_parser('match', help='play two players off against each other')
     matcher.add_argument('--a', required=True)

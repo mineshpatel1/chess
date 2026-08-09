@@ -40,6 +40,7 @@ python3 -m unittest tests.test_all -v     # run the test suite
 python3 play.py                           # play any of the three games in the terminal
 python3 -m games.chess.uci                # start the UCI engine on stdin
 python3 zero.py benchmark --player minimax:9   # grade a player against perfect play
+python3 zero.py --game connect4 ladder --player minimax:4   # place it against a set of opponents
 ```
 
 The learned player is the one exception to "nothing to install", and it is opt-in:
@@ -107,6 +108,7 @@ Search time grows steeply with depth — see the benchmarks below.
 | `ai/search.py` | Negamax with alpha-beta pruning, and a random mover |
 | `ai/perft.py`, `ai/simulate.py` | Move enumeration, and playing two move-choosers off |
 | `ai/match.py` | Playing them off a few hundred times, which is how an evaluation is judged |
+| `ai/ladder.py` | Placing a player against a fixed sequence of opponents — can it be beaten |
 | `ai/oracle.py` | Exact play, and grading any player against it over a set of positions |
 | `ai/corpus.py` | Reading positions whose exact value was computed once and written down |
 | `ai/generate.py` | Choosing those positions, and getting the answers from an external solver |
@@ -711,6 +713,84 @@ harmless, because the mirror cancels — but an *inconsistent* one is fatal, and
 mapping the input and not the output breaks 219 of the 280 pinned positions, exactly the ones whose
 optimal set is asymmetric.
 
+### Can it be beaten? The match ladder
+
+Grading against the corpus asks whether a player **knows** the game. It is a different question
+from whether the player **can be beaten**, and the two come apart sharply in one direction: the
+tic-tac-toe network is wrong in 77 positions and is still unbeatable, because a player that does
+not blunder on the path it walks never arrives at the positions it would get wrong.
+
+Tic-tac-toe answers the second question exhaustively — `play_every_line` plays every line an
+opponent could take it down. That is exponential in the length of a game, so Connect 4 gets the
+affordable substitute: a fixed sequence of opponents, a fixed number of games against each.
+
+```
+$ python3 zero.py --game connect4 ladder --player minimax:4
+```
+
+| Challenger | `random` | `minimax:1` | `:2` | `:3` | `:4` | `:5` | `:6` | Highest beaten |
+|---|---|---|---|---|---|---|---|---|
+| `random` | 0.460 | 0.050 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | **none** |
+| `minimax:2` | 1.000 | 0.925 | 0.500 | 0.535 | 0.510 | 0.275 | 0.390 | **`minimax:1`** |
+| `minimax:4` | 1.000 | 0.935 | 0.490 | 0.640 | 0.500 | 0.405 | 0.315 | **`minimax:3`** |
+
+100 games per rung, about two minutes for the lot. Every rung is played even after a bad loss, so
+two runs are always directly comparable — tracking a player over time is most of what this is for.
+
+**A deterministic player scores exactly 0.500 against itself**, on the diagonal above, and that is
+arithmetic rather than luck: both games of a pair start from the same opening and are played by the
+same function, so they run identically and the pair is one win and one loss. It is the invariant
+the whole harness is pinned to — anything else means the pairing or the colour assignment is broken.
+
+The summary also **flags a ladder that is not clean**. `minimax:4` beats depth 3 but not depth 2,
+so it reports both rather than quoting the higher number. Connect 4 has genuine odd/even depth
+effects and the position benchmark agrees they are real, so that is worth seeing rather than
+smoothing.
+
+#### Two things about the openings, both measured
+
+Every player here is deterministic, so two games from the same position are the same game move for
+move. All the variety comes from starting a few random plies in — which makes how those openings
+are chosen the whole design.
+
+**They must be distinct.** `ai/match.py` draws them at random *with replacement*, which at its
+defaults gives **30 distinct openings for 50 pairs** of Connect 4 — one appearing four times. Forty
+per cent of a "100-game" match is the same games replayed, while the standard error still divides
+by 100 and understates itself by about 1.3×. The ladder draws from `ai/oracle.py`'s `openings_at`
+instead, which enumerates every distinct position at a ply, and **raises rather than repeating**.
+
+**They must be level.** Most openings are already won for somebody — 920 of Connect 4's 1,120 at
+four plies — and a pair from a decided opening is forced to 0.5 as soon as both players convert it.
+Those pairs go quiet exactly when the players get good enough to be worth telling apart. Starting
+only from drawn positions was measured over the same 50 pairs:
+
+| | all openings | drawn only |
+|---|---|---|
+| `minimax:2` vs `minimax:6` | 0.425 ± 0.045 *(noise)* | **0.390 ± 0.042 *(significant)*** |
+| `minimax:4` vs `minimax:6` | 0.390 ± 0.044 | **0.315 ± 0.041** |
+
+A comparison that could not be told from noise becomes one that can. `minimax:2` against
+`minimax:4` stays level either way — those two really are close, and the position benchmark says so
+independently. Connect 4 looks its openings up in the corpus, which is how it knows the value of a
+position four plies in that its own solver cannot reach; tic-tac-toe just solves them.
+
+The control that says all this works is a **perfect** player on tic-tac-toe:
+
+```
+$ python3 zero.py ladder --player minimax:9
+
+  opponent                         score  record             verdict
+  random                  0.935 +/- 0.017  +87 =13 -0         beats
+  minimax:1               0.810 +/- 0.024  +62 =38 -0         beats
+  minimax:2               0.510 +/- 0.007  +2 =98 -0          level
+  minimax:9               0.500 +/- 0.000  +0 =100 -0         level
+```
+
+**Zero losses on every rung**, which is what perfect play must produce and is the strongest single
+check on the harness. Under the earlier unbalanced ladder the same player "lost" 21 games to
+`minimax:1` — not blunders, just lost openings it had been handed. It also never *beats* the strong
+rungs, because from a level tic-tac-toe position nobody can: 100 draws out of 100 against itself.
+
 ### What alpha-beta and move ordering are worth
 
 Leaves reached from the empty Connect 4 board, all three searching the same tree:
@@ -803,6 +883,7 @@ python3 -m unittest tests.connect4.test_conformance -v      # connect 4 against 
 python3 -m unittest tests.connect4.test_evaluation -v       # symmetry, bounds and threat masks
 python3 -m unittest tests.connect4.test_solver -v           # the exact solver against 280 pinned answers
 python3 -m unittest tests.connect4.test_corpus -v           # the solved corpus, checked against itself
+python3 -m unittest tests.connect4.test_ladder -v           # the ladder, and its self-play identity
 
 python3 -m unittest tests.tictactoe.test_perfect_play -v    # the engine against an independent solver
 python3 -m unittest tests.tictactoe.test_permutations -v    # perft, and the published game census

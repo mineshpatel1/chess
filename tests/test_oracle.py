@@ -19,6 +19,7 @@ from ai.oracle import (
     benchmark,
     enumerate_positions,
     move_values,
+    openings_at,
     optimal_moves,
     play_every_line,
     solve,
@@ -95,6 +96,65 @@ class TestEnumeration(unittest.TestCase):
     def test_plies_run_from_zero_to_a_full_board(self):
         plies = {ply for _, ply in enumerate_positions(TicTacToe)}
         self.assertEqual(set(range(CELLS + 1)), plies)
+
+
+class TestOpeningsAtAPly(unittest.TestCase):
+    """
+    Depth-limited enumeration, which `enumerate_positions` cannot stand in for: that one walks the
+    whole tree, and Connect 4's is 4.5e12 positions.
+
+    The counts below are properties of the games rather than of this code, which is what makes
+    them worth asserting. They are also load-bearing in two places - the corpus's enumerated tier
+    is built from them, and `ai.ladder` needs enough distinct positions to give every pair of a
+    match its own opening.
+    """
+
+    # Distinct still-running positions at each ply, derived independently by playing every move
+    # order out in a scratch script and deduplicating on the board.
+    TIC_TAC_TOE = [1, 9, 72, 252, 756, 1140, 1372]
+    CONNECT_FOUR = [1, 7, 49, 238, 1120, 4263, 16422]
+
+    def test_the_counts_are_what_the_games_say_they_are(self):
+        for ply, expected in enumerate(self.TIC_TAC_TOE):
+            self.assertEqual(expected, len(openings_at(TicTacToe, ply)), f'ply {ply}')
+
+    def test_it_works_for_a_game_far_too_big_to_enumerate_whole(self):
+        from games.connect4.board import Connect4
+        for ply, expected in enumerate(self.CONNECT_FOUR):
+            self.assertEqual(expected, len(openings_at(Connect4, ply)), f'ply {ply}')
+
+    def test_every_position_is_at_the_ply_asked_for(self):
+        for state in openings_at(TicTacToe, 4):
+            self.assertEqual(4, sum(bin(marks).count('1') for marks in state.marks.values()))
+
+    def test_no_position_is_repeated(self):
+        keys = [state.solver_key for state in openings_at(TicTacToe, 5)]
+        self.assertEqual(len(keys), len(set(keys)))
+
+    def test_finished_games_are_left_out(self):
+        """
+        An opening is somewhere a game can continue from. Tic-tac-toe can be won by ply 5, so this
+        is not hypothetical - and a finished position handed to a match would score without a move
+        being played.
+        """
+        for ply in range(len(self.TIC_TAC_TOE)):
+            for state in openings_at(TicTacToe, ply):
+                self.assertFalse(state.is_game_over, f'{state} at ply {ply}')
+
+    def test_the_states_are_independent_of_each_other(self):
+        """Copies, not one state rewound - a caller keeps them all at once and plays from each."""
+        first, second = openings_at(TicTacToe, 1)[:2]
+        before = second.signature
+        first.make_move(next(iter(first.legal_moves)))
+        self.assertEqual(before, second.signature)
+
+    def test_the_empty_board_is_the_only_opening_at_ply_zero(self):
+        self.assertEqual(1, len(openings_at(TicTacToe, 0)))
+        self.assertEqual(TicTacToe().signature, openings_at(TicTacToe, 0)[0].signature)
+
+    def test_a_negative_ply_is_refused(self):
+        with self.assertRaises(ValueError):
+            openings_at(TicTacToe, -1)
 
 
 class TestBenchmarkCalibration(unittest.TestCase):

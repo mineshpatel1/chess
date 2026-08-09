@@ -44,6 +44,7 @@ from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
 import log
 from ai.corpus import Entry, format_entry
+from ai.oracle import openings_at
 from ai.search import alpha_beta
 from games.base import has_moves
 from games.connect4.board import Connect4
@@ -75,26 +76,20 @@ def enumerate_openings(last_ply: int = ENUMERATED_TO) -> List[List[int]]:
     """
     Every distinct position from the empty board out to `last_ply` discs.
 
-    Breadth-first and deduplicated on `solver_key` at every level, which is what keeps this finite:
-    there are 7^6 = 117,649 ways to play six moves but only 16,422 positions they reach, because
-    the order columns are played in mostly does not matter.
+    Deduplicated at every level, which is what keeps this finite: there are 7^6 = 117,649 ways to
+    play six moves but only 16,422 positions they reach, because the order columns are played in
+    mostly does not matter.
+
+    The walk itself is `ai.oracle.openings_at`, which is generic and is also what supplies match
+    openings to `ai.ladder` - the two wanted the same thing for different reasons, and one of them
+    having a private copy of it is how the two would drift apart.
     """
-    frontier: Dict[int, List[int]] = {Connect4().solver_key: []}
-    found = [[]]  # type: List[List[int]]
-
-    for ply in range(1, last_ply + 1):
-        nxt: Dict[int, List[int]] = {}
-        for moves in frontier.values():
-            state = Connect4(moves)
-            for column in list(state.legal_moves):
-                state.make_move(column)
-                if state.solver_key not in nxt:
-                    nxt[state.solver_key] = state.columns_played
-                state.unmake_move()
-
-        frontier = nxt
-        found.extend(nxt.values())
-        log.info(f'  ply {ply}: {len(nxt)} distinct positions')
+    found: List[List[int]] = []
+    for ply in range(last_ply + 1):
+        level = openings_at(Connect4, ply)
+        found.extend(state.columns_played for state in level)
+        if ply:
+            log.info(f'  ply {ply}: {len(level)} distinct positions')
 
     return found
 
