@@ -18,9 +18,11 @@ comparing it against "the same network with none" is a change of argument rather
 """
 
 import argparse
+import os
 import random
+import subprocess
 import sys
-from typing import Optional, Type
+from typing import Callable, Optional, Sequence, Type
 
 import log
 from ai import corpus, ladder
@@ -62,6 +64,9 @@ def train(args) -> None:
     extra = {} if args.exploration is None else {'exploration': args.exploration}
     if args.games_in_flight:
         extra['games_in_flight'] = args.games_in_flight
+    if args.buffer_size:
+        extra['buffer_size'] = args.buffer_size
+
     run(
         game,
         generations=args.generations,
@@ -71,11 +76,80 @@ def train(args) -> None:
         symmetries=args.symmetries,
         benchmark_every=args.benchmark_every,
         checkpoint_path=args.out,
+        latest_path=args.latest,
         metrics_path=args.metrics,
+        resume_from=_resume_from(args),
         seed=args.seed,
+        on_generation=_committer([args.latest, args.metrics], args.commit_every),
         **extra,
     )
     log.info(f'Best checkpoint written to {args.out}')
+
+
+def _resume_from(args) -> Optional[str]:
+    """
+    Where a resumed run picks up, which is the `--latest` file if `--resume` was asked for.
+
+    A path rather than a flag would mean the relaunch command differs from the launch command,
+    and the moment you want to relaunch is the moment you least want to be composing a new one.
+    Resuming when there is nothing to resume from starts at generation one rather than failing:
+    a run killed in its first few minutes should restart, not need a different invocation.
+    """
+    if not args.resume:
+        return None
+    if args.latest and os.path.exists(args.latest):
+        return args.latest
+    log.info(f'--resume given but there is no checkpoint at {args.latest}; starting from scratch')
+    return None
+
+
+def _committer(paths: Sequence[Optional[str]], every: int) -> Optional[Callable]:
+    """
+    A per-generation hook that commits and pushes the run's resume point every `every` generations.
+
+    A Connect 4 run is measured in hours on a machine that can go away, and the checkpoint is only
+    insurance if it survives the machine. So the resume point goes to the branch as the run
+    produces it, and a relaunch anywhere clones its way back to within `every` generations of where
+    it was.
+
+    **The latest checkpoint and the metrics, not the best network.** Those two are exactly what a
+    resume needs, and each 5MB checkpoint stays in the history forever - committing the best one on
+    the same schedule would double that for a file which is a deliverable rather than insurance,
+    and which is worth committing once, at the end, if it turns out to be worth having at all.
+
+    Git failing never stops the run. A push can fail for reasons that have nothing to do with the
+    training - the network, a race with another push - and losing four hours of self-play to a
+    failed `git push` would be a strange way to make a run more robust.
+    """
+    tracked = [path for path in paths if path]
+    if every <= 0 or not tracked:
+        return None
+
+    def commit(progress) -> None:
+        if progress.generation % every:
+            return
+
+        present = [path for path in tracked if os.path.exists(path)]
+        if not _git('add', '--', *present):
+            return
+        if _git('diff', '--cached', '--quiet'):
+            return  # Nothing changed, so there is nothing to commit
+
+        message = (f'Checkpoint Connect 4 training at generation {progress.generation}\n\n'
+                   f'Agreement with perfect play {progress.optimal_rate:.2%}, '
+                   f'value MSE {progress.value_mse:.3f}.')
+        if _git('commit', '-m', message):
+            _git('push', '-u', 'origin', 'HEAD')
+
+    return commit
+
+
+def _git(*arguments: str) -> bool:
+    """Runs one git command, reporting rather than raising. See `_committer`."""
+    finished = subprocess.run(['git', *arguments], capture_output=True, text=True)
+    if finished.returncode and arguments[0] != 'diff':
+        log.warning(f'git {arguments[0]} failed: {finished.stderr.strip() or finished.stdout}')
+    return finished.returncode == 0
 
 
 def _show_worst(report) -> None:
@@ -228,9 +302,21 @@ def main(argv: Optional[list] = None) -> None:
                          help='augment with the board symmetries (measured: no benefit)')
     trainer.add_argument('--benchmark-every', type=int, default=2,
                          help='grade against the oracle every N generations')
-    trainer.add_argument('--out', default=DEFAULT_CHECKPOINT)
+    trainer.add_argument('--out', default=DEFAULT_CHECKPOINT,
+                         help='where the best network seen is written')
+    trainer.add_argument('--latest', default=None,
+                         help='where every generation is written, whether or not it improved; '
+                              'this is the file --resume reads')
+    trainer.add_argument('--resume', action='store_true',
+                         help='continue from --latest if it exists, rather than starting over')
+    trainer.add_argument('--commit-every', type=int, default=0,
+                         help='commit and push --latest and --metrics every N generations, so '
+                              'losing the machine costs generations rather than the run')
     trainer.add_argument('--metrics', default=None,
                          help='append per-generation metrics here as JSON lines, for plot.py')
+    trainer.add_argument('--buffer-size', type=int, default=None,
+                         help='positions kept in the replay buffer (default 20,000); scale it '
+                              'with --games or a generation overflows it')
     trainer.add_argument('--games-in-flight', type=int, default=None,
                          help='self-play games advanced together (throughput only)')
     trainer.add_argument('--seed', type=int, default=1)

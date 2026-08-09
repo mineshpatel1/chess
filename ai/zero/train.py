@@ -35,6 +35,7 @@ import log
 from games.base import GameState
 from ai import corpus
 from ai.oracle import Grade, Report, Table, benchmark, enumerate_positions, move_values
+from ai.zero import checkpoint
 from ai.zero.checkpoint import save
 from ai.zero.metrics import Recorder
 from ai.zero.net import ZeroNet, evaluate, evaluate_batch, for_game as architecture, to_tensor
@@ -231,6 +232,7 @@ def train(
     simulations: int = SIMULATIONS,
     steps: int = STEPS_PER_GENERATION,
     batch_size: int = BATCH_SIZE,
+    buffer_size: int = BUFFER_SIZE,
     games_in_flight: int = GAMES_IN_FLIGHT,
     opening_plies: int = OPENING_PLIES,
     temperature_moves: int = TEMPERATURE_MOVES,
@@ -241,7 +243,9 @@ def train(
     benchmark_every: int = BENCHMARK_EVERY,
     symmetries: bool = SYMMETRIES,
     checkpoint_path: Optional[str] = None,
+    latest_path: Optional[str] = None,
     metrics_path: Optional[str] = None,
+    resume_from: Optional[str] = None,
     seed: int = 0,
     on_generation: Optional[Callable[[Progress], None]] = None,
 ) -> ZeroNet:
@@ -261,14 +265,29 @@ def train(
 
     net = ZeroNet(encoder.PLANE_SHAPE, encoder.POLICY_SIZE, **architecture(game.__name__))
     positions, values = grading_set(game)
-    recorder = Recorder(metrics_path)
     optimiser = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
-    buffer: Deque[Example] = deque(maxlen=BUFFER_SIZE)
+    buffer: Deque[Example] = deque(maxlen=buffer_size)
 
     best_state, best_rate = None, -1.0
+    first = 1
+
+    if resume_from:
+        # The replay buffer is deliberately not restored - see ai/zero/checkpoint.py. The first
+        # generation after a resume therefore learns from a buffer holding one generation rather
+        # than several, which costs a little and saves carrying hundreds of megabytes around.
+        blob = checkpoint.load(resume_from, game=game.__name__)
+        net.load_state_dict(blob['weights'])
+        if blob.get('optimiser'):
+            optimiser.load_state_dict(blob['optimiser'])
+        first = blob['generation'] + 1
+        best_rate = blob['metadata'].get('best_rate', -1.0)
+        best_state = {k: v.clone() for k, v in net.state_dict().items()}
+        log.info(f'Resuming {resume_from} from generation {first}, best so far {best_rate:.2%}')
+
+    recorder = Recorder(metrics_path, append=bool(resume_from))
     last_report = _EMPTY_REPORT
 
-    for generation in range(1, generations + 1):
+    for generation in range(first, generations + 1):
         started = time.perf_counter()
 
         play_started = time.perf_counter()
@@ -313,13 +332,23 @@ def train(
         if on_generation:
             on_generation(progress)
 
+        # Written every generation whether or not it improved, because this is the file a
+        # resume reads. `checkpoint_path` holds the *best* network, which is what you want to
+        # play against; resuming from that would replay every generation since it was set.
+        if latest_path:
+            save(net, latest_path, game=game.__name__, generation=generation,
+                 metadata={'best_rate': max(best_rate, report.overall.rate),
+                           'simulations': simulations},
+                 optimiser=optimiser)
+
         rate = report.overall.rate
         if graded and rate > best_rate:
             best_rate = rate
             best_state = {k: v.clone() for k, v in net.state_dict().items()}
             if checkpoint_path:
                 save(net, checkpoint_path, game=game.__name__, generation=generation,
-                     metadata={'optimal_rate': rate, 'simulations': simulations})
+                     metadata={'optimal_rate': rate, 'simulations': simulations},
+                     optimiser=optimiser)
 
     recorder.close()
     if best_state is not None:

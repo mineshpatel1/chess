@@ -848,6 +848,30 @@ fitting, so a loss that has flattened *at* that value is a network fitting its t
 and the fault is in the search producing them. Tic-tac-toe's `c_puct` being too low looked exactly
 like that.
 
+#### Surviving the machine going away
+
+A run measured in hours needs to be restartable, so a checkpoint carries its optimiser state — Adam
+keeps a running mean and variance per parameter, and a resume that dropped them would take its
+first steps back unmomented. It is written to a temporary file and renamed into place, because
+whatever interrupts a long run is just as likely to interrupt the write meant to survive it.
+
+```bash
+python3 zero.py --game connect4 train --games 2000 --generations 30 \
+    --out models/connect4-best.pt --latest models/connect4-latest.pt \
+    --metrics runs/connect4-long.jsonl --resume --commit-every 2
+```
+
+The same command line launches and relaunches: `--resume` continues from `--latest` when that file
+exists and starts at generation one when it does not. `--commit-every` pushes `--latest` and the
+metrics to the branch as the run produces them, so a lost machine costs a couple of generations
+rather than the run.
+
+Two files rather than one, and the distinction matters. `--out` holds the *best* network by the
+oracle benchmark, which is what you want to play against; `--latest` holds the most recent one,
+which is what a resume must read. Resuming from the best checkpoint replays every generation since
+the last improvement — the metrics file grows a repeated generation number where the seam is, which
+is how this was caught.
+
 #### The first run
 
 Thirty generations, 64 games each at 50 simulations — **10.7 minutes**:

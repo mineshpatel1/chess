@@ -146,8 +146,10 @@ from tests.zero.test_net import (
     TestMasking,
     TestCheckpoints,
     TestPlayer,
+    TestResuming,
     TestTrainingLearns,
 )
+from tests.zero.test_cli import TestResumeFrom, TestCommitter
 
 
 def main():

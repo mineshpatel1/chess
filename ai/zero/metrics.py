@@ -48,14 +48,15 @@ class Recorder:
     `train` always has a recorder and sometimes it writes nowhere.
     """
 
-    def __init__(self, path: Optional[str] = None) -> None:
+    def __init__(self, path: Optional[str] = None, append: bool = False) -> None:
+        """`append` keeps what is already in the file, which is what a resumed run wants."""
         self.path = path
         self._handle: Optional[TextIO] = None
 
         if path:
             directory = os.path.dirname(os.path.abspath(path))
             os.makedirs(directory, exist_ok=True)
-            self._handle = open(path, 'w')
+            self._handle = open(path, 'a' if append else 'w')
 
     def write(self, record: Dict[str, Any]) -> None:
         if self._handle is None:

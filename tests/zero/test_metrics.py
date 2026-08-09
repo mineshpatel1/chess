@@ -91,6 +91,28 @@ class TestRecording(unittest.TestCase):
 
         self.assertEqual([(2, 0.52)], list(series(read(self.path), 'optimal_rate')))
 
+    def test_a_resumed_run_adds_to_the_file_rather_than_starting_it_again(self):
+        """
+        The point of recording a long run is the whole curve, and a resume that truncated would
+        leave only the part after the failure - the least interesting part.
+        """
+        with Recorder(self.path) as recorder:
+            for generation in (1, 2, 3):
+                recorder.write(record(generation))
+
+        with Recorder(self.path, append=True) as recorder:
+            recorder.write(record(4))
+
+        self.assertEqual([1, 2, 3, 4], [entry['generation'] for entry in read(self.path)])
+
+    def test_a_fresh_run_does_not_inherit_the_previous_one(self):
+        with Recorder(self.path) as recorder:
+            recorder.write(record(1))
+        with Recorder(self.path) as recorder:
+            recorder.write(record(1))
+
+        self.assertEqual(1, len(read(self.path)))
+
     def test_the_directory_is_created(self):
         nested = os.path.join(self.directory, 'runs', 'deep', 'run.jsonl')
         with Recorder(nested) as recorder:

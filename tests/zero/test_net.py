@@ -138,6 +138,126 @@ class TestCheckpoints(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             load('/nonexistent/model.pt')
 
+    def test_the_optimiser_travels_with_the_weights(self):
+        """
+        Adam keeps a running mean and variance per parameter. A resume that dropped them would
+        restart the moment estimates from zero, so the first steps back would be unmomented -
+        which is a strange thing to do to a run precisely when it is being rescued.
+        """
+        from ai.zero.checkpoint import load, save
+        from ai.zero.net import ZeroNet
+
+        with tempfile.TemporaryDirectory() as directory:
+            net = ZeroNet(Encoder.PLANE_SHAPE, Encoder.POLICY_SIZE)
+            optimiser = torch.optim.Adam(net.parameters(), lr=1e-3)
+
+            logits, value = net(torch.zeros(1, *Encoder.PLANE_SHAPE))
+            (logits.sum() + value.sum()).backward()
+            optimiser.step()
+
+            path = os.path.join(directory, 'net.pt')
+            save(net, path, game='TicTacToe', generation=3, optimiser=optimiser)
+
+            restored = torch.optim.Adam(
+                load(path)['net'].parameters(), lr=1e-3)
+            restored.load_state_dict(load(path)['optimiser'])
+            self.assertEqual(1, list(restored.state.values())[0]['step'].item())
+
+    def test_a_checkpoint_saved_without_one_says_so_rather_than_lying(self):
+        from ai.zero.checkpoint import load
+
+        with tempfile.TemporaryDirectory() as directory:
+            _, path = self._save(directory)
+            self.assertIsNone(load(path)['optimiser'])
+
+    def test_a_half_written_checkpoint_never_replaces_a_good_one(self):
+        """
+        The thing most likely to interrupt a long run is also most likely to interrupt the write
+        meant to survive it, so the write goes somewhere else and is renamed into place.
+        """
+        from ai.zero.checkpoint import save
+        from ai.zero.net import ZeroNet
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'net.pt')
+            save(ZeroNet(Encoder.PLANE_SHAPE, Encoder.POLICY_SIZE), path, game='TicTacToe')
+
+            saved = torch.save
+            torch.save = lambda *_, **__: (_ for _ in ()).throw(RuntimeError('disk full'))
+            try:
+                with self.assertRaises(RuntimeError):
+                    save(ZeroNet(Encoder.PLANE_SHAPE, Encoder.POLICY_SIZE), path, game='TicTacToe')
+            finally:
+                torch.save = saved
+
+            from ai.zero.checkpoint import load
+            self.assertEqual('TicTacToe', load(path)['game'], 'the good checkpoint was clobbered')
+
+
+@needs_torch
+class TestResuming(unittest.TestCase):
+    """
+    Picking a killed run back up where it stopped, which is the only thing that makes a run
+    measured in hours safe to start on a machine that can go away.
+    """
+
+    def _train(self, directory, generations, resume=False):
+        from ai.zero.train import train
+
+        return train(
+            TicTacToe,
+            generations=generations,
+            games_per_generation=4,
+            simulations=5,
+            steps=2,
+            benchmark_every=1000,  # Grading is the slow part and this test is not about grading
+            latest_path=os.path.join(directory, 'latest.pt'),
+            metrics_path=os.path.join(directory, 'run.jsonl'),
+            resume_from=os.path.join(directory, 'latest.pt') if resume else None,
+            seed=0,
+        )
+
+    def test_a_resumed_run_continues_rather_than_replaying(self):
+        """
+        The bug this exists to catch: resuming from the *best* checkpoint rather than the latest
+        one re-runs every generation since the last improvement, and the metrics file grows a
+        repeated generation number where the seam is.
+        """
+        from ai.zero.metrics import read
+
+        with tempfile.TemporaryDirectory() as directory:
+            self._train(directory, generations=3)
+            self._train(directory, generations=6, resume=True)
+
+            recorded = [entry['generation'] for entry in read(os.path.join(directory, 'run.jsonl'))]
+            self.assertEqual([1, 2, 3, 4, 5, 6], recorded)
+
+    def test_it_carries_on_from_the_weights_it_stopped_with(self):
+        from ai.zero.checkpoint import load
+        from ai.zero.net import evaluate
+
+        with tempfile.TemporaryDirectory() as directory:
+            self._train(directory, generations=2)
+            stopped = load(os.path.join(directory, 'latest.pt'))
+            self.assertEqual(2, stopped['generation'])
+
+            state = TicTacToe([4, 0])
+            before = evaluate(stopped['net'], state, Encoder)
+            resumed = self._train(directory, generations=3, resume=True)
+            self.assertNotEqual(before, evaluate(resumed, state, Encoder),
+                                'the resumed run should have moved the weights on')
+
+    def test_resuming_a_finished_run_does_nothing_rather_than_starting_over(self):
+        """Relaunching a run that already finished should be a no-op, not four more hours."""
+        from ai.zero.metrics import read
+
+        with tempfile.TemporaryDirectory() as directory:
+            self._train(directory, generations=2)
+            self._train(directory, generations=2, resume=True)
+
+            recorded = [entry['generation'] for entry in read(os.path.join(directory, 'run.jsonl'))]
+            self.assertEqual([1, 2], recorded)
+
 
 @needs_torch
 class TestPlayer(unittest.TestCase):
