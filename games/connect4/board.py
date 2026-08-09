@@ -35,6 +35,7 @@ from games.connect4.constants import (
     YELLOW,
     Disc,
 )
+from games.connect4.encoding import Connect4Encoder
 from games.connect4.evaluation import weighted_eval
 
 
@@ -48,6 +49,8 @@ class Connect4(GameState):
     PARALLEL_ROOT = False
 
     DEFAULT_EVAL = staticmethod(weighted_eval)
+
+    ENCODER = Connect4Encoder
 
     def __init__(self, columns: Iterable[int] = ()) -> None:
         """A position, reached by playing `columns` from an empty board."""

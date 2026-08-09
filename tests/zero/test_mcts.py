@@ -20,7 +20,7 @@ import random
 import unittest
 
 from ai.oracle import Table, benchmark, enumerate_positions, move_values, optimal_moves, solve
-from ai.zero.mcts import MCTS, Node, terminal_value
+from ai.zero.mcts import MCTS, Node, drive, terminal_value
 from games.tictactoe.board import TicTacToe
 from games.tictactoe.encoding import TicTacToeEncoder
 from tests.tictactoe.corpus import DRAWN_GAME, NOUGHT_WIN, ROW_WIN
@@ -145,11 +145,14 @@ class TestTheTreeIsPaths(unittest.TestCase):
         state = TicTacToe()
         search = MCTS(ignorant_evaluator, TicTacToeEncoder, simulations=simulations,
                       rng=random.Random(1))
+        # Hand-rolled rather than via `search()`, because these tests inspect the tree and a
+        # Result deliberately does not carry one. `drive` runs any of the search's generators to
+        # completion, which is all `_expand` and `_simulate` now need to be usable one at a time.
         root = Node(prior=1.0)
-        root.value_sum = search._expand(state, root)
+        root.value_sum = drive(search._expand(state, root), ignorant_evaluator)
         root.visits = 1
         for _ in range(simulations):
-            search._simulate(state, root)
+            drive(search._simulate(state, root), ignorant_evaluator)
         return state, root
 
     def _walk(self, state, node, seen):

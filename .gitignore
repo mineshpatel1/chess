@@ -1,3 +1,10 @@
 *.pyc
 __pycache__/
 third-party-engines/*
+
+# Generated from a run's metrics by plot.py; the .jsonl beside it is the record worth keeping.
+runs/*.html
+
+# Connect 4 checkpoints. The tic-tac-toe one is committed because it is near-perfect and 25KB;
+# these are 1.9MB apiece and, so far, only evidence that the curve rises.
+models/connect4*.pt

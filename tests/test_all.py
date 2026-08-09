@@ -65,6 +65,11 @@ from tests.connect4.test_solver import (
     TestPublishedSolution,
 )
 from tests.connect4.test_conformance import TestConnect4Conformance
+from tests.connect4.test_encoding import (
+    TestShape as TestConnect4Shape,
+    TestPlanesAreRelativeToTheMover,
+    TestActions as TestConnect4Actions,
+)
 from tests.connect4.test_corpus import (
     TestGameTreeConsistency,
     # Aliased: tests/connect4/test_solver.py exports a class of the same name, and an unaliased
@@ -128,7 +133,9 @@ from tests.zero.test_mcts import (
     TestTheTreeIsPaths,
     TestPolicyOutput,
 )
+from tests.zero.test_metrics import TestRecording, TestThePlotter
 from tests.zero.test_selfplay import (
+    TestBatchingDoesNotChangeTheGames,
     TestValueTargets,
     TestPlayGame,
     TestRandomOpenings,

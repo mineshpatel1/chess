@@ -115,12 +115,15 @@ Search time grows steeply with depth — see the benchmarks below.
 | `ai/corpora/connect4.txt` | 33,300 Connect 4 positions, every legal move in each valued exactly |
 | `ai/players.py` | Naming a player — `minimax:9`, `model:best.pt+mcts:200` — in one place |
 | `ai/zero/mcts.py` | PUCT search over a tree of paths, with no rollouts |
-| `ai/zero/net.py` | The network: input, two hidden layers of 64, a policy head and a value head |
+| `ai/zero/net.py` | Two trunks — dense for tic-tac-toe, a residual tower for Connect 4 |
 | `ai/zero/selfplay.py` | Games against itself, and the targets they produce |
 | `ai/zero/train.py` | The generation loop, graded against the oracle as it goes |
+| `ai/zero/metrics.py` | One JSON line per generation, flushed as it goes, so a dead run keeps its history |
+| `games/connect4/encoding.py` | What a network sees: two planes of 6x7, seven shared actions |
 | `play.py` | A terminal front end for any game in the registry |
 | `zero.py` | Training, grading and comparing learned players |
 | `bench.py` | Timing the exact solver, and finding how far back into a game it reaches |
+| `plot.py` | A training run's metrics as a self-contained page of charts, no matplotlib |
 | `tests/conformance.py` | The tests every game must pass |
 | `tests/chess/` | Rules, replay/undo, perft, and search scores, all driven by chess positions |
 | `tests/connect4/` | The same, plus the exhaustive win-detection oracle and the eval properties |
@@ -790,6 +793,87 @@ $ python3 zero.py ladder --player minimax:9
 check on the harness. Under the earlier unbalanced ladder the same player "lost" 21 games to
 `minimax:1` — not blunders, just lost openings it had been handed. It also never *beats* the strong
 rungs, because from a level tic-tac-toe position nobody can: 100 draws out of 100 against itself.
+
+### Teaching a network Connect 4, and knowing early whether it is working
+
+A Connect 4 run is measured in hours where a tic-tac-toe one is measured in seconds, so the point
+is not to train a network and see — it is to **know it is working long before it finishes**. The
+corpus and the ladder exist for this. So does everything below.
+
+Two trunks, chosen by the board rather than copied from a paper. Tic-tac-toe keeps its dense
+layers: a 3x3 kernel on a 3x3 board is a dense layer wearing weight-sharing constraints, and the
+board is not translation invariant anyway. Connect 4 gets a **residual tower, 64 filters and five
+blocks**, because its threats genuinely are local shapes — three of mine with a gap means the same
+thing in every column, which is exactly what a shared filter encodes.
+
+#### The search had to be turned inside out
+
+Batch-1 inference is not *a* cost, it is very nearly the whole cost: a Connect 4 forward pass is
+1101µs alone and 111µs amortised in a batch of sixty-four, and MCTS asks once per simulation.
+
+What cannot be batched is one tree's simulations — they are sequential by construction, each going
+where the previous ones' statistics send it. Taking several leaves from a single tree needs virtual
+loss and **changes what the tree explores**. So the batching happens somewhere else entirely: the
+search became a **generator** that yields the position it needs and is sent the answer, and
+self-play advances sixty-four *separate* games in lockstep, evaluating their pending positions
+together. Every game runs an ordinary sequential search and gets the tree it would have had alone.
+
+| | per generation | | |
+|---|---|---|---|
+| | one game at a time | batched | |
+| Tic-tac-toe, 80 games | 3.43s | **1.16s** | 3.0x |
+| Connect 4, 64 games | 75.8s | **15.2s** | 5.0x |
+
+That it is only a speed change is asserted rather than hoped: `tests/zero/test_selfplay.py` plays
+the same twelve games at batch 1, 2, 5, 12 and 64 and requires **identical examples**, and the
+tic-tac-toe training trace was bit-identical across the generator refactor for forty generations.
+
+Grading is batched too, and there it is free — 22,100 independent positions with no tree involved,
+which took 37s one at a time and takes **3.8s** in chunks.
+
+#### What a run leaves behind
+
+Every generation appends one JSON line to a metrics file, flushed as it goes, because the run whose
+history is most worth having is the one that died at hour three. `plot.py` turns it into a
+self-contained page of charts — standard library only, so torch stays the single dependency:
+
+```bash
+python3 zero.py --game connect4 train --generations 30 --metrics runs/connect4.jsonl
+python3 plot.py runs/connect4.jsonl --open      # works mid-run, too
+```
+
+The fields are chosen so a flat curve can be *diagnosed*, not just observed. `target_entropy` is
+the one worth knowing about: policy loss cannot fall below the entropy of the targets it is
+fitting, so a loss that has flattened *at* that value is a network fitting its targets perfectly
+and the fault is in the search producing them. Tic-tac-toe's `c_puct` being too low looked exactly
+like that.
+
+#### The first run
+
+Thirty generations, 64 games each at 50 simulations — **10.7 minutes**:
+
+| Generation | 1 | 6 | 12 | 18 | 24 | 30 |
+|---|---|---|---|---|---|---|
+| Agreement with perfect play | 60.6% | 69.7% | 70.8% | 71.0% | 72.4% | **74.6%** |
+| Value head error | 1.21 | 0.94 | 0.91 | 1.02 | 0.94 | **0.87** |
+| Policy loss | 1.928 | 1.853 | 1.821 | 1.796 | 1.750 | **1.728** |
+| Target entropy | 1.848 | 1.678 | 1.657 | 1.629 | 1.611 | 1.597 |
+
+It starts above `random` (54.1% on the same 22,100 positions) and climbs steadily toward
+`minimax:4` (79.1%). Policy loss stays clear of the target entropy, so the network still has room
+rather than having perfectly fitted bad targets. Time splits 14.3s self-play, 3.8s grading, 3.3s
+learning per generation.
+
+The checkpoint after those thirty generations, graded on all three tiers:
+
+| | opening | random play | real play |
+|---|---|---|---|
+| Agreement | 74.6% | 78.0% | 73.9% |
+| As first / second | 75.9% / 69.4% | 78.6% / 77.5% | 79.2% / 68.6% |
+
+**It is not a strong player yet** — thirty generations is a de-risking run, not a training run. What
+it establishes is that the curve rises, the instruments read it, and a generation costs 21s, so
+reaching `minimax:4` is minutes away rather than a day.
 
 ### What alpha-beta and move ordering are worth
 
