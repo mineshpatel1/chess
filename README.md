@@ -108,6 +108,9 @@ Search time grows steeply with depth — see the benchmarks below.
 | `ai/perft.py`, `ai/simulate.py` | Move enumeration, and playing two move-choosers off |
 | `ai/match.py` | Playing them off a few hundred times, which is how an evaluation is judged |
 | `ai/oracle.py` | Exact play, and grading any player against it over a set of positions |
+| `ai/corpus.py` | Reading positions whose exact value was computed once and written down |
+| `ai/generate.py` | Choosing those positions, and getting the answers from an external solver |
+| `ai/corpora/connect4.txt` | 33,300 Connect 4 positions, every legal move in each valued exactly |
 | `ai/players.py` | Naming a player — `minimax:9`, `model:best.pt+mcts:200` — in one place |
 | `ai/zero/mcts.py` | PUCT search over a tree of paths, with no rollouts |
 | `ai/zero/net.py` | The network: input, two hidden layers of 64, a policy head and a value head |
@@ -586,6 +589,7 @@ the unoptimised solver before any of this landed:
 ```bash
 python3 bench.py corpus                       # re-solve the pinned set, timed: 280 positions in 3.9s
 python3 bench.py frontier --plies 20 18 16    # what fresh positions cost now
+python3 bench.py verify                       # re-solve the corpus ourselves, as deep as we reach
 ```
 
 Two more checks sit beside it, and neither is the solver grading itself. **Mirror invariance** —
@@ -598,6 +602,114 @@ A caveat on reading the table: it is the cost of solving one position from a *co
 that is what a sampled benchmark does. Positions that share a table are far cheaper — which is also
 why a corpus is affordable much deeper than interactive use is. Pinning a few hundred ply-14
 positions is a couple of hours run once; asking for one at the prompt is not.
+
+### Grading a Connect 4 player against the answer
+
+Tic-tac-toe is graded by walking all 5,478 of its positions and solving each one on the spot.
+Connect 4 has ~4.5 × 10¹², so the answers are computed once, ahead of time, and committed:
+**`ai/corpora/connect4.txt`, 33,300 positions, every legal move in each of them valued exactly.**
+
+Every move, not just the best ones. `benchmark` scores a player by how much value its move gave
+away, so a file holding only the optimal set could not tell a thrown-away draw from a thrown-away
+win.
+
+Three tiers, by how the positions were chosen, and **they are never averaged together**:
+
+| Tier | Plies | How chosen | Count |
+|---|---|---|---|
+| `E` | 0–6 | **every** distinct position — enumerated, not sampled | 22,100 |
+| `R` | 7–34 | seeded random play, 200 per ply | 5,600 |
+| `P` | 7–34 | games between alpha-beta players, deviating 15% of the time | 5,600 |
+
+The opening is enumerated because it fits: the game opens narrowly, at 7, 49, 238, 1,120, 4,263 and
+16,422 distinct positions per ply, so plies 0–6 are four times the whole tic-tac-toe state space and
+still trivial. There is no sampling to be biased, and it stops at six because ply seven is the
+earliest a game can end. It is also the tier that matters most — Connect 4 is a first-player win,
+and the opening is where that win is kept or thrown away.
+
+`R` and `P` stay apart because they measure different things. Random play reaches positions no
+sensible game visits; play between decent players never asks a player to recover from a bad
+position, which is where blunders live. Every ply is sampled, odd and even, because ply parity *is*
+whose turn it is — a corpus of even plies only would ask the first player everything and the second
+player nothing.
+
+```
+$ python3 zero.py --game connect4 benchmark --player minimax:4
+```
+
+| | opening (22,100) | random play (5,600) | real play (5,600) |
+|---|---|---|---|
+| `random` | 54.1% | 59.2% | 72.1% |
+| `minimax:4` | **79.1%** | **95.5%** | **91.5%** |
+
+Two things in that table justify the whole design. The opening is *much* harder than anywhere else
+— depth 4 scores 79.1% there against 95.5% on deep random positions — which is exactly the region a
+sampled-only corpus would have covered worst. And the tiers disagree about which is harder
+depending on who is asked: `P` is easier than `R` for the random player and harder for `minimax:4`.
+Averaging them would have produced a single number that moved for reasons having nothing to do with
+the player.
+
+That inversion has a cause, and it is why `Report` now splits by the value of the position:
+
+| `minimax:4` on | winning positions | drawn positions | losing positions |
+|---|---|---|---|
+| opening | 76.1% | **58.6%** | 100% |
+| random play | 95.1% | **78.1%** | 100% |
+| real play | 86.5% | **88.8%** | 100% |
+
+**Losing positions are free marks** — if every move loses, every move is optimal — and real play
+reaches far more of them (1,877 of 5,600) than random play does (1,406). Drawn positions are the
+opposite: usually exactly one move holds and the rest lose, so that column is the one that actually
+discriminates. An aggregate over a set that happens to be mostly decided says more about the
+sampling than about the player.
+
+#### Where the answers came from, and why you can believe them
+
+Our solver reaches ply 16 and the corpus needs ply 0, which no amount of optimisation closes. The
+values are computed by [Pascal Pons' Connect 4 solver](https://github.com/PascalPons/connect4) with
+its 32MB opening book. It is AGPL and is **not vendored** — it is fetched and built into
+`third-party-engines/`, which is gitignored, and only the numbers are committed:
+
+```bash
+mkdir -p third-party-engines/connect4 && cd third-party-engines/connect4
+for f in Makefile main.cpp Solver.cpp Solver.hpp Position.hpp \
+         TranspositionTable.hpp MoveSorter.hpp OpeningBook.hpp; do
+  curl -O "https://raw.githubusercontent.com/PascalPons/connect4/master/$f"
+done
+make && curl -L -o 7x6.book \
+  "https://github.com/PascalPons/connect4/releases/download/book/7x6.book"
+
+python3 -c "from ai.generate import build; build('ai/corpora/connect4.txt', count=200, seed=0)"
+```
+
+Only the *sign* of its score is kept. Pons scores by distance to the end of the game, which would
+have to be decoded correctly to be used and would be silently wrong if it were not — and the sign is
+all the {-1, 0, 1} convention here needs. It also matches how the benchmark grades: a slower win is
+not a mistake.
+
+So the corpus is one external program's opinion, and it is checked four ways, none of which is that
+program agreeing with itself:
+
+| Check | What it rests on | Result |
+|---|---|---|
+| **The game tree** | The `E` tier is closed under it — a position is worth its best reply, negated, and both are in the file | 39,746 parent/child pairs, **0 inconsistent** |
+| **The published solution** | Allis and Allen, 1988, independently | Openings read `-1 -1 0 1 0 -1 -1`; centre is the unique win |
+| **Our own solver** | Shares no code — Python negamax over a padded bitboard vs C++ with a book | **7,600 positions** re-solved at plies 16–34, **0 disagreements** |
+| **Mirror symmetry** | A reflected board is the same game | Every `E` entry matches its reflection |
+
+The first is the strongest and costs nothing: tens of thousands of entries checked against tens of
+thousands of others, with no solver involved. A column mapped the wrong way, a dropped sign, a
+mislabelled tier — none survive it. It runs in the suite, in three seconds, and needs no download.
+
+Plies 7–14 have no independent check, which is stated rather than papered over. They are bracketed
+by exact checks at both ends and produced by the pipeline the `E` tier proves out.
+
+One subtlety worth recording, because it was nearly a bug. Connect 4 is mirror-symmetric, so a
+column-orientation mismatch between the two solvers would leave every *value* right and every
+*optimal move set* reversed. It turned out not to be a hazard at all — a consistent relabelling is
+harmless, because the mirror cancels — but an *inconsistent* one is fatal, and the check has teeth:
+mapping the input and not the output breaks 219 of the 280 pinned positions, exactly the ones whose
+optimal set is asymmetric.
 
 ### What alpha-beta and move ordering are worth
 
@@ -690,6 +802,7 @@ python3 -m unittest tests.connect4.test_board -v            # the sentinel invar
 python3 -m unittest tests.connect4.test_conformance -v      # connect 4 against the same contract
 python3 -m unittest tests.connect4.test_evaluation -v       # symmetry, bounds and threat masks
 python3 -m unittest tests.connect4.test_solver -v           # the exact solver against 280 pinned answers
+python3 -m unittest tests.connect4.test_corpus -v           # the solved corpus, checked against itself
 
 python3 -m unittest tests.tictactoe.test_perfect_play -v    # the engine against an independent solver
 python3 -m unittest tests.tictactoe.test_permutations -v    # perft, and the published game census
