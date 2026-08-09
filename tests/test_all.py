@@ -49,6 +49,15 @@ from tests.connect4.test_evaluation import (
     TestThreatValue,
 )
 from tests.connect4.test_match import TestMatchResult, TestPlayMatch
+from tests.connect4.test_ladder import (
+    TestADeterministicPlayerAgainstItself,
+    TestBalancedOpenings,
+    TestOpeningsAreNeverReused,
+    TestCalibration,
+    TestReproducibility,
+    TestTheSummary,
+    TestLadderConfiguration,
+)
 from tests.connect4.test_solver import (
     TestPinnedCorpus,
     TestMirrorInvariance,
@@ -107,6 +116,7 @@ from tests.tictactoe.test_encoding import (
 from tests.test_oracle import (
     TestSolver,
     TestEnumeration,
+    TestOpeningsAtAPly,
     TestBenchmarkCalibration,
     TestPlayEveryLine,
     TestGrade,

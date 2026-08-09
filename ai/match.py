@@ -28,7 +28,7 @@ not, and the difference between a real improvement and noise at fifty games is n
 """
 
 import random
-from typing import Callable, NamedTuple, Type
+from typing import Callable, NamedTuple, Optional, Sequence, Type
 
 import log
 from games.base import GameState
@@ -124,18 +124,40 @@ def play_match(
     opening_plies: int = OPENING_PLIES,
     seed: int = 0,
     print_summary: bool = True,
+    openings: Optional[Sequence[GameState]] = None,
 ) -> MatchResult:
     """
     Plays `challenger` against `incumbent` and returns the tally from the challenger's side.
 
     Games are played in pairs from a shared opening, the challenger moving first in one and
     second in the other, so an odd `games` is rounded down to the pair below it.
+
+    `openings` supplies the positions to start from instead of drawing them at random, one per
+    pair, and is what `ai.ladder` passes. The reason it exists is that the default draws *with
+    replacement*, and between two deterministic players a repeated opening is not a second game -
+    it is the first one played again, move for move. Measured at the default two opening plies,
+    fifty pairs of Connect 4 draw only about thirty distinct openings, so nearly half the games
+    carry no information while `MatchResult.error` still divides by all of them.
+
+    Drawing without replacement is therefore better, and it is not the default only because it
+    would silently move numbers already measured and written down - the evaluation results in the
+    README were produced by the random path. `ai.oracle.openings_at` produces distinct positions
+    for a caller that wants them.
     """
     rng = random.Random(seed)
     wins = draws = losses = 0
 
-    for pair in range(games // 2):
-        opening = _opening(new_game, rng, opening_plies)
+    pairs = games // 2
+    if openings is not None:
+        if len(openings) < pairs:
+            raise ValueError(
+                f'{games} games needs {pairs} openings and only {len(openings)} were given; '
+                f'repeating them would replay games rather than play new ones'
+            )
+        openings = list(openings)[:pairs]
+
+    for pair in range(pairs):
+        opening = openings[pair] if openings is not None else _opening(new_game, rng, opening_plies)
 
         for challenger_is_first in (True, False):
             state = opening.copy()
