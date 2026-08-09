@@ -40,7 +40,7 @@ from ai.zero.metrics import Recorder
 from ai.zero.net import ZeroNet, evaluate, evaluate_batch, for_game as architecture, to_tensor
 from ai.zero.mcts import DIRICHLET_EPSILON
 from ai.zero.selfplay import (
-    OPENING_PLIES, TEMPERATURE_MOVES, Example, augment, play_games,
+    FINAL_TEMPERATURE, OPENING_PLIES, TEMPERATURE_MOVES, Example, augment, play_games,
 )
 
 LEARNING_RATE = 1e-3
@@ -101,16 +101,19 @@ BENCHMARK_EVERY = 1
 #        2.5   200      63%               69.1%       0.864         20.3
 #        2.0   600      47%               72.9%       0.683         24.2
 #
-# c_puct moves the entropy of the search's targets across a wide range and moves nothing else:
-# agreement sits in a 1.7-point band that a single seed cannot separate. Near-uniform targets were
-# a symptom, not the cause. Simulations do matter, but not between 50 and 200 - only at 600, which
-# is the `REFERENCE_CONNECT4` setting and best on all four columns.
+# **None of those differences is measurable at that budget, which is the real finding.** Four runs
+# of the *same* configuration differing only in seed spread 5.5 points of agreement (64.5% to
+# 69.9%, sd 2.5) and 0.176 of value MSE - wider than every cell-to-cell difference in the grid
+# above, and wider than the 4.5-point spread of a temperature schedule sweep run afterwards.
 #
-# It is still not worth paying for. Thirty generations at 50 simulations reached 74.6% in 10.7
-# minutes; twelve at 600 reached 72.9% in 62 minutes. Cheap search bought a better number in a
-# sixth of the time, so generations are the thing to buy on a CPU. A GPU amortising deep searches
-# over 5,000 games an iteration is a different trade, which is why the reference makes the other
-# choice.
+# So the grid establishes nothing about c_puct, and nothing about simulations either: 600 looked
+# best on all four columns by 2.2 points, which is under half the noise floor. Twelve-generation
+# single-seed runs cannot see effects of the size hyperparameters plausibly have. Detecting two
+# points would need five or six seeds a cell, at half an hour each.
+#
+# What does clear the floor: thirty generations reached 74.6% where twelve average 68.1% across
+# four seeds. More data is the only lever with evidence behind it, so it is the one to pull, and
+# these values stay where they are until something can actually measure them.
 SELF_PLAY_EXPLORATION = 5.0
 
 # What a published Connect 4 AlphaZero uses, for reference rather than as configuration.
@@ -231,6 +234,7 @@ def train(
     games_in_flight: int = GAMES_IN_FLIGHT,
     opening_plies: int = OPENING_PLIES,
     temperature_moves: int = TEMPERATURE_MOVES,
+    final_temperature: float = FINAL_TEMPERATURE,
     exploration: float = SELF_PLAY_EXPLORATION,
     dirichlet_epsilon: float = DIRICHLET_EPSILON,
     learning_rate: float = LEARNING_RATE,
@@ -270,8 +274,8 @@ def train(
         play_started = time.perf_counter()
         fresh, drawn, lengths = _self_play(
             net, encoder, game, games_per_generation, simulations, opening_plies,
-            temperature_moves, exploration, dirichlet_epsilon, batch_size=games_in_flight,
-            seed=f'{seed}:{generation}')
+            temperature_moves, final_temperature, exploration, dirichlet_epsilon,
+            batch_size=games_in_flight, seed=f'{seed}:{generation}')
         play_seconds = time.perf_counter() - play_started
         buffer.extend(augment(fresh, encoder) if symmetries else fresh)
 
@@ -325,7 +329,8 @@ def train(
 
 
 def _self_play(net, encoder, game, count, simulations, opening_plies,
-               temperature_moves, exploration, dirichlet_epsilon, batch_size, seed):
+               temperature_moves, final_temperature, exploration, dirichlet_epsilon,
+               batch_size, seed):
     """
     One generation's games, played concurrently and evaluated in batches.
 
@@ -340,8 +345,8 @@ def _self_play(net, encoder, game, count, simulations, opening_plies,
     played = play_games(
         batch_evaluator, encoder, game, count, simulations,
         batch_size=batch_size, seed=seed, opening_plies=opening_plies,
-        temperature_moves=temperature_moves, exploration=exploration,
-        dirichlet_epsilon=dirichlet_epsilon)
+        temperature_moves=temperature_moves, final_temperature=final_temperature,
+        exploration=exploration, dirichlet_epsilon=dirichlet_epsilon)
 
     examples: List[Example] = []
     drawn, lengths = 0, []

@@ -53,6 +53,14 @@ from ai.zero.mcts import (
 TEMPERATURE_MOVES = 30
 TEMPERATURE = 1.0
 
+# What the temperature drops *to* once `TEMPERATURE_MOVES` are played.
+#
+# Zero is greedy: take the most visited move. That is what tic-tac-toe wants at the end of a
+# nine-ply game, and it is what this project has always done - but it is more aggressive than
+# AlphaZero, which drops to a small non-zero value and keeps sampling. Kept at zero by default so
+# nothing changes silently; a game whose self-play needs late diversity can raise it.
+FINAL_TEMPERATURE = 0.0
+
 # Random plies played before a game starts being recorded, drawn uniformly from 0 to this.
 #
 # **Off by default, and the history of that is worth keeping.** Self-play is on-policy, so a
@@ -84,6 +92,7 @@ def game_steps(
     simulations: int,
     temperature_moves: int = TEMPERATURE_MOVES,
     temperature: float = TEMPERATURE,
+    final_temperature: float = FINAL_TEMPERATURE,
     opening_plies: int = 0,
     exploration: float = EXPLORATION,
     dirichlet_alpha: float = DIRICHLET_ALPHA,
@@ -118,7 +127,7 @@ def game_steps(
 
     while not state.is_game_over:
         result = yield from mcts.steps(state, noise=True)
-        tau = temperature if len(played) < temperature_moves else 0.0
+        tau = temperature if len(played) < temperature_moves else final_temperature
 
         # Recorded before the move: the example belongs to the position it was searched from.
         played.append((encoder.planes(state), result.policy, state.turn))
