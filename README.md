@@ -916,6 +916,42 @@ For scale, the reference configuration runs 15 iterations of 5,000 games and eva
 depth 5; this reaches that at 8,000 games — 1.6 of their iterations — with a sixth of the search
 budget at play time.
 
+#### Where it stopped, and how that was established
+
+The run continued to generation 30 — 12,000 games — and **the last ten generations bought nothing**.
+Three measurements say so, and the one that disagreed was the one with a flaw in it.
+
+The direct test is playing two generations against each other, which is far more sensitive than
+comparing their scores against a third party:
+
+| head to head, 100 simulations, 300 games | score | verdict |
+|---|---|---|
+| generation 20 against generation 16 | 0.642 ± 0.027 | **+100 Elo, significant** |
+| generation 30 against generation 20 | 0.513 ± 0.027 | **level** |
+
+And against fixed opponents on identical openings, ten generations apart:
+
+| | `minimax:5` | `minimax:6` | `minimax:7` | mean |
+|---|---|---|---|---|
+| Generation 20 | 0.765 | 0.615 | 0.620 | **0.667** |
+| Generation 30 | 0.705 | 0.630 | 0.635 | 0.657 |
+
+Not one difference clears its own standard error, and on the mean the *earlier* network is
+marginally ahead. They are the same player. Both beat depth 7, so the ladder never found the
+ceiling of either.
+
+**The in-loop ladder said otherwise, and it was wrong.** Its score rose from 0.641 to 0.717 across
+those same generations. It runs with a fixed seed, so it plays the *same fifty openings* every
+generation — consecutive scores therefore share a common bias instead of being independent draws,
+and a run of high scores looks like a trend when it is a correlated wobble. A metric watched every
+generation should vary its openings with the generation; this one did not.
+
+Two consequences worth carrying forward. **Checkpoint selection is choosing noise at this plateau**
+— the run picked generation 29 as best on a ladder score of 0.740, and generation 20 plays just as
+well. And **more generations is the wrong lever**: the reference uses 5,000 games an iteration
+against our 400 and 128 filters against our 64, so a plateau at this data volume and capacity is
+what should be expected. The next thing to change is one of those, not the generation count.
+
 #### Why agreement had to stop being the headline
 
 The previous best network scored **81.7%** agreement and lost 93 games in 100 to `minimax:4`. This
