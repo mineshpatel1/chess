@@ -911,16 +911,36 @@ about nine hours. The final network, playing with only 100 simulations:
 | Score over 100 games | **0.635** | **0.635** | **0.615** |
 | Record | +57 =13 −30 | +59 =9 −32 | +55 =13 −32 |
 
-**It beats every rung the ladder has**, all significantly. Pushed past the ladder, it stops between
-depth 7 and depth 8:
+**It beats every rung the ladder has**, all significantly. Pushed two rungs past it, the whole
+profile at 100 simulations, 100 paired games each:
 
-| opponent | `minimax:5` | `minimax:6` | `minimax:7` | `minimax:8` |
-|---|---|---|---|---|
-| Score | 0.705 | 0.630 | 0.635 | **0.545** |
-| Verdict | beats | beats | beats | **level** |
+| opponent | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Score | 0.965 | 0.745 | 0.835 | 0.680 | 0.705 | 0.630 | 0.635 | **0.545** |
+| Losses | 3% | 20% | 14% | 27% | 23% | 31% | 35% | **39%** |
+| Verdict | beats | beats | beats | beats | beats | beats | beats | **level** |
 
-Flat from depth 5 to 7 and then a sharp drop, which is what a real limit looks like rather than
-gradual decline — and draws rise to 13 from 3, as closely matched players convert more openings.
+So it plays **between a seven-ply and an eight-ply exhaustive search**. Draws rise to 13 from 3 at
+the crossover, which is what closely matched players do.
+
+The odd-depth rungs are easier than the even depth below them — 3 above 2, 5 above 4, 7 above 6 —
+and the reason is a property of the *opponent*. A depth-N search evaluates after N plies, so at odd
+depths the last ply is its own move: it scores a position where it has just created threats and the
+reply has not been made, counting the threat and not the refutation. There is no quiescence search
+here, so nothing extends past that. The effect is clear at 2→3 (+0.090) and inside noise by 4→5
+(+0.025) and 6→7 (+0.005) — as the horizon moves further out, the single unanswered ply matters
+less.
+
+**Search at play time is worth a lot, and every number above understates the network.** The same
+weights against `minimax:5`:
+
+| simulations | record | score | losses |
+|---|---|---|---|
+| 100 | +64 =13 −23 | 0.705 | 23% |
+| **600** | +76 =8 −16 | **0.800** | **16%** |
+
+About +70 Elo for thinking longer, with no retraining. 600 is what the reference plays at; 100 is
+what the tables here use, so the committed checkpoint is stronger than they say.
 
 For scale, the reference configuration runs 15 iterations of 5,000 games and evaluates against
 depth 5; this reaches that at 8,000 games — 1.6 of their iterations — with a sixth of the search
