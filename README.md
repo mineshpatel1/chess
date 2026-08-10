@@ -838,8 +838,8 @@ history is most worth having is the one that died at hour three. `plot.py` turns
 self-contained page of charts — standard library only, so torch stays the single dependency:
 
 ```bash
-python3 zero.py --game connect4 train --generations 30 --metrics runs/connect4.jsonl
-python3 plot.py runs/connect4.jsonl --open      # works mid-run, too
+python3 zero.py --game connect4 train --generations 20 --metrics runs/connect4-fresh.jsonl
+python3 plot.py runs/connect4-fresh.jsonl --open      # works mid-run, too
 ```
 
 The fields are chosen so a flat curve can be *diagnosed*, not just observed. `target_entropy` is
@@ -858,7 +858,7 @@ whatever interrupts a long run is just as likely to interrupt the write meant to
 ```bash
 python3 zero.py --game connect4 train --games 2000 --generations 30 \
     --out models/connect4-best.pt --latest models/connect4-latest.pt \
-    --metrics runs/connect4-long.jsonl --resume --commit-every 2
+    --metrics runs/connect4-fresh.jsonl --resume --commit-every 2
 ```
 
 The same command line launches and relaunches: `--resume` continues from `--latest` when that file

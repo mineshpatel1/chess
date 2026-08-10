@@ -1,8 +1,8 @@
 """
 Turning a training run's metrics into something you can look at.
 
-    python3 plot.py runs/connect4.jsonl
-    python3 plot.py runs/connect4.jsonl --out /tmp/run.html --open
+    python3 plot.py runs/connect4-fresh.jsonl
+    python3 plot.py runs/connect4-fresh.jsonl --out /tmp/run.html --open
 
 The fourth root script, joining `play.py` (play), `zero.py` (learn) and `bench.py` (measure). It
 reads what `ai.zero.metrics` wrote and produces one self-contained HTML page of small multiples.

@@ -103,7 +103,7 @@ REPORT_EVERY = 25
 # the root almost immediately, so Q is a strong signal from the first visits.
 #
 # **And yet changing it does nothing here, which was worth finding out.** A grid of twelve-
-# generation Connect 4 runs, one seed each, metrics under `runs/grid/`:
+# generation Connect 4 runs, one seed each (the metrics files are not kept - the finding is):
 #
 #     c_puct  sims   target entropy   agreement   value mse   game plies
 #        1.5    50      64% of unif       69.0%       0.759         18.6
