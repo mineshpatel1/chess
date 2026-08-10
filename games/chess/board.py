@@ -313,6 +313,22 @@ class ChessBoard(GameState):
                 protectors |= _blocker
         return protectors
 
+    def _pinners(self, target: Square, colour: Colour, blocker: Bitboard) -> Bitboard:
+        """
+        Returns the pieces of the given colour pinning `blocker` against `target`: the sliders whose
+        path to the target holds the blocker and nothing else.
+
+        The exact match is what makes this correct when two sliders stack up on the same ray. Only
+        the nearer one pins; the one behind it is stopped by its own colleague wherever the blocker
+        goes, so it is attacking nothing. Counting it as a second pinner reads the position as a
+        double check and freezes a piece that is free to move along the ray.
+        """
+        pinners = BB_EMPTY
+        for attacker_sq in bitboard_to_squares(self._attackers(target, colour)):
+            if BB_BETWEEN[attacker_sq][target] & self.occupied == blocker:
+                pinners |= BB_SQUARES[attacker_sq]
+        return pinners
+
     def _pseudo_legal_moves(self, colour: Colour) -> Iterable[Move]:
         """Generates possible moves without taking into account check and the safety of the King."""
 
@@ -680,6 +696,21 @@ class ChessBoard(GameState):
         attacks = self._attack_bitboard(not self.turn, ignore=king)  # Pretend the King isn't there
         in_check = king & attacks
         for move in self._pseudo_legal_moves(self.turn):
+            # En passant clears two squares on one rank at once: the capturing pawn leaves, and the
+            # captured pawn is removed from beside it. Neither test below can see that. The pin test
+            # cannot, because self._protectors only recognises a pin held by exactly one blocker; the
+            # check test cannot, because it asks for a move onto the checking square or in front of
+            # it, and a pawn that has just double-pushed into check is answered by landing past it.
+            # Playing the capture out and looking at the result settles both, and costs nothing: a
+            # game offers an en passant capture in a handful of positions.
+            if self._is_en_passant(move):
+                self.make_move(move)
+                exposed = self.kings[not self.turn] & self._attack_bitboard(self.turn)
+                self.unmake_move()
+                if not exposed:
+                    yield move
+                continue
+
             # If we are moving the king we should be careful
             if move.from_square == king_pos:
                 if attacks & BB_SQUARES[move.to_square]:  # New position is under attack
@@ -691,13 +722,10 @@ class ChessBoard(GameState):
                     elif (attacks & BB_BETWEEN[move.from_square][move.to_square]) > BB_EMPTY:
                         continue  # Cannot castle if intermediate squares are under attack
 
-            # Cannot move this piece, it's protecting the King
+            # This piece is protecting the King, so it may only move along the pin ray
             if protectors & BB_SQUARES[move.from_square]:
-                all_attackers = self._attackers(king_pos, not self.turn)
-                protected_attacker = self._attackers(
-                    king_pos, not self.turn, filter_blockers=BB_SQUARES[move.from_square],
-                )
-                if not _is_safe(protected_attacker ^ all_attackers, king_pos, move):
+                pinners = self._pinners(king_pos, not self.turn, BB_SQUARES[move.from_square])
+                if not _is_safe(pinners, king_pos, move):
                     continue
 
             # If in check and we are not moving the king, we must protect it
@@ -706,17 +734,6 @@ class ChessBoard(GameState):
                     attackers = self._attackers(king_pos, not self.turn, filter_blockers=self.occupied)
                     if not _is_safe(attackers, king_pos, move):
                         continue
-
-            # En passant clears two squares on the same rank at once: the capturing pawn
-            # leaves, and the captured pawn is removed from beside it. The pin detection
-            # above cannot see this, because self._protectors only recognises a pin held by
-            # exactly one blocker. Play these captures out and look at the result instead.
-            if self._is_en_passant(move):
-                self.make_move(move)
-                exposed = self.kings[not self.turn] & self._attack_bitboard(self.turn)
-                self.unmake_move()
-                if exposed:
-                    continue
 
             yield move
 

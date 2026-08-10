@@ -52,6 +52,41 @@ class TestMoves(unittest.TestCase):
             _moves = {m.uci for m in _board.legal_moves}
             self.assertEqual(_moves, match)
 
+    def test_pinned_piece_moves_along_the_pin_ray(self):
+        """
+        A pinned piece is not frozen: it may move anywhere along the ray it is pinned on, the
+        pinner's own square included. Only leaving the ray is illegal.
+        """
+        for fen, from_square, match in (
+            # Bishop e3 pinned to the King on f2 by the Bishop on c5
+            ('4k3/8/8/2b5/8/4B3/5K2/8 w - - 0 1', E3, {'e3d4', 'e3c5'}),
+
+            # Rook e8 pinned to the King on g8 by the Rook on b8
+            ('1r2R1K1/8/8/8/8/8/8/4k3 w - - 0 1', E8, {'e8b8', 'e8c8', 'e8d8', 'e8f8'}),
+        ):
+            _board = ChessBoard(fen=fen)
+            self.assertEqual({m.uci for m in _board.legal_moves if m.from_square == from_square}, match)
+
+    def test_a_slider_stacked_behind_the_pinner_pins_nothing(self):
+        """
+        Only the nearest enemy slider on a ray pins the piece in front of the King. One stacked
+        behind it is attacking nothing, because its colleague blocks the path wherever the pinned
+        piece goes, and counting it as a second pinner reads the position as a double check and
+        freezes the piece completely.
+
+        These are the positions above with a second slider added behind the pinner. The moves are
+        the same ones: the extra piece changes nothing.
+        """
+        for fen, from_square, match in (
+            # A Queen on b6 behind the pinning Bishop on c5
+            ('4k3/8/1q6/2b5/8/4B3/5K2/8 w - - 0 1', E3, {'e3d4', 'e3c5'}),
+
+            # A Rook on a8 behind the pinning Rook on b8
+            ('rr2R1K1/8/8/8/8/8/8/4k3 w - - 0 1', E8, {'e8b8', 'e8c8', 'e8d8', 'e8f8'}),
+        ):
+            _board = ChessBoard(fen=fen)
+            self.assertEqual({m.uci for m in _board.legal_moves if m.from_square == from_square}, match)
+
     def test_make_basic_moves(self):
         bb = ChessBoard()
         bb.make_move(Move.from_uci('c2c3'))
@@ -211,6 +246,25 @@ class TestMoves(unittest.TestCase):
 
         self.assertEqual(bb.en_passant_sq, G3)
         self.assertEqual({m.uci for m in bb.legal_moves if m.from_square == F4}, {'f4f3'})
+
+    def test_en_passant_answers_a_checking_pawn(self):
+        """
+        A pawn that double-pushes into check can be taken en passant, which answers the check by
+        removing the checker. The capture lands past the checking pawn rather than on it, so it
+        looks like neither a capture of the checker nor a block of the ray between it and the King.
+
+        Here it is the only legal reply, so refusing it scores the position as checkmate.
+        """
+        bb = ChessBoard('8/1B6/R7/5k2/5p1P/3N3P/6P1/1K6 w - - 0 1')
+        bb.make_move(Move.from_uci('g2g4'))  # Double-pushing to g4 checks the King on f5
+
+        self.assertEqual(bb.en_passant_sq, G3)
+        self.assertTrue(bb.is_in_check)
+        self.assertEqual({m.uci for m in bb.legal_moves}, {'f4g3'})
+        self.assertIsNone(bb.outcome)
+
+        bb.make_move(Move.from_uci('f4g3'))
+        self.assertEqual(bb.fen, '8/1B6/R7/5k2/7P/3N2pP/8/1K6 w - - 0 2')
 
     def test_promotion(self):
         b = ChessBoard('rnbqr3/pppp2P1/3k1n1p/2p1p3/3b4/8/PPPPPP1P/RNBQKBNR w KQ - 0 1')
