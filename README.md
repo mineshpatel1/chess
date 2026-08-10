@@ -911,7 +911,17 @@ about nine hours. The final network, playing with only 100 simulations:
 | Score over 100 games | **0.635** | **0.635** | **0.615** |
 | Record | +57 =13 −30 | +59 =9 −32 | +55 =13 −32 |
 
-**It beats every rung the ladder has**, all significantly. The ladder ran out before the player did.
+**It beats every rung the ladder has**, all significantly. Pushed past the ladder, it stops between
+depth 7 and depth 8:
+
+| opponent | `minimax:5` | `minimax:6` | `minimax:7` | `minimax:8` |
+|---|---|---|---|---|
+| Score | 0.705 | 0.630 | 0.635 | **0.545** |
+| Verdict | beats | beats | beats | **level** |
+
+Flat from depth 5 to 7 and then a sharp drop, which is what a real limit looks like rather than
+gradual decline — and draws rise to 13 from 3, as closely matched players convert more openings.
+
 For scale, the reference configuration runs 15 iterations of 5,000 games and evaluates against
 depth 5; this reaches that at 8,000 games — 1.6 of their iterations — with a sixth of the search
 budget at play time.
