@@ -48,14 +48,15 @@ class Recorder:
     `train` always has a recorder and sometimes it writes nowhere.
     """
 
-    def __init__(self, path: Optional[str] = None) -> None:
+    def __init__(self, path: Optional[str] = None, append: bool = False) -> None:
+        """`append` keeps what is already in the file, which is what a resumed run wants."""
         self.path = path
         self._handle: Optional[TextIO] = None
 
         if path:
             directory = os.path.dirname(os.path.abspath(path))
             os.makedirs(directory, exist_ok=True)
-            self._handle = open(path, 'w')
+            self._handle = open(path, 'a' if append else 'w')
 
     def write(self, record: Dict[str, Any]) -> None:
         if self._handle is None:
@@ -94,6 +95,41 @@ def read(path: str) -> List[Dict[str, Any]]:
             except ValueError:
                 break  # A half-written last line; everything before it is still good
     return records
+
+
+def truncate_after(path: str, generation: int) -> int:
+    """
+    Drops recorded generations past `generation`, returning how many went.
+
+    What a resume needs so the file agrees with the checkpoint it is resuming from. A generation
+    is recorded before its checkpoint is written - it has to be, since the record is what says the
+    generation happened - so there is always a window in which the file is one generation ahead of
+    the weights on disk. A run killed inside that window and then resumed would otherwise record
+    the same generation number twice, and the file would describe a history that never happened.
+
+    Rewritten rather than seeked and truncated in place, because the last line may itself be half
+    written; `read` already knows how to stop at one, and this is only a few hundred lines.
+
+    **The decision to rewrite is by content, not by whether anything was dropped.** A file killed
+    mid-write ends in a partial line that `read` skips and no generation is past the checkpoint, so
+    a count of dropped records is zero and the damage stays - and the resumed run then appends onto
+    the half-written line, gluing two records together. Comparing what the file says against what
+    it should say catches the repair and the truncation with one condition.
+    """
+    if not os.path.exists(path):
+        return 0
+
+    records = read(path)
+    kept = [record for record in records if record['generation'] <= generation]
+    wanted = ''.join(json.dumps(record, sort_keys=True) + '\n' for record in kept)
+
+    with open(path) as handle:
+        if handle.read() == wanted:
+            return 0
+
+    with open(path, 'w') as handle:
+        handle.write(wanted)
+    return len(records) - len(kept)
 
 
 def series(records: List[Dict[str, Any]], field: str) -> Iterator[Any]:

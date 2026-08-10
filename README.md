@@ -838,8 +838,8 @@ history is most worth having is the one that died at hour three. `plot.py` turns
 self-contained page of charts — standard library only, so torch stays the single dependency:
 
 ```bash
-python3 zero.py --game connect4 train --generations 30 --metrics runs/connect4.jsonl
-python3 plot.py runs/connect4.jsonl --open      # works mid-run, too
+python3 zero.py --game connect4 train --generations 20 --metrics runs/connect4-fresh.jsonl
+python3 plot.py runs/connect4-fresh.jsonl --open      # works mid-run, too
 ```
 
 The fields are chosen so a flat curve can be *diagnosed*, not just observed. `target_entropy` is
@@ -847,6 +847,30 @@ the one worth knowing about: policy loss cannot fall below the entropy of the ta
 fitting, so a loss that has flattened *at* that value is a network fitting its targets perfectly
 and the fault is in the search producing them. Tic-tac-toe's `c_puct` being too low looked exactly
 like that.
+
+#### Surviving the machine going away
+
+A run measured in hours needs to be restartable, so a checkpoint carries its optimiser state — Adam
+keeps a running mean and variance per parameter, and a resume that dropped them would take its
+first steps back unmomented. It is written to a temporary file and renamed into place, because
+whatever interrupts a long run is just as likely to interrupt the write meant to survive it.
+
+```bash
+python3 zero.py --game connect4 train --games 2000 --generations 30 \
+    --out models/connect4-best.pt --latest models/connect4-latest.pt \
+    --metrics runs/connect4-fresh.jsonl --resume --commit-every 2
+```
+
+The same command line launches and relaunches: `--resume` continues from `--latest` when that file
+exists and starts at generation one when it does not. `--commit-every` pushes `--latest` and the
+metrics to the branch as the run produces them, so a lost machine costs a couple of generations
+rather than the run.
+
+Two files rather than one, and the distinction matters. `--out` holds the *best* network by the
+oracle benchmark, which is what you want to play against; `--latest` holds the most recent one,
+which is what a resume must read. Resuming from the best checkpoint replays every generation since
+the last improvement — the metrics file grows a repeated generation number where the seam is, which
+is how this was caught.
 
 #### The first run
 
@@ -872,8 +896,84 @@ The checkpoint after those thirty generations, graded on all three tiers:
 | As first / second | 75.9% / 69.4% | 78.6% / 77.5% | 79.2% / 68.6% |
 
 **It is not a strong player yet** — thirty generations is a de-risking run, not a training run. What
-it establishes is that the curve rises, the instruments read it, and a generation costs 21s, so
-reaching `minimax:4` is minutes away rather than a day.
+it establishes is that the curve rises and the instruments read it.
+
+It also, as the next section shows, establishes almost nothing about how strong it is. That table
+is agreement, and agreement turned out to be measuring something other than playing strength.
+
+#### The run that produced a player
+
+Twenty generations, 400 games each at **600 simulations** and c_puct 2.0 — 8,000 self-play games,
+about nine hours. The final network, playing with only 100 simulations:
+
+| opponent | `minimax:4` | `minimax:5` | `minimax:6` |
+|---|---|---|---|
+| Score over 100 games | **0.635** | **0.635** | **0.615** |
+| Record | +57 =13 −30 | +59 =9 −32 | +55 =13 −32 |
+
+**It beats every rung the ladder has**, all significantly. The ladder ran out before the player did.
+For scale, the reference configuration runs 15 iterations of 5,000 games and evaluates against
+depth 5; this reaches that at 8,000 games — 1.6 of their iterations — with a sixth of the search
+budget at play time.
+
+#### Why agreement had to stop being the headline
+
+The previous best network scored **81.7%** agreement and lost 93 games in 100 to `minimax:4`. This
+one scores **78.8%** and beats `minimax:6`. Half a point of agreement separated two networks that
+were not remotely the same player, and the sign was backwards.
+
+Graded on all three tiers, what actually happened is visible:
+
+| | opening (22,100) | random play (5,600) | real play (5,600) |
+|---|---|---|---|
+| Previous best | 81.7% | 87.7% | 83.2% |
+| **This network** | **78.8%** | **80.4%** | **91.7%** |
+| `minimax:4` | 79.1% | 95.5% | 91.5% |
+
+It got *worse* at two tiers and much better at the third — and the third is the one made of
+positions that occur in games between competent players, where it now matches depth-4 alpha-beta.
+Self-play visits those positions, so capacity moved there, away from exhaustively enumerated
+openings it will rarely face and random positions no sensible game reaches. `ai/corpus.py` argued
+before any of this that the tiers must never be pooled because "R reaches positions no sensible
+game visits"; tier R is exactly where this network is weakest and where the weakness costs nothing.
+
+So the training loop now steers on **games won** — `ai.ladder` played every generation, and the
+best checkpoint chosen on that score. Agreement stays as a diagnostic, computed over every tier
+rather than the opening alone.
+
+**Which measure is right is a property of the game, not of the framework.** Tic-tac-toe is the
+mirror image: its ladder saturates once the network plays perfectly, so selecting on it means
+choosing arbitrarily among ties, while agreement is still resolving real differences — a
+tic-tac-toe network that cannot be beaten is still wrong in 77 positions. `SELECTION_METRIC` in
+`ai/zero/train.py` holds one choice per game, and a checkpoint records which measure its bar was
+set on so a resume cannot silently compare across a change.
+
+#### The bug that cost a day: denormal weights
+
+Training slowed by 6× over eight generations. It was not the machine, the garbage collector, the
+replay buffer or the search, all of which were investigated first.
+
+Weight decay pulls unused weights toward zero and they do not arrive — they stall around 1e-40,
+which float32 can only represent as a **subnormal**. x86 runs subnormal arithmetic in microcode
+rather than in the vector units, so every multiply touching one costs orders of magnitude more. By
+generation 8, 11% of the network's 471,000 weights were denormal:
+
+| twenty batches of 32 | with denormals | after zeroing 51,502 of them |
+|---|---|---|
+| Connect 4 network | 0.95s | **0.16s** |
+
+The signature is worth recognising, because it defeats the obvious hypotheses. It compounds
+generation by generation. It applies uniformly to everything multiplying by those weights, so a
+fixed 1,400 gradient steps and a fixed 22,100-position benchmark slow by the same factor as
+self-play. It survives a process restart, because the weights come back from the checkpoint. And
+every probe of the machine looks healthy, because a probe uses a freshly initialised network.
+
+`ai.zero.net.flush_denormals` runs after each generation's gradient steps, the count is recorded
+and plotted, and the outputs are asserted identical to the bit — a weight of 1e-40 in a network
+whose real weights are around 1e-2 contributes nothing a float32 sum can represent.
+
+`torch.set_flush_denormal(True)` is **not** an alternative: it sets the CPU flag on the calling
+thread only, and torch runs its intra-op pool on others. Measured, it changed nothing.
 
 ### What alpha-beta and move ordering are worth
 

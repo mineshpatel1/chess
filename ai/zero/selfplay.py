@@ -53,6 +53,14 @@ from ai.zero.mcts import (
 TEMPERATURE_MOVES = 30
 TEMPERATURE = 1.0
 
+# What the temperature drops *to* once `TEMPERATURE_MOVES` are played.
+#
+# Zero is greedy: take the most visited move. That is what tic-tac-toe wants at the end of a
+# nine-ply game, and it is what this project has always done - but it is more aggressive than
+# AlphaZero, which drops to a small non-zero value and keeps sampling. Kept at zero by default so
+# nothing changes silently; a game whose self-play needs late diversity can raise it.
+FINAL_TEMPERATURE = 0.0
+
 # Random plies played before a game starts being recorded, drawn uniformly from 0 to this.
 #
 # **Off by default, and the history of that is worth keeping.** Self-play is on-policy, so a
@@ -84,6 +92,7 @@ def game_steps(
     simulations: int,
     temperature_moves: int = TEMPERATURE_MOVES,
     temperature: float = TEMPERATURE,
+    final_temperature: float = FINAL_TEMPERATURE,
     opening_plies: int = 0,
     exploration: float = EXPLORATION,
     dirichlet_alpha: float = DIRICHLET_ALPHA,
@@ -118,7 +127,7 @@ def game_steps(
 
     while not state.is_game_over:
         result = yield from mcts.steps(state, noise=True)
-        tau = temperature if len(played) < temperature_moves else 0.0
+        tau = temperature if len(played) < temperature_moves else final_temperature
 
         # Recorded before the move: the example belongs to the position it was searched from.
         played.append((encoder.planes(state), result.policy, state.turn))
@@ -163,6 +172,7 @@ def play_games(
     simulations: int,
     batch_size: int = 1,
     seed: int = 0,
+    on_finished: Optional[Callable[[int, int], None]] = None,
     **kwargs,
 ) -> List[Tuple[List[Example], GameState]]:
     """
@@ -182,6 +192,11 @@ def play_games(
 
     The evaluator is handed every pending position at once and must read what it needs from all of
     them before returning: the states are live and resuming a game mutates its own.
+
+    `on_finished(completed, count)` is called as each game ends. A Connect 4 generation at 600
+    simulations takes twenty minutes and until this existed it printed nothing at all for the whole
+    of it - which is fine until a run slows down, at which point there is no way to tell a slow
+    generation from a hung one without reading `/proc`.
     """
     started, done = 0, {}
     active: List[Tuple[int, Iterator[GameState], GameState]] = []
@@ -190,7 +205,7 @@ def play_games(
         while started < count and len(active) < batch_size:
             steps = game_steps(
                 encoder, game, simulations, rng=random.Random(f'{seed}:{started}'), **kwargs)
-            _advance(started, steps, None, active, done)
+            _advance(started, steps, None, active, done, on_finished, count)
             started += 1
 
         if not active:
@@ -200,7 +215,7 @@ def play_games(
         answers = batch_evaluator([pending for _, _, pending in active])
         waiting, active = active, []
         for (index, steps, _), answer in zip(waiting, answers):
-            _advance(index, steps, answer, active, done)
+            _advance(index, steps, answer, active, done, on_finished, count)
 
     # By game index rather than by whoever finished first. Games run concurrently and end out of
     # order, so completion order is a function of `batch_size` - and a caller that saw it would
@@ -208,12 +223,14 @@ def play_games(
     return [done[index] for index in range(count)]
 
 
-def _advance(index, steps, answer, active, done) -> None:
+def _advance(index, steps, answer, active, done, on_finished=None, count=0) -> None:
     """Pushes one game forward, onto `active` if it wants another position or `done` if finished."""
     try:
         active.append((index, steps, steps.send(answer)))
     except StopIteration as finished:
         done[index] = finished.value
+        if on_finished:
+            on_finished(len(done), count)
 
 
 def _opening(game: Callable[[], GameState], plies: int, rng: random.Random) -> GameState:

@@ -1,8 +1,8 @@
 """
 Turning a training run's metrics into something you can look at.
 
-    python3 plot.py runs/connect4.jsonl
-    python3 plot.py runs/connect4.jsonl --out /tmp/run.html --open
+    python3 plot.py runs/connect4-fresh.jsonl
+    python3 plot.py runs/connect4-fresh.jsonl --out /tmp/run.html --open
 
 The fourth root script, joining `play.py` (play), `zero.py` (learn) and `bench.py` (measure). It
 reads what `ai.zero.metrics` wrote and produces one self-contained HTML page of small multiples.
@@ -33,15 +33,25 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from ai.zero.metrics import read
 
 # Scores on the same positions a run is graded against, so a curve can be read against something.
-# Both measured, and recorded in the README: `zero.py --game connect4 benchmark`.
+# All measured with `zero.py benchmark` on the exact grading set, and recorded in the README.
+#
+# The middle line for Connect 4 is the important one and was nearly left out. A network that has
+# learned only "play towards the middle" - the crudest true thing about the game, and one line of
+# code - already scores 73.5% on the opening tier. Drawing only `random` at 54.1% makes a climb to
+# 74% look like most of the way to `minimax:4` when it is barely past the trivial policy. A floor
+# that flatters the curve is worse than no floor.
 REFERENCES = {
-    'Connect4': [('random', 0.541), ('minimax:4', 0.791)],
+    'Connect4': [('random', 0.541), ('centre column', 0.735), ('minimax:4', 0.791)],
     'TicTacToe': [('random', 0.678), ('minimax:9 — perfect', 1.0)],
 }
 
 # Which fields to draw, in reading order: the headline first, then what explains it.
 CHARTS: Sequence[Tuple[str, str, str]] = (
-    ('optimal_rate', 'Agreement with perfect play', 'rate'),
+    # First, because it is the primary metric. Agreement follows as a diagnostic: two Connect 4
+    # networks half a point apart on it scored 0.055 and 0.635 against `minimax:4`, so a page that
+    # led with agreement was leading with the number that hid the difference.
+    ('ladder_score', 'Ladder — mean score against the rungs', 'rate'),
+    ('optimal_rate', 'Agreement with perfect play (opening only)', 'rate'),
     ('value_mse', 'Value head error against truth', 'plain'),
     ('policy_loss', 'Policy loss, against its targets’ entropy', 'plain'),
     ('value_loss', 'Value loss', 'plain'),
@@ -51,6 +61,11 @@ CHARTS: Sequence[Tuple[str, str, str]] = (
     ('draw_rate', 'Self-play games drawn', 'rate'),
     ('game_length', 'Mean game length, plies', 'plain'),
     ('seconds', 'Seconds per generation', 'plain'),
+    # Worth a chart of its own because its effect is on every other number's *cost* rather than on
+    # any of their values. Left unflushed these accumulate under weight decay and make the whole
+    # loop several times slower while the work is unchanged - a day was spent looking for that in
+    # the machine before looking in the weights.
+    ('denormal_weights', 'Denormal weights flushed', 'plain'),
 )
 
 WIDTH, HEIGHT = 460, 240

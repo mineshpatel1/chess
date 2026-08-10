@@ -9,6 +9,16 @@ rather than from whatever the caller happened to assume.
 The game name travels too. It is not needed to rebuild the network, but it is needed to refuse:
 a tic-tac-toe network loaded against Connect 4 would produce nine plausible-looking logits for a
 seven-column board, and the failure would show up as bad play rather than as an error.
+
+**The optimiser's state travels as well, so a run can be resumed rather than restarted.** Adam
+keeps a running mean and variance per parameter; dropping them restarts the moment estimates from
+zero and the first steps after a resume are effectively unmomented. On a run measured in hours,
+where the reason for resuming is that the machine went away, that is worth the file being three
+times the size.
+
+What deliberately does *not* travel is the replay buffer. It is a couple of hundred megabytes for
+a Connect 4 run and refills within a few generations, so carrying it would make every checkpoint
+unwieldy to store or push in order to save a few minutes of self-play.
 """
 
 import os
@@ -18,7 +28,7 @@ import torch
 
 from ai.zero.net import ZeroNet
 
-FORMAT = 1
+FORMAT = 2
 
 
 def save(
@@ -27,22 +37,32 @@ def save(
     game: str,
     generation: int = 0,
     metadata: Optional[Dict[str, Any]] = None,
+    optimiser: Optional[torch.optim.Optimizer] = None,
 ) -> None:
-    """Writes `net` and everything needed to rebuild and identify it."""
+    """
+    Writes `net` and everything needed to rebuild, identify and continue it.
+
+    Written to a temporary file and moved into place, because the thing most likely to interrupt a
+    long run is also most likely to interrupt the write that was meant to survive it. A rename
+    within a directory is atomic, so a reader either sees the previous checkpoint or the new one
+    and never a half-written file.
+    """
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
 
-    torch.save(
-        {
-            'format': FORMAT,
-            'game': game,
-            'generation': generation,
-            'config': net.config,
-            'weights': net.state_dict(),
-            'metadata': metadata or {},
-        },
-        path,
-    )
+    blob = {
+        'format': FORMAT,
+        'game': game,
+        'generation': generation,
+        'config': net.config,
+        'weights': net.state_dict(),
+        'metadata': metadata or {},
+        'optimiser': optimiser.state_dict() if optimiser is not None else None,
+    }
+
+    temporary = path + '.writing'
+    torch.save(blob, temporary)
+    os.replace(temporary, path)
 
 
 def load(path: str, game: Optional[str] = None) -> Dict[str, Any]:
@@ -70,4 +90,5 @@ def load(path: str, game: Optional[str] = None) -> Dict[str, Any]:
     net.eval()
 
     blob['net'] = net
+    blob.setdefault('optimiser', None)
     return blob

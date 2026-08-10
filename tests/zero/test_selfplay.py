@@ -54,6 +54,46 @@ class TestValueTargets(unittest.TestCase):
         self.assertEqual(0.0, _value_to(mover=NOUGHT, winner=None))
 
 
+class TestProgressReporting(unittest.TestCase):
+    """
+    What a long generation says while it is still running.
+
+    A Connect 4 generation at 600 simulations is twenty minutes long and used to print nothing for
+    the whole of it, which makes a generation that has slowed down indistinguishable from one that
+    has hung. The callback is the only thing standing between those two.
+    """
+
+    @staticmethod
+    def flat(states):
+        return [([1.0] * TicTacToeEncoder.POLICY_SIZE, 0.0) for _ in states]
+
+    def _seen(self, count, batch_size):
+        seen = []
+        play_games(self.flat, TicTacToeEncoder, TicTacToe, count=count, simulations=5,
+                   batch_size=batch_size, seed=0, on_finished=lambda *call: seen.append(call))
+        return seen
+
+    def test_it_fires_once_per_game_and_counts_up_to_the_total(self):
+        seen = self._seen(count=9, batch_size=4)
+        self.assertEqual([(n, 9) for n in range(1, 10)], seen)
+
+    def test_the_last_call_says_the_generation_is_done(self):
+        """So a caller can report completion from the callback rather than having to infer it."""
+        self.assertEqual((6, 6), self._seen(count=6, batch_size=3)[-1])
+
+    def test_the_count_does_not_depend_on_the_batch_size(self):
+        for batch_size in (1, 2, 5, 12):
+            self.assertEqual(8, len(self._seen(count=8, batch_size=batch_size)), batch_size)
+
+    def test_games_are_played_the_same_with_and_without_a_callback(self):
+        def signatures(**kwargs):
+            return [state.signature for _, state in play_games(
+                self.flat, TicTacToeEncoder, TicTacToe, count=8, simulations=25,
+                batch_size=4, seed=0, **kwargs)]
+
+        self.assertEqual(signatures(), signatures(on_finished=lambda *_: None))
+
+
 class TestPlayGame(unittest.TestCase):
     def test_it_produces_one_example_per_position_played(self):
         examples, finished = play_game(ignorant, TicTacToeEncoder, TicTacToe, simulations=10,

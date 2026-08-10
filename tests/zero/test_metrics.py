@@ -16,7 +16,7 @@ import tempfile
 import unittest
 
 import plot
-from ai.zero.metrics import Recorder, read, series
+from ai.zero.metrics import Recorder, read, series, truncate_after
 
 
 def record(generation, **fields):
@@ -91,11 +91,90 @@ class TestRecording(unittest.TestCase):
 
         self.assertEqual([(2, 0.52)], list(series(read(self.path), 'optimal_rate')))
 
+    def test_a_resumed_run_adds_to_the_file_rather_than_starting_it_again(self):
+        """
+        The point of recording a long run is the whole curve, and a resume that truncated would
+        leave only the part after the failure - the least interesting part.
+        """
+        with Recorder(self.path) as recorder:
+            for generation in (1, 2, 3):
+                recorder.write(record(generation))
+
+        with Recorder(self.path, append=True) as recorder:
+            recorder.write(record(4))
+
+        self.assertEqual([1, 2, 3, 4], [entry['generation'] for entry in read(self.path)])
+
+    def test_a_fresh_run_does_not_inherit_the_previous_one(self):
+        with Recorder(self.path) as recorder:
+            recorder.write(record(1))
+        with Recorder(self.path) as recorder:
+            recorder.write(record(1))
+
+        self.assertEqual(1, len(read(self.path)))
+
     def test_the_directory_is_created(self):
         nested = os.path.join(self.directory, 'runs', 'deep', 'run.jsonl')
         with Recorder(nested) as recorder:
             recorder.write(record(1))
         self.assertTrue(os.path.exists(nested))
+
+
+class TestTruncating(unittest.TestCase):
+    """
+    Making the file agree with the checkpoint a run is resuming from.
+
+    A generation is recorded before its weights are written - it has to be, since the record is
+    what says the generation happened - so the file can always be one generation ahead. A resume
+    that ignored that would write the same generation number twice and describe a history that
+    never happened.
+    """
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.path = os.path.join(self.directory, 'run.jsonl')
+
+    def _write(self, *generations):
+        with Recorder(self.path) as recorder:
+            for generation in generations:
+                recorder.write(record(generation))
+
+    def test_it_drops_what_the_checkpoint_does_not_cover(self):
+        self._write(1, 2, 3, 4)
+        self.assertEqual(2, truncate_after(self.path, 2))
+        self.assertEqual([1, 2], [entry['generation'] for entry in read(self.path)])
+
+    def test_a_file_already_in_step_is_left_alone(self):
+        self._write(1, 2)
+        before = open(self.path).read()
+        self.assertEqual(0, truncate_after(self.path, 2))
+        self.assertEqual(before, open(self.path).read(), 'the file was rewritten needlessly')
+
+    def test_a_half_written_last_line_goes_with_the_rest(self):
+        """The line most likely to be past the checkpoint is the one the kill interrupted."""
+        self._write(1, 2)
+        with open(self.path, 'a') as handle:
+            handle.write('{"generation": 3, "optimal_ra')
+
+        truncate_after(self.path, 2)
+        self.assertEqual([1, 2], [entry['generation'] for entry in read(self.path)])
+        self.assertTrue(open(self.path).read().endswith('\n'), 'the file should end cleanly')
+
+    def test_a_file_that_does_not_exist_yet_is_not_an_error(self):
+        self.assertEqual(0, truncate_after(os.path.join(self.directory, 'nothing.jsonl'), 5))
+
+    def test_what_is_kept_survives_the_rewrite_intact(self):
+        self._write(1, 2, 3)
+        truncate_after(self.path, 2)
+        self.assertEqual(record(2), read(self.path)[1])
+
+    def test_the_run_carries_on_from_there(self):
+        self._write(1, 2, 3)
+        truncate_after(self.path, 2)
+        with Recorder(self.path, append=True) as recorder:
+            recorder.write(record(3))
+
+        self.assertEqual([1, 2, 3], [entry['generation'] for entry in read(self.path)])
 
 
 class TestThePlotter(unittest.TestCase):

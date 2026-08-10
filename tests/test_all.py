@@ -133,9 +133,10 @@ from tests.zero.test_mcts import (
     TestTheTreeIsPaths,
     TestPolicyOutput,
 )
-from tests.zero.test_metrics import TestRecording, TestThePlotter
+from tests.zero.test_metrics import TestRecording, TestTruncating, TestThePlotter
 from tests.zero.test_selfplay import (
     TestBatchingDoesNotChangeTheGames,
+    TestProgressReporting,
     TestValueTargets,
     TestPlayGame,
     TestRandomOpenings,
@@ -144,10 +145,15 @@ from tests.zero.test_selfplay import (
 from tests.zero.test_net import (
     TestNetwork,
     TestMasking,
+    TestFlushingDenormals,
+    TestTheLadderMetric,
+    TestGradingEveryTier,
     TestCheckpoints,
     TestPlayer,
+    TestResuming,
     TestTrainingLearns,
 )
+from tests.zero.test_cli import TestResumeFrom, TestCommitter
 
 
 def main():

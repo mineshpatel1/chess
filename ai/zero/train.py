@@ -26,7 +26,7 @@ import math
 import random
 import time
 from collections import deque
-from typing import Callable, Deque, List, NamedTuple, Optional, Tuple, Type
+from typing import Callable, Deque, Dict, List, NamedTuple, Optional, Sequence, Tuple, Type
 
 import torch
 import torch.nn.functional as F
@@ -35,12 +35,15 @@ import log
 from games.base import GameState
 from ai import corpus
 from ai.oracle import Grade, Report, Table, benchmark, enumerate_positions, move_values
+from ai.zero import checkpoint
 from ai.zero.checkpoint import save
-from ai.zero.metrics import Recorder
-from ai.zero.net import ZeroNet, evaluate, evaluate_batch, for_game as architecture, to_tensor
+from ai.zero.metrics import Recorder, truncate_after
+from ai.zero.net import (
+    ZeroNet, evaluate, evaluate_batch, flush_denormals, for_game as architecture, to_tensor,
+)
 from ai.zero.mcts import DIRICHLET_EPSILON
 from ai.zero.selfplay import (
-    OPENING_PLIES, TEMPERATURE_MOVES, Example, augment, play_games,
+    FINAL_TEMPERATURE, OPENING_PLIES, TEMPERATURE_MOVES, Example, augment, play_games,
 )
 
 LEARNING_RATE = 1e-3
@@ -65,6 +68,15 @@ GAMES_IN_FLIGHT = 32
 # right when the answer is already known and the run just has to finish.
 BENCHMARK_EVERY = 1
 
+# Games between progress reports during self-play, which is where a generation spends its time.
+#
+# A tic-tac-toe generation is a second and says nothing until it is done, which is right. A Connect
+# 4 generation at 600 simulations is twenty minutes, and a run that prints nothing for twenty
+# minutes is one where a slowdown and a hang look identical - the afternoon that produced this
+# constant was spent telling those apart by reading `/proc`. Reporting a *rate* rather than a bare
+# count is the point: the rate is what shows a generation getting slower while it happens.
+REPORT_EVERY = 25
+
 # How hard PUCT explores *while learning*, which is not the same question as how hard it should
 # explore while playing. Learning wants the search to check alternatives it currently believes are
 # worse, because that is where the training signal comes from; playing wants it to trust a prior
@@ -78,7 +90,62 @@ BENCHMARK_EVERY = 1
 # An inverted U with a clear peak, and the default was sitting well below it - visit counts were
 # concentrating before the alternatives had been checked, so the network fit targets that were
 # confidently slightly wrong.
+#
+# **Tuned on tic-tac-toe, and it does not obviously transfer.** PUCT is
+# `Q + c * P * sqrt(N_parent) / (1 + n)`, so with 50 simulations spread over Connect 4's seven
+# columns each child gets about seven visits and the exploration term swamps Q throughout - the
+# search never commits. Measured on a 30-generation Connect 4 run, the visit distributions it
+# produced sat at 82% of the entropy of a uniform distribution, which is a search that has
+# concluded almost nothing, and the network learned almost nothing from them: 74.6% agreement
+# against the 73.5% scored by "always play nearest the centre".
+#
+# Tic-tac-toe gets away with a high value because it is nine plies deep and terminal values reach
+# the root almost immediately, so Q is a strong signal from the first visits.
+#
+# **And yet changing it does nothing here, which was worth finding out.** A grid of twelve-
+# generation Connect 4 runs, one seed each (the metrics files are not kept - the finding is):
+#
+#     c_puct  sims   target entropy   agreement   value mse   game plies
+#        1.5    50      64% of unif       69.0%       0.759         18.6
+#        2.5    50      74%               70.7%       0.812         17.4
+#        5.0    50      87%               69.9%       0.704         17.1
+#        1.5   200      55%               69.9%       0.789         20.2
+#        2.5   200      63%               69.1%       0.864         20.3
+#        2.0   600      47%               72.9%       0.683         24.2
+#
+# **None of those differences is measurable at that budget, which is the real finding.** Four runs
+# of the *same* configuration differing only in seed spread 5.5 points of agreement (64.5% to
+# 69.9%, sd 2.5) and 0.176 of value MSE - wider than every cell-to-cell difference in the grid
+# above, and wider than the 4.5-point spread of a temperature schedule sweep run afterwards.
+#
+# So the grid establishes nothing about c_puct, and nothing about simulations either: 600 looked
+# best on all four columns by 2.2 points, which is under half the noise floor. Twelve-generation
+# single-seed runs cannot see effects of the size hyperparameters plausibly have. Detecting two
+# points would need five or six seeds a cell, at half an hour each.
+#
+# What does clear the floor: thirty generations reached 74.6% where twelve average 68.1% across
+# four seeds. More data is the only lever with evidence behind it, so it is the one to pull, and
+# these values stay where they are until something can actually measure them.
 SELF_PLAY_EXPLORATION = 5.0
+
+# What a published Connect 4 AlphaZero uses, for reference rather than as configuration.
+#
+# AlphaZero.jl's Connect 4 example: 128 filters over 5 residual blocks with 32-filter heads (about
+# 1.6M parameters), **600 simulations**, **c_puct 2.0**, Dirichlet (0.25, 1.0), temperature 1.0 for
+# 20 moves then 0.3, Adam at 2e-3, batch 1,024, and 5,000 self-play games per iteration over 15
+# iterations - one to two hours per iteration on an RTX 2070.
+#
+# Worth writing down because almost every number here differs from ours, and the two that differ
+# most are exactly the two the entropy measurement points at. It is not a target: 5,000 games an
+# iteration on a GPU is a different budget from 64 games on four CPU cores, and copying the whole
+# configuration would be reasoning by analogy rather than about the problem. It is a sanity check
+# on which direction the defaults should move.
+REFERENCE_CONNECT4 = {
+    'filters': 128, 'blocks': 5, 'head_filters': 32,
+    'simulations': 600, 'exploration': 2.0,
+    'temperature_moves': 20, 'final_temperature': 0.3,
+    'learning_rate': 2e-3, 'batch_size': 1024, 'games_per_generation': 5000,
+}
 
 # Whether to add every symmetric copy of each example, which for tic-tac-toe is eight for one.
 #
@@ -102,8 +169,58 @@ SELF_PLAY_EXPLORATION = 5.0
 # spends parameters learning the symmetry group instead of learning positions.
 SYMMETRIES = False
 
-# Which corpus tier a game without an enumerable state space is graded on. See `grading_set`.
-GRADING_TIER = 'E'
+# The opponents a generation is scored against, and how many games each.
+#
+# **This is the primary metric, and agreement is now a diagnostic.** The two questions - does it
+# know the game, can it be beaten - come apart much harder than this project assumed. Two Connect 4
+# networks half a point apart on agreement scored 0.055 and 0.635 against `minimax:4`. Whichever
+# number chooses checkpoints and stops runs should be the one anybody actually cares about.
+#
+# Raw policy rather than with search, because it costs about 15s a rung against 100 games and the
+# same run measures both: search only ever helped here, so a raw score that climbs is a player that
+# is improving, and the expensive `zero.py ladder` with simulations is what settles a final claim.
+# `None` means the game's own ladder from `ai.ladder.LADDERS`. A caller steering a run usually
+# wants fewer: the rungs a player has already saturated (`random` at 1.000) or cannot touch cost
+# the same to play and move the mean by nothing, so naming the two or three either side of the
+# player's current strength makes the metric sharper for the same time.
+LADDER_RUNGS = None
+LADDER_GAMES = 100
+
+# Simulations the challenger searches with when it climbs. Zero is the raw policy: cheap, and
+# a direction indicator only - a network scoring 0.39 raw across depths 2, 4 and 6 beat depth 5
+# at 0.635 with a hundred simulations, so the raw number says which way a run is going and
+# nothing about how strong it is. Above zero measures the player itself, at roughly 7 minutes a
+# rung over 100 games.
+LADDER_SIMULATIONS = 0
+
+# How often to play them. Every generation at Connect 4's ~40 minutes is under 2% of the time; a
+# game whose generations are seconds wants this far less often.
+LADDER_EVERY = 1
+
+# Which measure picks the best checkpoint, **per game**, because the right answer differs and both
+# wrong answers are silent.
+#
+# Tic-tac-toe: agreement. Its ladder saturates - the network reaches perfect play early and then
+# every rung returns the same score for the rest of the run, so choosing on it is choosing
+# arbitrarily among ties for most of the training, while agreement is still resolving real
+# differences (77 positions still wrong in a network that cannot be beaten).
+#
+# Connect 4: the ladder. Its agreement saturates in usefulness rather than in value - graded on the
+# opening tier it asks about a sixth of a game, and two networks half a point apart on it scored
+# 0.055 and 0.635 against `minimax:4`.
+#
+# The general shape: pick whichever measure still *moves* where the player actually is. A game with
+# no ladder, or a run with the ladder off, falls back to agreement.
+SELECTION_METRIC = {
+    'TicTacToe': 'agreement',
+    'Connect4': 'ladder',
+}
+SELECTION_DEFAULT = 'ladder'
+
+
+def metric_for(game_name: str) -> str:
+    """Which measure `best` means for a game. See `SELECTION_METRIC`."""
+    return SELECTION_METRIC.get(game_name, SELECTION_DEFAULT)
 
 # Positions per forward pass when grading. Large enough that per-call overhead is amortised away,
 # small enough that a five-block tower's activations for the batch still fit comfortably.
@@ -154,17 +271,29 @@ class Progress(NamedTuple):
     target_entropy: float = 0.0
     distinct_positions: int = 0
     game_length: float = 0.0
+    denormal_weights: int = 0
+
+    # The primary metric: mean score against `LADDER_RUNGS`, and the strongest rung actually beaten
+    # (significantly, not merely led). `tier_rates` carries agreement per corpus tier, which is now
+    # a diagnostic rather than the headline.
+    ladder_score: float = 0.0
+    highest_rung: str = ''
+    tier_rates: Optional[Dict[str, float]] = None
+    ladder_seconds: float = 0.0
     self_play_seconds: float = 0.0
     learn_seconds: float = 0.0
     grade_seconds: float = 0.0
 
     def __str__(self) -> str:
+        """The ladder first, because that is the number the run is now steered by."""
+        beaten = f' (beats {self.highest_rung})' if self.highest_rung else ''
         return (
-            f'gen {self.generation:>3}  loss {self.loss:6.4f} '
+            f'gen {self.generation:>3}  ladder {self.ladder_score:5.3f}{beaten}  '
+            f'agreement {self.optimal_rate:6.2%}  '
+            f'value mse {self.value_mse:5.3f}  '
+            f'loss {self.loss:6.4f} '
             f'(policy {self.policy_loss:6.4f}, value {self.value_loss:6.4f})  '
             f'self-play drawn {self.draw_rate:5.1%}  '
-            f'vs perfect play {self.optimal_rate:6.2%}  '
-            f'value mse {self.value_mse:5.3f}  '
             f'{self.seconds:5.1f}s'
         )
 
@@ -176,16 +305,25 @@ def train(
     simulations: int = SIMULATIONS,
     steps: int = STEPS_PER_GENERATION,
     batch_size: int = BATCH_SIZE,
+    buffer_size: int = BUFFER_SIZE,
     games_in_flight: int = GAMES_IN_FLIGHT,
     opening_plies: int = OPENING_PLIES,
     temperature_moves: int = TEMPERATURE_MOVES,
+    final_temperature: float = FINAL_TEMPERATURE,
     exploration: float = SELF_PLAY_EXPLORATION,
     dirichlet_epsilon: float = DIRICHLET_EPSILON,
     learning_rate: float = LEARNING_RATE,
     benchmark_every: int = BENCHMARK_EVERY,
+    ladder_every: int = LADDER_EVERY,
+    ladder_rungs: Sequence[str] = LADDER_RUNGS,
+    ladder_games: int = LADDER_GAMES,
+    ladder_simulations: int = LADDER_SIMULATIONS,
+    metric: Optional[str] = None,
     symmetries: bool = SYMMETRIES,
     checkpoint_path: Optional[str] = None,
+    latest_path: Optional[str] = None,
     metrics_path: Optional[str] = None,
+    resume_from: Optional[str] = None,
     seed: int = 0,
     on_generation: Optional[Callable[[Progress], None]] = None,
 ) -> ZeroNet:
@@ -204,34 +342,106 @@ def train(
     torch.manual_seed(seed)
 
     net = ZeroNet(encoder.PLANE_SHAPE, encoder.POLICY_SIZE, **architecture(game.__name__))
-    positions, values = grading_set(game)
-    recorder = Recorder(metrics_path)
+    sets = grading_sets(game)
     optimiser = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
-    buffer: Deque[Example] = deque(maxlen=BUFFER_SIZE)
+    buffer: Deque[Example] = deque(maxlen=buffer_size)
 
     best_state, best_rate = None, -1.0
-    last_report = _EMPTY_REPORT
+    first = 1
 
-    for generation in range(1, generations + 1):
+    # Which measure `best` means, recorded into every checkpoint so a resume can refuse to compare
+    # against a bar set on a different one. Per game unless the caller says otherwise.
+    measure = metric or metric_for(game.__name__)
+    if measure not in ('ladder', 'agreement'):
+        raise ValueError(f'unknown selection metric {measure!r}; use "ladder" or "agreement"')
+    if measure == 'ladder' and ladder_every <= 0:
+        log.warning('selection asked for the ladder but it is switched off; using agreement')
+        measure = 'agreement'
+
+    if resume_from:
+        # The replay buffer is deliberately not restored - see ai/zero/checkpoint.py. The first
+        # generation after a resume therefore learns from a buffer holding one generation rather
+        # than several, which costs a little and saves carrying hundreds of megabytes around.
+        blob = checkpoint.load(resume_from, game=game.__name__)
+        net.load_state_dict(blob['weights'])
+        if blob.get('optimiser'):
+            optimiser.load_state_dict(blob['optimiser'])
+        first = blob['generation'] + 1
+        best_state = {k: v.clone() for k, v in net.state_dict().items()}
+
+        # Only when the bar was set on the same measure. A ladder score and an agreement rate are
+        # both numbers between 0 and 1 and are not remotely the same quantity: resuming a ladder
+        # run from an agreement bar of 0.812 sets a target no ladder score will ever reach, and the
+        # best checkpoint then silently never updates again for the rest of the run. Caught on the
+        # first resume after the metric changed, from a startup line reading "best so far 81.20%".
+        stored = blob['metadata'].get('metric')
+        if stored == measure:
+            best_rate = blob['metadata'].get('best_rate', -1.0)
+            log.info(f'Resuming {resume_from} from generation {first}, '
+                     f'best {measure} so far {best_rate:.3f}')
+        else:
+            log.info(f'Resuming {resume_from} from generation {first}; it was scored on '
+                     f'{stored or "an older metric"} and this run scores on {measure}, '
+                     f'so the best-so-far bar starts again')
+
+        # The metrics file can be one generation ahead of the checkpoint: a generation is recorded
+        # before its weights are written, because the record is what says the generation happened.
+        # A run killed inside that window would otherwise record the same generation number twice.
+        if metrics_path:
+            dropped = truncate_after(metrics_path, blob['generation'])
+            if dropped:
+                log.info(f'dropped {dropped} recorded generation(s) past the checkpoint')
+
+    recorder = Recorder(metrics_path, append=bool(resume_from))
+    last_reports = {tier: _EMPTY_REPORT for tier in sets}
+    last_standing = None
+
+    # Which tier's agreement travels as `optimal_rate`. The opening for a corpus-graded game, so
+    # the field keeps meaning what it meant for every run already recorded; the whole space for a
+    # game small enough to enumerate.
+    headline = 'E' if 'E' in sets else next(iter(sets))
+
+    for generation in range(first, generations + 1):
         started = time.perf_counter()
 
         play_started = time.perf_counter()
         fresh, drawn, lengths = _self_play(
             net, encoder, game, games_per_generation, simulations, opening_plies,
-            temperature_moves, exploration, dirichlet_epsilon, batch_size=games_in_flight,
-            seed=f'{seed}:{generation}')
+            temperature_moves, final_temperature, exploration, dirichlet_epsilon,
+            batch_size=games_in_flight, seed=f'{seed}:{generation}')
         play_seconds = time.perf_counter() - play_started
         buffer.extend(augment(fresh, encoder) if symmetries else fresh)
 
         learn_started = time.perf_counter()
         loss, policy_loss, value_loss = _learn(net, optimiser, buffer, steps, batch_size, rng)
+
+        # Immediately after the steps that create them, so the next generation's self-play, its
+        # gradient steps and its benchmark all run on normal floats. See `flush_denormals` - left
+        # alone these accumulate under weight decay and make the whole loop several times slower
+        # while doing exactly the same work.
+        denormals = flush_denormals(net)
         learn_seconds = time.perf_counter() - learn_started
 
         graded = generation % max(benchmark_every, 1) == 0 or generation == generations
         grade_started = time.perf_counter()
-        report = _optimal_rate(net, encoder, positions, values) if graded else last_report
+        reports = _grade(net, encoder, sets) if graded else last_reports
         grade_seconds = time.perf_counter() - grade_started
-        last_report = report
+        last_reports = reports
+        report = reports[headline]
+
+        # The primary metric, and the one `best` is chosen on. Agreement is kept as a diagnostic
+        # because it is exact and free; it is not the headline any more, having twice said two
+        # networks were the same player when one of them beat `minimax:4` and the other lost 93
+        # games in 100 to it.
+        climbed = ladder_every > 0 and (generation % ladder_every == 0
+                                        or generation == generations)
+        ladder_started = time.perf_counter()
+        standing = (_climb(net, encoder, game, ladder_rungs, ladder_games, seed, ladder_simulations)
+                    if climbed else None)
+        ladder_seconds = time.perf_counter() - ladder_started
+        if standing is not None:
+            last_standing = standing
+        standing = last_standing
 
         progress = Progress(
             generation=generation,
@@ -248,32 +458,81 @@ def train(
             target_entropy=_entropy(fresh),
             distinct_positions=len({str(example.planes) for example in buffer}),
             game_length=sum(lengths) / max(len(lengths), 1),
+            denormal_weights=denormals,
+            ladder_score=_mean_score(standing),
+            highest_rung=(standing.highest_beaten or '') if standing else '',
+            tier_rates={tier: report.overall.rate for tier, report in reports.items()},
+            ladder_seconds=ladder_seconds,
             self_play_seconds=play_seconds,
             learn_seconds=learn_seconds,
             grade_seconds=grade_seconds,
         )
         log.info(str(progress))
         recorder.write(progress._asdict())
+
+        # The run's own measure, computed once here so the checkpoints written below and the
+        # comparison made afterwards cannot disagree about what `best` means.
+        rate = progress.ladder_score if measure == 'ladder' else report.overall.rate
+
+        # Written every generation whether or not it improved, because this is the file a
+        # resume reads. `checkpoint_path` holds the *best* network, which is what you want to
+        # play against; resuming from that would replay every generation since it was set.
+        if latest_path:
+            save(net, latest_path, game=game.__name__, generation=generation,
+                 metadata={'best_rate': max(best_rate, rate),
+                           'metric': measure,
+                           'ladder_score': progress.ladder_score,
+                           'optimal_rate': report.overall.rate,
+                           'simulations': simulations},
+                 optimiser=optimiser)
+
+        # After the checkpoint, not before. A hook that copies the run somewhere - which is what
+        # `zero.py train --commit-every` does - would otherwise take generation N's metrics line
+        # together with generation N-1's weights, and a resume from that pair replays a generation
+        # and records its number twice. Caught in flight: the first automatic commit of a long run
+        # carried the metrics and no checkpoint at all, because the checkpoint had not changed yet.
         if on_generation:
             on_generation(progress)
 
-        rate = report.overall.rate
-        if graded and rate > best_rate:
+        # Chosen on the ladder when there is one, and on agreement otherwise. The ladder carries
+        # sampling noise that the exhaustive corpus does not - 100 games is worth about +/-0.045 -
+        # but a precise measurement of the wrong thing is what kept a network that loses 93 games
+        # in 100 looking like the best checkpoint of its run.
+        if (graded or climbed) and rate > best_rate:
             best_rate = rate
             best_state = {k: v.clone() for k, v in net.state_dict().items()}
             if checkpoint_path:
                 save(net, checkpoint_path, game=game.__name__, generation=generation,
-                     metadata={'optimal_rate': rate, 'simulations': simulations})
+                     metadata={'ladder_score': progress.ladder_score,
+                               'optimal_rate': report.overall.rate,
+                               'chosen_on': measure,
+                               'simulations': simulations},
+                     optimiser=optimiser)
 
     recorder.close()
     if best_state is not None:
         net.load_state_dict(best_state)
-    log.info(f'best raw-policy agreement with perfect play: {best_rate:.2%}')
+
+    # Named rather than assumed. This line used to say "agreement with perfect play" whatever the
+    # number was, and after the metric changed it went on saying it about a ladder score.
+    if measure == 'ladder' and last_standing is not None:
+        opponents = ', '.join(rung.spec for rung in last_standing.rungs)
+        log.info(f'best ladder score against {opponents}: {best_rate:.3f}')
+    else:
+        log.info(f'best raw-policy agreement with perfect play: {best_rate:.2%}')
     return net
 
 
+def _mean_score(standing) -> float:
+    """The ladder as one number: the mean score across its rungs, or 0.0 if it was not played."""
+    if standing is None or not standing.rungs:
+        return 0.0
+    return sum(rung.result.score for rung in standing.rungs) / len(standing.rungs)
+
+
 def _self_play(net, encoder, game, count, simulations, opening_plies,
-               temperature_moves, exploration, dirichlet_epsilon, batch_size, seed):
+               temperature_moves, final_temperature, exploration, dirichlet_epsilon,
+               batch_size, seed, report_every=REPORT_EVERY):
     """
     One generation's games, played concurrently and evaluated in batches.
 
@@ -281,15 +540,31 @@ def _self_play(net, encoder, game, count, simulations, opening_plies,
     network together. It changes nothing about any individual game - each runs an ordinary
     sequential search and gets the tree it would have got alone - and it is most of the difference
     between a Connect 4 generation costing seven minutes and costing one.
+
+    Progress is reported as it goes, with a rate and a projected finish. This is the only thing a
+    long generation says while it is running, and the rate is the useful part: it is what makes a
+    generation that has slowed down distinguishable from one that has hung, without which the
+    difference can only be found by inspecting the process.
     """
     def batch_evaluator(states):
         return evaluate_batch(net, states, encoder)
 
+    started = time.perf_counter()
+
+    def report(completed, total):
+        if report_every <= 0 or completed % report_every or completed == total:
+            return
+        elapsed = time.perf_counter() - started
+        rate = completed / elapsed
+        log.info(f'    self-play {completed}/{total} games, {elapsed:.0f}s elapsed, '
+                 f'{rate * 60:.1f}/min, ~{(total - completed) / rate:.0f}s left')
+
     played = play_games(
         batch_evaluator, encoder, game, count, simulations,
         batch_size=batch_size, seed=seed, opening_plies=opening_plies,
-        temperature_moves=temperature_moves, exploration=exploration,
-        dirichlet_epsilon=dirichlet_epsilon)
+        temperature_moves=temperature_moves, final_temperature=final_temperature,
+        exploration=exploration, dirichlet_epsilon=dirichlet_epsilon,
+        on_finished=report)
 
     examples: List[Example] = []
     drawn, lengths = 0, []
@@ -337,23 +612,21 @@ def _learn(net, optimiser, buffer, steps, batch_size, rng):
     return tuple(total / steps for total in totals)
 
 
-def grading_set(game):
+def grading_sets(game):
     """
-    The positions a game is graded over each generation, and how to value them.
+    The positions a game is graded over each generation, one entry per tier.
 
-    Built once and reused, because the alternative for Connect 4 is re-reading a 33,300-line file
-    and rebuilding 22,100 boards every generation.
+    **Every tier, not just the opening, and the reason is a measurement failure worth recording.**
+    Grading used to run on tier `E` alone - every position out to six discs. Two Connect 4 networks
+    then scored 81.72% and 81.20% on it, half a point apart, while one lost 93 games in 100 to
+    `minimax:4` and the other beat it. The opening is a sixth of a game; a network can be tuned to
+    it and remain a novice everywhere the benchmark cannot see. The tell was in the metrics all
+    along - the stronger network's self-play games ran 28.7 plies against 19 - and nobody was
+    looking, because the headline number said the two were the same player.
 
-    Dispatches the way `zero.py grade` does. A game that declares `SOLVED_DEPTH` can be searched to
-    the end of itself, so its whole state space is walkable and solvable on the spot. Anything
-    larger needs answers computed in advance - Connect 4's tree is 4.5e12 positions and
-    `enumerate_positions` would never return.
-
-    Connect 4 is graded on the **enumerated opening tier alone**: every distinct position out to
-    six discs, 22,100 of them. Exhaustive rather than sampled, so the number carries no sampling
-    noise - which matters when it is choosing which checkpoint to keep, generation after
-    generation. It is also the region with the most room to show improvement, `minimax:4` scoring
-    79.1% there against 95.5% on deep random positions.
+    Kept as separate tiers rather than pooled, which `ai.corpus` argues for at length: `R` reaches
+    positions no sensible game visits and `P` never asks a player to recover from a bad one, so one
+    figure over both would hide whichever is worse - and which is worse is the interesting part.
     """
     if game.SOLVED_DEPTH is not None:
         # `.copy()` is not optional. `enumerate_positions` yields the *live* state as it walks the
@@ -370,7 +643,8 @@ def grading_set(game):
             state.solver_key: move_values(state, table)
             for state, _ in positions if not state.is_game_over
         }
-        return positions, lambda state: solved[state.solver_key]
+        # One tier, because there is nothing to divide: the whole state space is here.
+        return {'all': (positions, lambda state: solved[state.solver_key])}
 
     path = corpus.CORPORA.get(game.__name__)
     if path is None:
@@ -379,8 +653,55 @@ def grading_set(game):
             f'run has nothing to grade itself against'
         )
 
-    entries = corpus.load(path, tiers=(GRADING_TIER,))
-    return list(corpus.positions(entries, game)), corpus.values(entries)
+    sets = {}
+    for tier, _ in corpus.TIERS:
+        entries = corpus.load(path, tiers=(tier,))
+        sets[tier] = (list(corpus.positions(entries, game)), corpus.values(entries))
+    return sets
+
+
+def _climb(net, encoder, game, rungs, games, seed, simulations=0):
+    """
+    The network against each rung, which is the metric the run is steered by.
+
+    `simulations` chooses which player is measured, and the two answer different questions.
+
+    **Raw (0) is cheap and understates the player badly.** It costs about 15s a rung over 100 games
+    and it is a fine *direction* indicator, but measured here a network scoring 0.39 raw across
+    depths 2, 4 and 6 beat depth 5 at 0.635 once it was allowed 100 simulations. No claim about
+    playing strength should come from the raw number.
+
+    **Searched is what the player actually is**, at roughly 7 minutes per rung over 100 games -
+    about 28% on top of a Connect 4 generation for two rungs, which is worth paying when the
+    question is how strong the thing is rather than which way it is moving.
+    """
+    from ai import ladder as ladders  # Local: keeps `ai.zero` importable without the match harness
+    from ai.zero.mcts import MCTS
+
+    def raw(state):
+        priors, _ = evaluate(net, state, encoder)
+        return max(state.legal_moves, key=lambda move: priors[encoder.action_index(move)])
+
+    def searched(state):
+        # No noise and the most-visited move rather than a sample: a player being measured should
+        # give its actual opinion rather than a draw from it.
+        search = MCTS(lambda s: evaluate(net, s, encoder), encoder, simulations=simulations)
+        return search.search(state, noise=False).move
+
+    challenger = searched if simulations > 0 else raw
+
+    default = ladders.for_game(game)
+    rung_ladder = ladders.Ladder(
+        rungs=tuple(rungs) if rungs else default.rungs,
+        opening_plies=default.opening_plies)
+    return ladders.climb(game, challenger, ladder=rung_ladder, games=games, seed=seed,
+                         print_progress=False)
+
+
+def _grade(net, encoder, sets):
+    """Every tier, each its own report. See `grading_sets` for why they are not pooled."""
+    return {tier: _optimal_rate(net, encoder, positions, values)
+            for tier, (positions, values) in sets.items()}
 
 
 def _optimal_rate(net, encoder, positions, values):

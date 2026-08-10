@@ -88,6 +88,83 @@ class TestMasking(unittest.TestCase):
 
 
 @needs_torch
+class TestFlushingDenormals(unittest.TestCase):
+    """
+    The one-line fix that was worth six times the speed of the training loop.
+
+    Weight decay parks unused weights around 1e-40, which float32 can only hold as a subnormal,
+    and x86 runs subnormal arithmetic in microcode. By generation 8 of a Connect 4 run 11% of the
+    weights were denormal and the network was 6x slower than the same architecture freshly built.
+
+    What these assert is that it is a *speed* change: the count is right, normal weights are left
+    alone, and the network's outputs do not move.
+    """
+
+    def setUp(self):
+        from ai.zero.net import ZeroNet
+        self.net = ZeroNet(Encoder.PLANE_SHAPE, Encoder.POLICY_SIZE)
+
+    def _poison(self, count=5, value=1e-40):
+        """Puts denormals where weight decay would have left them."""
+        with torch.no_grad():
+            flat = next(self.net.parameters()).view(-1)
+            flat[:count] = value
+        return count
+
+    def test_it_zeroes_them_and_says_how_many(self):
+        from ai.zero.net import flush_denormals
+
+        self._poison(count=5)
+        self.assertEqual(5, flush_denormals(self.net))
+        self.assertEqual(0, flush_denormals(self.net), 'a second pass has nothing left to do')
+
+    def test_a_clean_network_reports_none(self):
+        """Zero weights are not denormal, and counting them would report thousands from nowhere."""
+        from ai.zero.net import flush_denormals
+
+        with torch.no_grad():
+            next(self.net.parameters()).view(-1)[:20] = 0.0
+        self.assertEqual(0, flush_denormals(self.net))
+
+    def test_the_weights_that_mattered_are_untouched(self):
+        from ai.zero.net import flush_denormals
+
+        self._poison()
+        before = [p.clone() for p in self.net.parameters()]
+        flush_denormals(self.net)
+
+        for was, now in zip(before, self.net.parameters()):
+            normal = was.abs() >= 1.18e-38
+            self.assertTrue(torch.equal(was[normal], now[normal]))
+
+    def test_the_network_computes_the_same_thing_afterwards(self):
+        """
+        The claim the whole fix rests on. A weight of 1e-40 in a network whose real weights are
+        around 1e-2 contributes nothing a float32 sum can represent, so removing it is free.
+        """
+        from ai.zero.net import evaluate, flush_denormals
+
+        self._poison(count=200)
+        state = TicTacToe([4, 0])
+        before = evaluate(self.net, state, Encoder)
+        flush_denormals(self.net)
+        after = evaluate(self.net, state, Encoder)
+
+        self.assertEqual(before[1], after[1])
+        for one, two in zip(before[0], after[0]):
+            self.assertEqual(one, two)
+
+    def test_it_survives_a_network_of_every_sign(self):
+        """Denormals arrive from both directions; only the magnitude is the test."""
+        from ai.zero.net import flush_denormals
+
+        with torch.no_grad():
+            flat = next(self.net.parameters()).view(-1)
+            flat[0], flat[1] = 1e-40, -1e-40
+        self.assertEqual(2, flush_denormals(self.net))
+
+
+@needs_torch
 class TestCheckpoints(unittest.TestCase):
     def _save(self, directory, game='TicTacToe'):
         from ai.zero.checkpoint import save
@@ -137,6 +214,313 @@ class TestCheckpoints(unittest.TestCase):
         from ai.zero.checkpoint import load
         with self.assertRaises(FileNotFoundError):
             load('/nonexistent/model.pt')
+
+    def test_the_optimiser_travels_with_the_weights(self):
+        """
+        Adam keeps a running mean and variance per parameter. A resume that dropped them would
+        restart the moment estimates from zero, so the first steps back would be unmomented -
+        which is a strange thing to do to a run precisely when it is being rescued.
+        """
+        from ai.zero.checkpoint import load, save
+        from ai.zero.net import ZeroNet
+
+        with tempfile.TemporaryDirectory() as directory:
+            net = ZeroNet(Encoder.PLANE_SHAPE, Encoder.POLICY_SIZE)
+            optimiser = torch.optim.Adam(net.parameters(), lr=1e-3)
+
+            logits, value = net(torch.zeros(1, *Encoder.PLANE_SHAPE))
+            (logits.sum() + value.sum()).backward()
+            optimiser.step()
+
+            path = os.path.join(directory, 'net.pt')
+            save(net, path, game='TicTacToe', generation=3, optimiser=optimiser)
+
+            restored = torch.optim.Adam(
+                load(path)['net'].parameters(), lr=1e-3)
+            restored.load_state_dict(load(path)['optimiser'])
+            self.assertEqual(1, list(restored.state.values())[0]['step'].item())
+
+    def test_a_checkpoint_saved_without_one_says_so_rather_than_lying(self):
+        from ai.zero.checkpoint import load
+
+        with tempfile.TemporaryDirectory() as directory:
+            _, path = self._save(directory)
+            self.assertIsNone(load(path)['optimiser'])
+
+    def test_a_half_written_checkpoint_never_replaces_a_good_one(self):
+        """
+        The thing most likely to interrupt a long run is also most likely to interrupt the write
+        meant to survive it, so the write goes somewhere else and is renamed into place.
+        """
+        from ai.zero.checkpoint import save
+        from ai.zero.net import ZeroNet
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'net.pt')
+            save(ZeroNet(Encoder.PLANE_SHAPE, Encoder.POLICY_SIZE), path, game='TicTacToe')
+
+            saved = torch.save
+            torch.save = lambda *_, **__: (_ for _ in ()).throw(RuntimeError('disk full'))
+            try:
+                with self.assertRaises(RuntimeError):
+                    save(ZeroNet(Encoder.PLANE_SHAPE, Encoder.POLICY_SIZE), path, game='TicTacToe')
+            finally:
+                torch.save = saved
+
+            from ai.zero.checkpoint import load
+            self.assertEqual('TicTacToe', load(path)['game'], 'the good checkpoint was clobbered')
+
+
+@needs_torch
+class TestTheLadderMetric(unittest.TestCase):
+    """
+    The metric the run is now steered by, and the reason it changed.
+
+    Grading on the opening tier alone said two Connect 4 networks were half a point apart while one
+    beat `minimax:4` and the other lost 93 games in 100 to it. So the headline is games now, and
+    agreement is a diagnostic - but the ladder must be *observation only*, which is what these
+    assert.
+    """
+
+    def _train(self, **kwargs):
+        from ai.zero.train import train
+
+        seen = []
+        train(TicTacToe, generations=2, games_per_generation=6, simulations=8, steps=2,
+              seed=0, on_generation=seen.append, **kwargs)
+        return seen
+
+    def test_playing_the_ladder_does_not_change_what_is_trained(self):
+        """A metric that perturbed the run would make every number it reported about a different run."""
+        without = self._train(ladder_every=0)
+        with_it = self._train(ladder_rungs=('minimax:1',), ladder_games=10)
+
+        self.assertEqual([p.optimal_rate for p in without], [p.optimal_rate for p in with_it])
+        self.assertEqual([p.loss for p in without], [p.loss for p in with_it])
+
+    def test_it_records_a_score_and_the_tiers_behind_it(self):
+        progress = self._train(ladder_rungs=('minimax:1',), ladder_games=10)[-1]
+
+        self.assertGreaterEqual(progress.ladder_score, 0.0)
+        self.assertLessEqual(progress.ladder_score, 1.0)
+        self.assertIn('all', progress.tier_rates, 'tic-tac-toe is enumerable, so one tier')
+
+    def test_with_no_ladder_it_reports_zero_rather_than_inventing_one(self):
+        self.assertEqual(0.0, self._train(ladder_every=0)[-1].ladder_score)
+
+    def test_searching_measures_a_different_and_stronger_player(self):
+        """
+        The raw policy understates the player badly, which is why `ladder_simulations` exists: a
+        Connect 4 network scoring 0.39 raw across depths 2, 4 and 6 beat depth 5 at 0.635 once it
+        was given a hundred simulations. Both are legitimate measurements of different things.
+        """
+        raw = self._train(ladder_rungs=('minimax:1',), ladder_games=10)[-1]
+        searched = self._train(ladder_rungs=('minimax:1',), ladder_games=10,
+                               ladder_simulations=20)[-1]
+
+        self.assertGreater(searched.ladder_score, raw.ladder_score)
+        self.assertEqual(raw.optimal_rate, searched.optimal_rate,
+                         'searching the ladder must not change what was trained')
+
+    def test_a_mean_over_no_rungs_is_not_a_division_by_zero(self):
+        from ai.zero.train import _mean_score
+
+        self.assertEqual(0.0, _mean_score(None))
+
+    def test_each_game_selects_on_the_measure_that_still_moves_for_it(self):
+        """
+        Tic-tac-toe's ladder saturates at perfect play while agreement is still resolving real
+        differences, so selecting on the ladder there is choosing arbitrarily among ties. Connect
+        4 is the mirror image: its agreement covers a sixth of the game.
+        """
+        from ai.zero.train import metric_for
+
+        self.assertEqual('agreement', metric_for('TicTacToe'))
+        self.assertEqual('ladder', metric_for('Connect4'))
+        self.assertEqual('ladder', metric_for('SomeNewGame'), 'games win games by default')
+
+    def test_the_game_default_can_be_overridden(self):
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                  ladder_rungs=('minimax:1',), ladder_games=10, metric='ladder',
+                  latest_path=latest, seed=0)
+            self.assertEqual('ladder', load(latest)['metadata']['metric'])
+
+    def test_asking_for_the_ladder_with_it_switched_off_falls_back_rather_than_lying(self):
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            with self.assertLogs('chess', level='WARNING'):
+                train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                      ladder_every=0, metric='ladder', latest_path=latest, seed=0)
+            self.assertEqual('agreement', load(latest)['metadata']['metric'])
+
+    def test_an_unknown_metric_is_refused(self):
+        from ai.zero.train import train
+
+        with self.assertRaises(ValueError):
+            train(TicTacToe, generations=1, games_per_generation=2, simulations=5, steps=1,
+                  metric='vibes', seed=0)
+
+    def test_the_checkpoint_records_which_measure_its_bar_was_set_on(self):
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                  ladder_rungs=('minimax:1',), ladder_games=10, metric='ladder',
+                  latest_path=latest, seed=0)
+            self.assertEqual('ladder', load(latest)['metadata']['metric'])
+
+            train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                  ladder_every=0, metric='agreement', latest_path=latest, seed=0)
+            self.assertEqual('agreement', load(latest)['metadata']['metric'])
+
+    def test_a_bar_set_on_another_measure_is_not_carried_across_a_resume(self):
+        """
+        An agreement rate and a ladder score are both numbers between 0 and 1 and are not the same
+        quantity. Resuming a ladder run from an agreement bar of 0.812 sets a target no ladder
+        score reaches, and the best checkpoint then silently never updates again.
+        """
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            best = os.path.join(directory, 'best.pt')
+
+            # An agreement-scored run first: its bar lands around 0.55, far above any ladder score
+            # this network will manage.
+            train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                  ladder_every=0, metric='agreement', latest_path=latest,
+                  checkpoint_path=best, seed=0)
+
+            train(TicTacToe, generations=2, games_per_generation=4, simulations=5, steps=2,
+                  ladder_rungs=('minimax:1',), ladder_games=10, metric='ladder',
+                  latest_path=latest, checkpoint_path=best, resume_from=latest, seed=0)
+
+            self.assertTrue(os.path.exists(best))
+            self.assertEqual('ladder', load(best)['metadata']['chosen_on'],
+                             'the best checkpoint should have been rewritten on the new measure')
+
+
+@needs_torch
+class TestGradingEveryTier(unittest.TestCase):
+    def test_an_enumerable_game_has_one_tier_covering_everything(self):
+        from ai.zero.train import grading_sets
+
+        sets = grading_sets(TicTacToe)
+        self.assertEqual(['all'], list(sets))
+        positions, _ = sets['all']
+        self.assertGreater(len(positions), 4000, 'the whole tic-tac-toe state space')
+
+    def test_a_corpus_game_is_graded_on_every_tier_not_just_the_opening(self):
+        """
+        The measurement failure this exists to prevent. Tier E is the first six discs - a sixth of
+        a game - and a network tuned to it can be a novice everywhere else without the number
+        moving.
+        """
+        from ai.zero.train import grading_sets
+        from games.connect4.board import Connect4
+
+        sets = grading_sets(Connect4)
+        self.assertEqual(['E', 'R', 'P'], list(sets))
+        for tier, (positions, _) in sets.items():
+            self.assertGreater(len(positions), 1000, tier)
+
+
+@needs_torch
+class TestResuming(unittest.TestCase):
+    """
+    Picking a killed run back up where it stopped, which is the only thing that makes a run
+    measured in hours safe to start on a machine that can go away.
+    """
+
+    def _train(self, directory, generations, resume=False):
+        from ai.zero.train import train
+
+        return train(
+            TicTacToe,
+            generations=generations,
+            games_per_generation=4,
+            simulations=5,
+            steps=2,
+            benchmark_every=1000,  # Grading is the slow part and this test is not about grading
+            latest_path=os.path.join(directory, 'latest.pt'),
+            metrics_path=os.path.join(directory, 'run.jsonl'),
+            resume_from=os.path.join(directory, 'latest.pt') if resume else None,
+            seed=0,
+        )
+
+    def test_a_resumed_run_continues_rather_than_replaying(self):
+        """
+        The bug this exists to catch: resuming from the *best* checkpoint rather than the latest
+        one re-runs every generation since the last improvement, and the metrics file grows a
+        repeated generation number where the seam is.
+        """
+        from ai.zero.metrics import read
+
+        with tempfile.TemporaryDirectory() as directory:
+            self._train(directory, generations=3)
+            self._train(directory, generations=6, resume=True)
+
+            recorded = [entry['generation'] for entry in read(os.path.join(directory, 'run.jsonl'))]
+            self.assertEqual([1, 2, 3, 4, 5, 6], recorded)
+
+    def test_it_carries_on_from_the_weights_it_stopped_with(self):
+        from ai.zero.checkpoint import load
+        from ai.zero.net import evaluate
+
+        with tempfile.TemporaryDirectory() as directory:
+            self._train(directory, generations=2)
+            stopped = load(os.path.join(directory, 'latest.pt'))
+            self.assertEqual(2, stopped['generation'])
+
+            state = TicTacToe([4, 0])
+            before = evaluate(stopped['net'], state, Encoder)
+            resumed = self._train(directory, generations=3, resume=True)
+            self.assertNotEqual(before, evaluate(resumed, state, Encoder),
+                                'the resumed run should have moved the weights on')
+
+    def test_the_hook_sees_a_checkpoint_that_matches_the_generation_it_is_told_about(self):
+        """
+        The pair a hook copies has to be consistent, since `--commit-every` copies it somewhere
+        a resume will read it from. Called before the save, the hook gets generation N's metrics
+        line and generation N-1's weights, and resuming from that pair replays a generation and
+        writes its number into the metrics file twice.
+        """
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        seen = []
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            train(
+                TicTacToe, generations=3, games_per_generation=4, simulations=5, steps=2,
+                benchmark_every=1000, latest_path=latest, seed=0,
+                on_generation=lambda progress: seen.append(
+                    (progress.generation, load(latest)['generation'])),
+            )
+
+        self.assertEqual([(1, 1), (2, 2), (3, 3)], seen)
+
+    def test_resuming_a_finished_run_does_nothing_rather_than_starting_over(self):
+        """Relaunching a run that already finished should be a no-op, not four more hours."""
+        from ai.zero.metrics import read
+
+        with tempfile.TemporaryDirectory() as directory:
+            self._train(directory, generations=2)
+            self._train(directory, generations=2, resume=True)
+
+            recorded = [entry['generation'] for entry in read(os.path.join(directory, 'run.jsonl'))]
+            self.assertEqual([1, 2], recorded)
 
 
 @needs_torch
