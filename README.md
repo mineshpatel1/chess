@@ -970,11 +970,24 @@ Not one difference clears its own standard error, and on the mean the *earlier* 
 marginally ahead. They are the same player. Both beat depth 7, so the ladder never found the
 ceiling of either.
 
-**The in-loop ladder said otherwise, and it was wrong.** Its score rose from 0.641 to 0.717 across
-those same generations. It runs with a fixed seed, so it plays the *same fifty openings* every
-generation — consecutive scores therefore share a common bias instead of being independent draws,
-and a run of high scores looks like a trend when it is a correlated wobble. A metric watched every
-generation should vary its openings with the generation; this one did not.
+**The in-loop ladder appeared to say otherwise, and the reason is worth knowing.** Its score rose
+from 0.641 to 0.717 across those generations, which reads as steady improvement. It was recovery
+from a dip the resume itself caused:
+
+| generation | 20 | **21** | 22 | 23 | 24 | 27 |
+|---|---|---|---|---|---|---|
+| Buffer | 40,000 | **12,381** | 24,983 | 37,270 | 40,000 | 40,000 |
+| Ladder | 0.720 | **0.637** | 0.642 | 0.665 | 0.633 | 0.730 |
+
+The run was resumed at generation 21, and **the replay buffer deliberately does not travel in a
+checkpoint** — it is hundreds of megabytes and refills in a few generations. So generation 21
+trained on a third of the usual data and got worse, generations 22 to 24 refilled it, and by
+generation 27 the network was back where generation 20 had been. Nothing was learned in between:
+the curve is the shape of the buffer, not of the player.
+
+Two lessons. **A resume costs about three generations**, which is an acceptable price for rescuing a
+run and a trap when it is not told apart from progress. And a metric read every generation has to be
+read against what changed around it — the buffer column was in the metrics file the whole time.
 
 Two consequences worth carrying forward. **Checkpoint selection is choosing noise at this plateau**
 — the run picked generation 29 as best on a ladder score of 0.740, and generation 20 plays just as
