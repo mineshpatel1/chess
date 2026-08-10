@@ -190,6 +190,31 @@ LADDER_GAMES = 100
 # game whose generations are seconds wants this far less often.
 LADDER_EVERY = 1
 
+# Which measure picks the best checkpoint, **per game**, because the right answer differs and both
+# wrong answers are silent.
+#
+# Tic-tac-toe: agreement. Its ladder saturates - the network reaches perfect play early and then
+# every rung returns the same score for the rest of the run, so choosing on it is choosing
+# arbitrarily among ties for most of the training, while agreement is still resolving real
+# differences (77 positions still wrong in a network that cannot be beaten).
+#
+# Connect 4: the ladder. Its agreement saturates in usefulness rather than in value - graded on the
+# opening tier it asks about a sixth of a game, and two networks half a point apart on it scored
+# 0.055 and 0.635 against `minimax:4`.
+#
+# The general shape: pick whichever measure still *moves* where the player actually is. A game with
+# no ladder, or a run with the ladder off, falls back to agreement.
+SELECTION_METRIC = {
+    'TicTacToe': 'agreement',
+    'Connect4': 'ladder',
+}
+SELECTION_DEFAULT = 'ladder'
+
+
+def metric_for(game_name: str) -> str:
+    """Which measure `best` means for a game. See `SELECTION_METRIC`."""
+    return SELECTION_METRIC.get(game_name, SELECTION_DEFAULT)
+
 # Positions per forward pass when grading. Large enough that per-call overhead is amortised away,
 # small enough that a five-block tower's activations for the batch still fit comfortably.
 GRADING_CHUNK = 2048
@@ -285,6 +310,7 @@ def train(
     ladder_every: int = LADDER_EVERY,
     ladder_rungs: Sequence[str] = LADDER_RUNGS,
     ladder_games: int = LADDER_GAMES,
+    metric: Optional[str] = None,
     symmetries: bool = SYMMETRIES,
     checkpoint_path: Optional[str] = None,
     latest_path: Optional[str] = None,
@@ -316,8 +342,13 @@ def train(
     first = 1
 
     # Which measure `best` means, recorded into every checkpoint so a resume can refuse to compare
-    # against a bar set on a different one.
-    measure = 'ladder' if ladder_every > 0 else 'agreement'
+    # against a bar set on a different one. Per game unless the caller says otherwise.
+    measure = metric or metric_for(game.__name__)
+    if measure not in ('ladder', 'agreement'):
+        raise ValueError(f'unknown selection metric {measure!r}; use "ladder" or "agreement"')
+    if measure == 'ladder' and ladder_every <= 0:
+        log.warning('selection asked for the ladder but it is switched off; using agreement')
+        measure = 'agreement'
 
     if resume_from:
         # The replay buffer is deliberately not restored - see ai/zero/checkpoint.py. The first
@@ -432,7 +463,7 @@ def train(
 
         # The run's own measure, computed once here so the checkpoints written below and the
         # comparison made afterwards cannot disagree about what `best` means.
-        rate = progress.ladder_score if standing else report.overall.rate
+        rate = progress.ladder_score if measure == 'ladder' else report.overall.rate
 
         # Written every generation whether or not it improved, because this is the file a
         # resume reads. `checkpoint_path` holds the *best* network, which is what you want to
@@ -465,7 +496,7 @@ def train(
                 save(net, checkpoint_path, game=game.__name__, generation=generation,
                      metadata={'ladder_score': progress.ladder_score,
                                'optimal_rate': report.overall.rate,
-                               'chosen_on': 'ladder' if standing else 'agreement',
+                               'chosen_on': measure,
                                'simulations': simulations},
                      optimiser=optimiser)
 
@@ -475,7 +506,7 @@ def train(
 
     # Named rather than assumed. This line used to say "agreement with perfect play" whatever the
     # number was, and after the metric changed it went on saying it about a ladder score.
-    if last_standing is not None:
+    if measure == 'ladder' and last_standing is not None:
         opponents = ', '.join(rung.spec for rung in last_standing.rungs)
         log.info(f'best ladder score against {opponents}: {best_rate:.3f}')
     else:

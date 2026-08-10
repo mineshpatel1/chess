@@ -72,6 +72,8 @@ def train(args) -> None:
         extra['ladder_rungs'] = args.ladder_rungs
     if args.ladder_games:
         extra['ladder_games'] = args.ladder_games
+    if args.metric:
+        extra['metric'] = args.metric
 
     run(
         game,
@@ -331,6 +333,9 @@ def main(argv: Optional[list] = None) -> None:
                               'the game\'s full ladder')
     trainer.add_argument('--ladder-games', type=int, default=None,
                          help='games per rung (default 100, worth about +/-0.045)')
+    trainer.add_argument('--metric', choices=('ladder', 'agreement'), default=None,
+                         help='what the best checkpoint is chosen on; defaults per game, since '
+                              'tic-tac-toe saturates the ladder and Connect 4 saturates agreement')
     trainer.add_argument('--games-in-flight', type=int, default=None,
                          help='self-play games advanced together (throughput only)')
     trainer.add_argument('--seed', type=int, default=1)

@@ -313,6 +313,47 @@ class TestTheLadderMetric(unittest.TestCase):
 
         self.assertEqual(0.0, _mean_score(None))
 
+    def test_each_game_selects_on_the_measure_that_still_moves_for_it(self):
+        """
+        Tic-tac-toe's ladder saturates at perfect play while agreement is still resolving real
+        differences, so selecting on the ladder there is choosing arbitrarily among ties. Connect
+        4 is the mirror image: its agreement covers a sixth of the game.
+        """
+        from ai.zero.train import metric_for
+
+        self.assertEqual('agreement', metric_for('TicTacToe'))
+        self.assertEqual('ladder', metric_for('Connect4'))
+        self.assertEqual('ladder', metric_for('SomeNewGame'), 'games win games by default')
+
+    def test_the_game_default_can_be_overridden(self):
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                  ladder_rungs=('minimax:1',), ladder_games=10, metric='ladder',
+                  latest_path=latest, seed=0)
+            self.assertEqual('ladder', load(latest)['metadata']['metric'])
+
+    def test_asking_for_the_ladder_with_it_switched_off_falls_back_rather_than_lying(self):
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            with self.assertLogs('chess', level='WARNING'):
+                train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                      ladder_every=0, metric='ladder', latest_path=latest, seed=0)
+            self.assertEqual('agreement', load(latest)['metadata']['metric'])
+
+    def test_an_unknown_metric_is_refused(self):
+        from ai.zero.train import train
+
+        with self.assertRaises(ValueError):
+            train(TicTacToe, generations=1, games_per_generation=2, simulations=5, steps=1,
+                  metric='vibes', seed=0)
+
     def test_the_checkpoint_records_which_measure_its_bar_was_set_on(self):
         from ai.zero.checkpoint import load
         from ai.zero.train import train
@@ -320,11 +361,12 @@ class TestTheLadderMetric(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             latest = os.path.join(directory, 'latest.pt')
             train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
-                  ladder_rungs=('minimax:1',), ladder_games=10, latest_path=latest, seed=0)
+                  ladder_rungs=('minimax:1',), ladder_games=10, metric='ladder',
+                  latest_path=latest, seed=0)
             self.assertEqual('ladder', load(latest)['metadata']['metric'])
 
             train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
-                  ladder_every=0, latest_path=latest, seed=0)
+                  ladder_every=0, metric='agreement', latest_path=latest, seed=0)
             self.assertEqual('agreement', load(latest)['metadata']['metric'])
 
     def test_a_bar_set_on_another_measure_is_not_carried_across_a_resume(self):
@@ -343,11 +385,12 @@ class TestTheLadderMetric(unittest.TestCase):
             # An agreement-scored run first: its bar lands around 0.55, far above any ladder score
             # this network will manage.
             train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
-                  ladder_every=0, latest_path=latest, checkpoint_path=best, seed=0)
+                  ladder_every=0, metric='agreement', latest_path=latest,
+                  checkpoint_path=best, seed=0)
 
             train(TicTacToe, generations=2, games_per_generation=4, simulations=5, steps=2,
-                  ladder_rungs=('minimax:1',), ladder_games=10, latest_path=latest,
-                  checkpoint_path=best, resume_from=latest, seed=0)
+                  ladder_rungs=('minimax:1',), ladder_games=10, metric='ladder',
+                  latest_path=latest, checkpoint_path=best, resume_from=latest, seed=0)
 
             self.assertTrue(os.path.exists(best))
             self.assertEqual('ladder', load(best)['metadata']['chosen_on'],
