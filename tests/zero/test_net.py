@@ -313,6 +313,46 @@ class TestTheLadderMetric(unittest.TestCase):
 
         self.assertEqual(0.0, _mean_score(None))
 
+    def test_the_checkpoint_records_which_measure_its_bar_was_set_on(self):
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                  ladder_rungs=('minimax:1',), ladder_games=10, latest_path=latest, seed=0)
+            self.assertEqual('ladder', load(latest)['metadata']['metric'])
+
+            train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                  ladder_every=0, latest_path=latest, seed=0)
+            self.assertEqual('agreement', load(latest)['metadata']['metric'])
+
+    def test_a_bar_set_on_another_measure_is_not_carried_across_a_resume(self):
+        """
+        An agreement rate and a ladder score are both numbers between 0 and 1 and are not the same
+        quantity. Resuming a ladder run from an agreement bar of 0.812 sets a target no ladder
+        score reaches, and the best checkpoint then silently never updates again.
+        """
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            best = os.path.join(directory, 'best.pt')
+
+            # An agreement-scored run first: its bar lands around 0.55, far above any ladder score
+            # this network will manage.
+            train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                  ladder_every=0, latest_path=latest, checkpoint_path=best, seed=0)
+
+            train(TicTacToe, generations=2, games_per_generation=4, simulations=5, steps=2,
+                  ladder_rungs=('minimax:1',), ladder_games=10, latest_path=latest,
+                  checkpoint_path=best, resume_from=latest, seed=0)
+
+            self.assertTrue(os.path.exists(best))
+            self.assertEqual('ladder', load(best)['metadata']['chosen_on'],
+                             'the best checkpoint should have been rewritten on the new measure')
+
 
 @needs_torch
 class TestGradingEveryTier(unittest.TestCase):

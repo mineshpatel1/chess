@@ -315,6 +315,10 @@ def train(
     best_state, best_rate = None, -1.0
     first = 1
 
+    # Which measure `best` means, recorded into every checkpoint so a resume can refuse to compare
+    # against a bar set on a different one.
+    measure = 'ladder' if ladder_every > 0 else 'agreement'
+
     if resume_from:
         # The replay buffer is deliberately not restored - see ai/zero/checkpoint.py. The first
         # generation after a resume therefore learns from a buffer holding one generation rather
@@ -324,9 +328,22 @@ def train(
         if blob.get('optimiser'):
             optimiser.load_state_dict(blob['optimiser'])
         first = blob['generation'] + 1
-        best_rate = blob['metadata'].get('best_rate', -1.0)
         best_state = {k: v.clone() for k, v in net.state_dict().items()}
-        log.info(f'Resuming {resume_from} from generation {first}, best so far {best_rate:.2%}')
+
+        # Only when the bar was set on the same measure. A ladder score and an agreement rate are
+        # both numbers between 0 and 1 and are not remotely the same quantity: resuming a ladder
+        # run from an agreement bar of 0.812 sets a target no ladder score will ever reach, and the
+        # best checkpoint then silently never updates again for the rest of the run. Caught on the
+        # first resume after the metric changed, from a startup line reading "best so far 81.20%".
+        stored = blob['metadata'].get('metric')
+        if stored == measure:
+            best_rate = blob['metadata'].get('best_rate', -1.0)
+            log.info(f'Resuming {resume_from} from generation {first}, '
+                     f'best {measure} so far {best_rate:.3f}')
+        else:
+            log.info(f'Resuming {resume_from} from generation {first}; it was scored on '
+                     f'{stored or "an older metric"} and this run scores on {measure}, '
+                     f'so the best-so-far bar starts again')
 
         # The metrics file can be one generation ahead of the checkpoint: a generation is recorded
         # before its weights are written, because the record is what says the generation happened.
@@ -413,12 +430,17 @@ def train(
         log.info(str(progress))
         recorder.write(progress._asdict())
 
+        # The run's own measure, computed once here so the checkpoints written below and the
+        # comparison made afterwards cannot disagree about what `best` means.
+        rate = progress.ladder_score if standing else report.overall.rate
+
         # Written every generation whether or not it improved, because this is the file a
         # resume reads. `checkpoint_path` holds the *best* network, which is what you want to
         # play against; resuming from that would replay every generation since it was set.
         if latest_path:
             save(net, latest_path, game=game.__name__, generation=generation,
-                 metadata={'best_rate': max(best_rate, progress.ladder_score),
+                 metadata={'best_rate': max(best_rate, rate),
+                           'metric': measure,
                            'ladder_score': progress.ladder_score,
                            'optimal_rate': report.overall.rate,
                            'simulations': simulations},
@@ -436,7 +458,6 @@ def train(
         # sampling noise that the exhaustive corpus does not - 100 games is worth about +/-0.045 -
         # but a precise measurement of the wrong thing is what kept a network that loses 93 games
         # in 100 looking like the best checkpoint of its run.
-        rate = _mean_score(standing) if standing else report.overall.rate
         if (graded or climbed) and rate > best_rate:
             best_rate = rate
             best_state = {k: v.clone() for k, v in net.state_dict().items()}
