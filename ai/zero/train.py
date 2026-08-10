@@ -26,7 +26,7 @@ import math
 import random
 import time
 from collections import deque
-from typing import Callable, Deque, List, NamedTuple, Optional, Tuple, Type
+from typing import Callable, Deque, Dict, List, NamedTuple, Optional, Sequence, Tuple, Type
 
 import torch
 import torch.nn.functional as F
@@ -169,8 +169,26 @@ REFERENCE_CONNECT4 = {
 # spends parameters learning the symmetry group instead of learning positions.
 SYMMETRIES = False
 
-# Which corpus tier a game without an enumerable state space is graded on. See `grading_set`.
-GRADING_TIER = 'E'
+# The opponents a generation is scored against, and how many games each.
+#
+# **This is the primary metric, and agreement is now a diagnostic.** The two questions - does it
+# know the game, can it be beaten - come apart much harder than this project assumed. Two Connect 4
+# networks half a point apart on agreement scored 0.055 and 0.635 against `minimax:4`. Whichever
+# number chooses checkpoints and stops runs should be the one anybody actually cares about.
+#
+# Raw policy rather than with search, because it costs about 15s a rung against 100 games and the
+# same run measures both: search only ever helped here, so a raw score that climbs is a player that
+# is improving, and the expensive `zero.py ladder` with simulations is what settles a final claim.
+# `None` means the game's own ladder from `ai.ladder.LADDERS`. A caller steering a run usually
+# wants fewer: the rungs a player has already saturated (`random` at 1.000) or cannot touch cost
+# the same to play and move the mean by nothing, so naming the two or three either side of the
+# player's current strength makes the metric sharper for the same time.
+LADDER_RUNGS = None
+LADDER_GAMES = 100
+
+# How often to play them. Every generation at Connect 4's ~40 minutes is under 2% of the time; a
+# game whose generations are seconds wants this far less often.
+LADDER_EVERY = 1
 
 # Positions per forward pass when grading. Large enough that per-call overhead is amortised away,
 # small enough that a five-block tower's activations for the batch still fit comfortably.
@@ -222,17 +240,28 @@ class Progress(NamedTuple):
     distinct_positions: int = 0
     game_length: float = 0.0
     denormal_weights: int = 0
+
+    # The primary metric: mean score against `LADDER_RUNGS`, and the strongest rung actually beaten
+    # (significantly, not merely led). `tier_rates` carries agreement per corpus tier, which is now
+    # a diagnostic rather than the headline.
+    ladder_score: float = 0.0
+    highest_rung: str = ''
+    tier_rates: Optional[Dict[str, float]] = None
+    ladder_seconds: float = 0.0
     self_play_seconds: float = 0.0
     learn_seconds: float = 0.0
     grade_seconds: float = 0.0
 
     def __str__(self) -> str:
+        """The ladder first, because that is the number the run is now steered by."""
+        beaten = f' (beats {self.highest_rung})' if self.highest_rung else ''
         return (
-            f'gen {self.generation:>3}  loss {self.loss:6.4f} '
+            f'gen {self.generation:>3}  ladder {self.ladder_score:5.3f}{beaten}  '
+            f'agreement {self.optimal_rate:6.2%}  '
+            f'value mse {self.value_mse:5.3f}  '
+            f'loss {self.loss:6.4f} '
             f'(policy {self.policy_loss:6.4f}, value {self.value_loss:6.4f})  '
             f'self-play drawn {self.draw_rate:5.1%}  '
-            f'vs perfect play {self.optimal_rate:6.2%}  '
-            f'value mse {self.value_mse:5.3f}  '
             f'{self.seconds:5.1f}s'
         )
 
@@ -253,6 +282,9 @@ def train(
     dirichlet_epsilon: float = DIRICHLET_EPSILON,
     learning_rate: float = LEARNING_RATE,
     benchmark_every: int = BENCHMARK_EVERY,
+    ladder_every: int = LADDER_EVERY,
+    ladder_rungs: Sequence[str] = LADDER_RUNGS,
+    ladder_games: int = LADDER_GAMES,
     symmetries: bool = SYMMETRIES,
     checkpoint_path: Optional[str] = None,
     latest_path: Optional[str] = None,
@@ -276,7 +308,7 @@ def train(
     torch.manual_seed(seed)
 
     net = ZeroNet(encoder.PLANE_SHAPE, encoder.POLICY_SIZE, **architecture(game.__name__))
-    positions, values = grading_set(game)
+    sets = grading_sets(game)
     optimiser = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
     buffer: Deque[Example] = deque(maxlen=buffer_size)
 
@@ -305,7 +337,13 @@ def train(
                 log.info(f'dropped {dropped} recorded generation(s) past the checkpoint')
 
     recorder = Recorder(metrics_path, append=bool(resume_from))
-    last_report = _EMPTY_REPORT
+    last_reports = {tier: _EMPTY_REPORT for tier in sets}
+    last_standing = None
+
+    # Which tier's agreement travels as `optimal_rate`. The opening for a corpus-graded game, so
+    # the field keeps meaning what it meant for every run already recorded; the whole space for a
+    # game small enough to enumerate.
+    headline = 'E' if 'E' in sets else next(iter(sets))
 
     for generation in range(first, generations + 1):
         started = time.perf_counter()
@@ -330,9 +368,23 @@ def train(
 
         graded = generation % max(benchmark_every, 1) == 0 or generation == generations
         grade_started = time.perf_counter()
-        report = _optimal_rate(net, encoder, positions, values) if graded else last_report
+        reports = _grade(net, encoder, sets) if graded else last_reports
         grade_seconds = time.perf_counter() - grade_started
-        last_report = report
+        last_reports = reports
+        report = reports[headline]
+
+        # The primary metric, and the one `best` is chosen on. Agreement is kept as a diagnostic
+        # because it is exact and free; it is not the headline any more, having twice said two
+        # networks were the same player when one of them beat `minimax:4` and the other lost 93
+        # games in 100 to it.
+        climbed = ladder_every > 0 and (generation % ladder_every == 0
+                                        or generation == generations)
+        ladder_started = time.perf_counter()
+        standing = _climb(net, encoder, game, ladder_rungs, ladder_games, seed) if climbed else None
+        ladder_seconds = time.perf_counter() - ladder_started
+        if standing is not None:
+            last_standing = standing
+        standing = last_standing
 
         progress = Progress(
             generation=generation,
@@ -350,6 +402,10 @@ def train(
             distinct_positions=len({str(example.planes) for example in buffer}),
             game_length=sum(lengths) / max(len(lengths), 1),
             denormal_weights=denormals,
+            ladder_score=_mean_score(standing),
+            highest_rung=(standing.highest_beaten or '') if standing else '',
+            tier_rates={tier: report.overall.rate for tier, report in reports.items()},
+            ladder_seconds=ladder_seconds,
             self_play_seconds=play_seconds,
             learn_seconds=learn_seconds,
             grade_seconds=grade_seconds,
@@ -362,7 +418,9 @@ def train(
         # play against; resuming from that would replay every generation since it was set.
         if latest_path:
             save(net, latest_path, game=game.__name__, generation=generation,
-                 metadata={'best_rate': max(best_rate, report.overall.rate),
+                 metadata={'best_rate': max(best_rate, progress.ladder_score),
+                           'ladder_score': progress.ladder_score,
+                           'optimal_rate': report.overall.rate,
                            'simulations': simulations},
                  optimiser=optimiser)
 
@@ -374,20 +432,41 @@ def train(
         if on_generation:
             on_generation(progress)
 
-        rate = report.overall.rate
-        if graded and rate > best_rate:
+        # Chosen on the ladder when there is one, and on agreement otherwise. The ladder carries
+        # sampling noise that the exhaustive corpus does not - 100 games is worth about +/-0.045 -
+        # but a precise measurement of the wrong thing is what kept a network that loses 93 games
+        # in 100 looking like the best checkpoint of its run.
+        rate = _mean_score(standing) if standing else report.overall.rate
+        if (graded or climbed) and rate > best_rate:
             best_rate = rate
             best_state = {k: v.clone() for k, v in net.state_dict().items()}
             if checkpoint_path:
                 save(net, checkpoint_path, game=game.__name__, generation=generation,
-                     metadata={'optimal_rate': rate, 'simulations': simulations},
+                     metadata={'ladder_score': progress.ladder_score,
+                               'optimal_rate': report.overall.rate,
+                               'chosen_on': 'ladder' if standing else 'agreement',
+                               'simulations': simulations},
                      optimiser=optimiser)
 
     recorder.close()
     if best_state is not None:
         net.load_state_dict(best_state)
-    log.info(f'best raw-policy agreement with perfect play: {best_rate:.2%}')
+
+    # Named rather than assumed. This line used to say "agreement with perfect play" whatever the
+    # number was, and after the metric changed it went on saying it about a ladder score.
+    if last_standing is not None:
+        opponents = ', '.join(rung.spec for rung in last_standing.rungs)
+        log.info(f'best ladder score against {opponents}: {best_rate:.3f}')
+    else:
+        log.info(f'best raw-policy agreement with perfect play: {best_rate:.2%}')
     return net
+
+
+def _mean_score(standing) -> float:
+    """The ladder as one number: the mean score across its rungs, or 0.0 if it was not played."""
+    if standing is None or not standing.rungs:
+        return 0.0
+    return sum(rung.result.score for rung in standing.rungs) / len(standing.rungs)
 
 
 def _self_play(net, encoder, game, count, simulations, opening_plies,
@@ -472,23 +551,21 @@ def _learn(net, optimiser, buffer, steps, batch_size, rng):
     return tuple(total / steps for total in totals)
 
 
-def grading_set(game):
+def grading_sets(game):
     """
-    The positions a game is graded over each generation, and how to value them.
+    The positions a game is graded over each generation, one entry per tier.
 
-    Built once and reused, because the alternative for Connect 4 is re-reading a 33,300-line file
-    and rebuilding 22,100 boards every generation.
+    **Every tier, not just the opening, and the reason is a measurement failure worth recording.**
+    Grading used to run on tier `E` alone - every position out to six discs. Two Connect 4 networks
+    then scored 81.72% and 81.20% on it, half a point apart, while one lost 93 games in 100 to
+    `minimax:4` and the other beat it. The opening is a sixth of a game; a network can be tuned to
+    it and remain a novice everywhere the benchmark cannot see. The tell was in the metrics all
+    along - the stronger network's self-play games ran 28.7 plies against 19 - and nobody was
+    looking, because the headline number said the two were the same player.
 
-    Dispatches the way `zero.py grade` does. A game that declares `SOLVED_DEPTH` can be searched to
-    the end of itself, so its whole state space is walkable and solvable on the spot. Anything
-    larger needs answers computed in advance - Connect 4's tree is 4.5e12 positions and
-    `enumerate_positions` would never return.
-
-    Connect 4 is graded on the **enumerated opening tier alone**: every distinct position out to
-    six discs, 22,100 of them. Exhaustive rather than sampled, so the number carries no sampling
-    noise - which matters when it is choosing which checkpoint to keep, generation after
-    generation. It is also the region with the most room to show improvement, `minimax:4` scoring
-    79.1% there against 95.5% on deep random positions.
+    Kept as separate tiers rather than pooled, which `ai.corpus` argues for at length: `R` reaches
+    positions no sensible game visits and `P` never asks a player to recover from a bad one, so one
+    figure over both would hide whichever is worse - and which is worse is the interesting part.
     """
     if game.SOLVED_DEPTH is not None:
         # `.copy()` is not optional. `enumerate_positions` yields the *live* state as it walks the
@@ -505,7 +582,8 @@ def grading_set(game):
             state.solver_key: move_values(state, table)
             for state, _ in positions if not state.is_game_over
         }
-        return positions, lambda state: solved[state.solver_key]
+        # One tier, because there is nothing to divide: the whole state space is here.
+        return {'all': (positions, lambda state: solved[state.solver_key])}
 
     path = corpus.CORPORA.get(game.__name__)
     if path is None:
@@ -514,8 +592,40 @@ def grading_set(game):
             f'run has nothing to grade itself against'
         )
 
-    entries = corpus.load(path, tiers=(GRADING_TIER,))
-    return list(corpus.positions(entries, game)), corpus.values(entries)
+    sets = {}
+    for tier, _ in corpus.TIERS:
+        entries = corpus.load(path, tiers=(tier,))
+        sets[tier] = (list(corpus.positions(entries, game)), corpus.values(entries))
+    return sets
+
+
+def _climb(net, encoder, game, rungs, games, seed):
+    """
+    The network's raw policy against each rung, which is the metric the run is steered by.
+
+    Raw rather than searched, and the distinction is affordable rather than principled: with search
+    this is minutes a rung instead of seconds, and every measurement taken here has had search help
+    rather than hurt - so a raw score that climbs is a player improving. The expensive searched
+    ladder is what settles a claim at the end, not what watches a run.
+    """
+    from ai import ladder as ladders  # Local: keeps `ai.zero` importable without the match harness
+
+    def raw(state):
+        priors, _ = evaluate(net, state, encoder)
+        return max(state.legal_moves, key=lambda move: priors[encoder.action_index(move)])
+
+    default = ladders.for_game(game)
+    rung_ladder = ladders.Ladder(
+        rungs=tuple(rungs) if rungs else default.rungs,
+        opening_plies=default.opening_plies)
+    return ladders.climb(game, raw, ladder=rung_ladder, games=games, seed=seed,
+                         print_progress=False)
+
+
+def _grade(net, encoder, sets):
+    """Every tier, each its own report. See `grading_sets` for why they are not pooled."""
+    return {tier: _optimal_rate(net, encoder, positions, values)
+            for tier, (positions, values) in sets.items()}
 
 
 def _optimal_rate(net, encoder, positions, values):

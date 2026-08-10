@@ -146,6 +146,8 @@ from tests.zero.test_net import (
     TestNetwork,
     TestMasking,
     TestFlushingDenormals,
+    TestTheLadderMetric,
+    TestGradingEveryTier,
     TestCheckpoints,
     TestPlayer,
     TestResuming,

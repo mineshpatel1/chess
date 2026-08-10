@@ -272,6 +272,74 @@ class TestCheckpoints(unittest.TestCase):
 
 
 @needs_torch
+class TestTheLadderMetric(unittest.TestCase):
+    """
+    The metric the run is now steered by, and the reason it changed.
+
+    Grading on the opening tier alone said two Connect 4 networks were half a point apart while one
+    beat `minimax:4` and the other lost 93 games in 100 to it. So the headline is games now, and
+    agreement is a diagnostic - but the ladder must be *observation only*, which is what these
+    assert.
+    """
+
+    def _train(self, **kwargs):
+        from ai.zero.train import train
+
+        seen = []
+        train(TicTacToe, generations=2, games_per_generation=6, simulations=8, steps=2,
+              seed=0, on_generation=seen.append, **kwargs)
+        return seen
+
+    def test_playing_the_ladder_does_not_change_what_is_trained(self):
+        """A metric that perturbed the run would make every number it reported about a different run."""
+        without = self._train(ladder_every=0)
+        with_it = self._train(ladder_rungs=('minimax:1',), ladder_games=10)
+
+        self.assertEqual([p.optimal_rate for p in without], [p.optimal_rate for p in with_it])
+        self.assertEqual([p.loss for p in without], [p.loss for p in with_it])
+
+    def test_it_records_a_score_and_the_tiers_behind_it(self):
+        progress = self._train(ladder_rungs=('minimax:1',), ladder_games=10)[-1]
+
+        self.assertGreaterEqual(progress.ladder_score, 0.0)
+        self.assertLessEqual(progress.ladder_score, 1.0)
+        self.assertIn('all', progress.tier_rates, 'tic-tac-toe is enumerable, so one tier')
+
+    def test_with_no_ladder_it_reports_zero_rather_than_inventing_one(self):
+        self.assertEqual(0.0, self._train(ladder_every=0)[-1].ladder_score)
+
+    def test_a_mean_over_no_rungs_is_not_a_division_by_zero(self):
+        from ai.zero.train import _mean_score
+
+        self.assertEqual(0.0, _mean_score(None))
+
+
+@needs_torch
+class TestGradingEveryTier(unittest.TestCase):
+    def test_an_enumerable_game_has_one_tier_covering_everything(self):
+        from ai.zero.train import grading_sets
+
+        sets = grading_sets(TicTacToe)
+        self.assertEqual(['all'], list(sets))
+        positions, _ = sets['all']
+        self.assertGreater(len(positions), 4000, 'the whole tic-tac-toe state space')
+
+    def test_a_corpus_game_is_graded_on_every_tier_not_just_the_opening(self):
+        """
+        The measurement failure this exists to prevent. Tier E is the first six discs - a sixth of
+        a game - and a network tuned to it can be a novice everywhere else without the number
+        moving.
+        """
+        from ai.zero.train import grading_sets
+        from games.connect4.board import Connect4
+
+        sets = grading_sets(Connect4)
+        self.assertEqual(['E', 'R', 'P'], list(sets))
+        for tier, (positions, _) in sets.items():
+            self.assertGreater(len(positions), 1000, tier)
+
+
+@needs_torch
 class TestResuming(unittest.TestCase):
     """
     Picking a killed run back up where it stopped, which is the only thing that makes a run

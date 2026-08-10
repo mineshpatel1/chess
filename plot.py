@@ -47,7 +47,11 @@ REFERENCES = {
 
 # Which fields to draw, in reading order: the headline first, then what explains it.
 CHARTS: Sequence[Tuple[str, str, str]] = (
-    ('optimal_rate', 'Agreement with perfect play', 'rate'),
+    # First, because it is the primary metric. Agreement follows as a diagnostic: two Connect 4
+    # networks half a point apart on it scored 0.055 and 0.635 against `minimax:4`, so a page that
+    # led with agreement was leading with the number that hid the difference.
+    ('ladder_score', 'Ladder — mean score against the rungs', 'rate'),
+    ('optimal_rate', 'Agreement with perfect play (opening only)', 'rate'),
     ('value_mse', 'Value head error against truth', 'plain'),
     ('policy_loss', 'Policy loss, against its targets’ entropy', 'plain'),
     ('value_loss', 'Value loss', 'plain'),

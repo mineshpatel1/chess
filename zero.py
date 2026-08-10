@@ -66,6 +66,12 @@ def train(args) -> None:
         extra['games_in_flight'] = args.games_in_flight
     if args.buffer_size:
         extra['buffer_size'] = args.buffer_size
+    if args.ladder_every is not None:
+        extra['ladder_every'] = args.ladder_every
+    if args.ladder_rungs:
+        extra['ladder_rungs'] = args.ladder_rungs
+    if args.ladder_games:
+        extra['ladder_games'] = args.ladder_games
 
     run(
         game,
@@ -317,6 +323,14 @@ def main(argv: Optional[list] = None) -> None:
     trainer.add_argument('--buffer-size', type=int, default=None,
                          help='positions kept in the replay buffer (default 20,000); scale it '
                               'with --games or a generation overflows it')
+    trainer.add_argument('--ladder-every', type=int, default=None,
+                         help='play the ladder every N generations (0 turns it off); this is the '
+                              'metric the best checkpoint is chosen on')
+    trainer.add_argument('--ladder-rungs', nargs='+', default=None,
+                         help='which opponents, e.g. minimax:2 minimax:4 minimax:6; defaults to '
+                              'the game\'s full ladder')
+    trainer.add_argument('--ladder-games', type=int, default=None,
+                         help='games per rung (default 100, worth about +/-0.045)')
     trainer.add_argument('--games-in-flight', type=int, default=None,
                          help='self-play games advanced together (throughput only)')
     trainer.add_argument('--seed', type=int, default=1)
