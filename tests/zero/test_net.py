@@ -348,7 +348,8 @@ class TestTheLadderMetric(unittest.TestCase):
             train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
                   ladder_rungs=('minimax:1',), ladder_games=10, metric='ladder',
                   latest_path=latest, seed=0)
-            self.assertEqual('ladder', load(latest)['metadata']['metric'])
+            self.assertEqual('ladder:minimax:1', load(latest)['metadata']['metric'],
+                             'the rungs are part of the measure, not a detail of it')
 
     def test_asking_for_the_ladder_with_it_switched_off_falls_back_rather_than_lying(self):
         from ai.zero.checkpoint import load
@@ -377,11 +378,39 @@ class TestTheLadderMetric(unittest.TestCase):
             train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
                   ladder_rungs=('minimax:1',), ladder_games=10, metric='ladder',
                   latest_path=latest, seed=0)
-            self.assertEqual('ladder', load(latest)['metadata']['metric'])
+            self.assertEqual('ladder:minimax:1', load(latest)['metadata']['metric'],
+                             'the rungs are part of the measure, not a detail of it')
 
             train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
                   ladder_every=0, metric='agreement', latest_path=latest, seed=0)
             self.assertEqual('agreement', load(latest)['metadata']['metric'])
+
+    def test_changing_the_rungs_resets_the_bar_too(self):
+        """
+        Caught in flight on a live run. A bar of 0.740 was set against depths 4, 5 and 6; the
+        resume scored against 7 and 8, where the same network manages about 0.59. Comparing the
+        names alone - both "ladder" - carried a bar nothing could clear, and the best checkpoint
+        would have silently stopped updating for the rest of the run.
+        """
+        from ai.zero.checkpoint import load
+        from ai.zero.train import train
+
+        with tempfile.TemporaryDirectory() as directory:
+            latest = os.path.join(directory, 'latest.pt')
+            best = os.path.join(directory, 'best.pt')
+
+            train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
+                  ladder_rungs=('minimax:4',), ladder_games=10, metric='ladder',
+                  latest_path=latest, checkpoint_path=best, seed=0)
+            first = load(best)['generation']
+
+            train(TicTacToe, generations=2, games_per_generation=4, simulations=5, steps=2,
+                  ladder_rungs=('minimax:1',), ladder_games=10, metric='ladder',
+                  latest_path=latest, checkpoint_path=best, resume_from=latest, seed=0)
+
+            self.assertNotEqual(first, load(best)['generation'],
+                                'the bar should have restarted when the rungs changed')
+            self.assertEqual('ladder:minimax:1', load(best)['metadata']['chosen_on'])
 
     def test_a_bar_set_on_another_measure_is_not_carried_across_a_resume(self):
         """
@@ -407,7 +436,7 @@ class TestTheLadderMetric(unittest.TestCase):
                   latest_path=latest, checkpoint_path=best, resume_from=latest, seed=0)
 
             self.assertTrue(os.path.exists(best))
-            self.assertEqual('ladder', load(best)['metadata']['chosen_on'],
+            self.assertEqual('ladder:minimax:1', load(best)['metadata']['chosen_on'],
                              'the best checkpoint should have been rewritten on the new measure')
 
 

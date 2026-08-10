@@ -351,6 +351,13 @@ def train(
 
     # Which measure `best` means, recorded into every checkpoint so a resume can refuse to compare
     # against a bar set on a different one. Per game unless the caller says otherwise.
+    #
+    # **The rungs are part of the measure's identity, not a detail of it.** "ladder" against depths
+    # 4, 5 and 6 scores about 0.73 for a network that scores 0.59 against 7 and 8 - so a resume that
+    # changed the rungs and compared names alone would carry a bar no checkpoint could clear, and
+    # the best network would silently never update again. That is the same failure as resuming a
+    # ladder run from an agreement bar, one level down, and it was caught the same way: by reading
+    # the number in the startup line.
     measure = metric or metric_for(game.__name__)
     if measure not in ('ladder', 'agreement'):
         raise ValueError(f'unknown selection metric {measure!r}; use "ladder" or "agreement"')
@@ -375,7 +382,7 @@ def train(
         # best checkpoint then silently never updates again for the rest of the run. Caught on the
         # first resume after the metric changed, from a startup line reading "best so far 81.20%".
         stored = blob['metadata'].get('metric')
-        if stored == measure:
+        if stored == _measure_identity(measure, game, ladder_rungs):
             best_rate = blob['metadata'].get('best_rate', -1.0)
             log.info(f'Resuming {resume_from} from generation {first}, '
                      f'best {measure} so far {best_rate:.3f}')
@@ -480,7 +487,7 @@ def train(
         if latest_path:
             save(net, latest_path, game=game.__name__, generation=generation,
                  metadata={'best_rate': max(best_rate, rate),
-                           'metric': measure,
+                           'metric': _measure_identity(measure, game, ladder_rungs),
                            'ladder_score': progress.ladder_score,
                            'optimal_rate': report.overall.rate,
                            'simulations': simulations},
@@ -505,7 +512,7 @@ def train(
                 save(net, checkpoint_path, game=game.__name__, generation=generation,
                      metadata={'ladder_score': progress.ladder_score,
                                'optimal_rate': report.overall.rate,
-                               'chosen_on': measure,
+                               'chosen_on': _measure_identity(measure, game, ladder_rungs),
                                'simulations': simulations},
                      optimiser=optimiser)
 
@@ -521,6 +528,23 @@ def train(
     else:
         log.info(f'best raw-policy agreement with perfect play: {best_rate:.2%}')
     return net
+
+
+def _measure_identity(measure: str, game, rungs) -> str:
+    """
+    The measure `best` is chosen on, including which opponents when it is the ladder.
+
+    A bar of 0.740 set against depths 4, 5 and 6 is unreachable for the same network measured
+    against 7 and 8, so a resume comparing "ladder" to "ladder" would freeze the best checkpoint
+    for the rest of the run without saying anything.
+    """
+    if measure != 'ladder':
+        return measure
+
+    from ai import ladder as ladders  # Local, as in `_climb`
+
+    used = tuple(rungs) if rungs else ladders.for_game(game).rungs
+    return 'ladder:' + ','.join(used)
 
 
 def _mean_score(standing) -> float:

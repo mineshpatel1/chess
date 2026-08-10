@@ -17,6 +17,11 @@ models/connect4*.pt
 # machine costs a few generations rather than the run. See `zero.py train --commit-every`.
 !models/connect4-latest.pt
 
+# And the resume point of the 2,000-games-per-generation experiment, for the same reason: it runs
+# unattended for hours on a machine that has been reclaimed four times in a day. Delete this line
+# and the file once the experiment has answered its question.
+!models/connect4-g2000-latest.pt
+
 # One-off experiment runners. The findings get written down; the scratch does not need to live
 # at the repo root. Their metrics under runs/ are kept, being the evidence behind the findings.
 _*.py
