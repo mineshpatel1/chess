@@ -186,6 +186,13 @@ SYMMETRIES = False
 LADDER_RUNGS = None
 LADDER_GAMES = 100
 
+# Simulations the challenger searches with when it climbs. Zero is the raw policy: cheap, and
+# a direction indicator only - a network scoring 0.39 raw across depths 2, 4 and 6 beat depth 5
+# at 0.635 with a hundred simulations, so the raw number says which way a run is going and
+# nothing about how strong it is. Above zero measures the player itself, at roughly 7 minutes a
+# rung over 100 games.
+LADDER_SIMULATIONS = 0
+
 # How often to play them. Every generation at Connect 4's ~40 minutes is under 2% of the time; a
 # game whose generations are seconds wants this far less often.
 LADDER_EVERY = 1
@@ -310,6 +317,7 @@ def train(
     ladder_every: int = LADDER_EVERY,
     ladder_rungs: Sequence[str] = LADDER_RUNGS,
     ladder_games: int = LADDER_GAMES,
+    ladder_simulations: int = LADDER_SIMULATIONS,
     metric: Optional[str] = None,
     symmetries: bool = SYMMETRIES,
     checkpoint_path: Optional[str] = None,
@@ -428,7 +436,8 @@ def train(
         climbed = ladder_every > 0 and (generation % ladder_every == 0
                                         or generation == generations)
         ladder_started = time.perf_counter()
-        standing = _climb(net, encoder, game, ladder_rungs, ladder_games, seed) if climbed else None
+        standing = (_climb(net, encoder, game, ladder_rungs, ladder_games, seed, ladder_simulations)
+                    if climbed else None)
         ladder_seconds = time.perf_counter() - ladder_started
         if standing is not None:
             last_standing = standing
@@ -651,26 +660,41 @@ def grading_sets(game):
     return sets
 
 
-def _climb(net, encoder, game, rungs, games, seed):
+def _climb(net, encoder, game, rungs, games, seed, simulations=0):
     """
-    The network's raw policy against each rung, which is the metric the run is steered by.
+    The network against each rung, which is the metric the run is steered by.
 
-    Raw rather than searched, and the distinction is affordable rather than principled: with search
-    this is minutes a rung instead of seconds, and every measurement taken here has had search help
-    rather than hurt - so a raw score that climbs is a player improving. The expensive searched
-    ladder is what settles a claim at the end, not what watches a run.
+    `simulations` chooses which player is measured, and the two answer different questions.
+
+    **Raw (0) is cheap and understates the player badly.** It costs about 15s a rung over 100 games
+    and it is a fine *direction* indicator, but measured here a network scoring 0.39 raw across
+    depths 2, 4 and 6 beat depth 5 at 0.635 once it was allowed 100 simulations. No claim about
+    playing strength should come from the raw number.
+
+    **Searched is what the player actually is**, at roughly 7 minutes per rung over 100 games -
+    about 28% on top of a Connect 4 generation for two rungs, which is worth paying when the
+    question is how strong the thing is rather than which way it is moving.
     """
     from ai import ladder as ladders  # Local: keeps `ai.zero` importable without the match harness
+    from ai.zero.mcts import MCTS
 
     def raw(state):
         priors, _ = evaluate(net, state, encoder)
         return max(state.legal_moves, key=lambda move: priors[encoder.action_index(move)])
 
+    def searched(state):
+        # No noise and the most-visited move rather than a sample: a player being measured should
+        # give its actual opinion rather than a draw from it.
+        search = MCTS(lambda s: evaluate(net, s, encoder), encoder, simulations=simulations)
+        return search.search(state, noise=False).move
+
+    challenger = searched if simulations > 0 else raw
+
     default = ladders.for_game(game)
     rung_ladder = ladders.Ladder(
         rungs=tuple(rungs) if rungs else default.rungs,
         opening_plies=default.opening_plies)
-    return ladders.climb(game, raw, ladder=rung_ladder, games=games, seed=seed,
+    return ladders.climb(game, challenger, ladder=rung_ladder, games=games, seed=seed,
                          print_progress=False)
 
 

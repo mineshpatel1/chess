@@ -21,11 +21,13 @@ import zero
 
 
 class Fake(NamedTuple):
-    """Enough of a `Progress` for the committer, which reads three fields."""
+    """Enough of a `Progress` for the committer, which reads it only to write a commit message."""
 
     generation: int
     optimal_rate: float = 0.5
     value_mse: float = 0.9
+    ladder_score: float = 0.4
+    highest_rung: str = ''
 
 
 def git(*arguments, cwd):

@@ -72,6 +72,8 @@ def train(args) -> None:
         extra['ladder_rungs'] = args.ladder_rungs
     if args.ladder_games:
         extra['ladder_games'] = args.ladder_games
+    if args.ladder_simulations is not None:
+        extra['ladder_simulations'] = args.ladder_simulations
     if args.metric:
         extra['metric'] = args.metric
 
@@ -143,7 +145,9 @@ def _committer(paths: Sequence[Optional[str]], every: int) -> Optional[Callable]
         if _git('diff', '--cached', '--quiet'):
             return  # Nothing changed, so there is nothing to commit
 
+        beaten = f', beats {progress.highest_rung}' if progress.highest_rung else ''
         message = (f'Checkpoint Connect 4 training at generation {progress.generation}\n\n'
+                   f'Ladder {progress.ladder_score:.3f}{beaten}. '
                    f'Agreement with perfect play {progress.optimal_rate:.2%}, '
                    f'value MSE {progress.value_mse:.3f}.')
         if _git('commit', '-m', message):
@@ -333,6 +337,9 @@ def main(argv: Optional[list] = None) -> None:
                               'the game\'s full ladder')
     trainer.add_argument('--ladder-games', type=int, default=None,
                          help='games per rung (default 100, worth about +/-0.045)')
+    trainer.add_argument('--ladder-simulations', type=int, default=None,
+                         help='simulations the ladder challenger searches with; 0 is the raw '
+                              'policy (cheap, direction only), above 0 measures the real player')
     trainer.add_argument('--metric', choices=('ladder', 'agreement'), default=None,
                          help='what the best checkpoint is chosen on; defaults per game, since '
                               'tic-tac-toe saturates the ladder and Connect 4 saturates agreement')

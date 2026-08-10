@@ -308,6 +308,20 @@ class TestTheLadderMetric(unittest.TestCase):
     def test_with_no_ladder_it_reports_zero_rather_than_inventing_one(self):
         self.assertEqual(0.0, self._train(ladder_every=0)[-1].ladder_score)
 
+    def test_searching_measures_a_different_and_stronger_player(self):
+        """
+        The raw policy understates the player badly, which is why `ladder_simulations` exists: a
+        Connect 4 network scoring 0.39 raw across depths 2, 4 and 6 beat depth 5 at 0.635 once it
+        was given a hundred simulations. Both are legitimate measurements of different things.
+        """
+        raw = self._train(ladder_rungs=('minimax:1',), ladder_games=10)[-1]
+        searched = self._train(ladder_rungs=('minimax:1',), ladder_games=10,
+                               ladder_simulations=20)[-1]
+
+        self.assertGreater(searched.ladder_score, raw.ladder_score)
+        self.assertEqual(raw.optimal_rate, searched.optimal_rate,
+                         'searching the ladder must not change what was trained')
+
     def test_a_mean_over_no_rungs_is_not_a_division_by_zero(self):
         from ai.zero.train import _mean_score
 
