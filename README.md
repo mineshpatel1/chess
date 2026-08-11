@@ -989,6 +989,35 @@ Two lessons. **A resume costs about three generations**, which is an acceptable 
 run and a trap when it is not told apart from progress. And a metric read every generation has to be
 read against what changed around it — the buffer column was in the metrics file the whole time.
 
+#### It was never the network. It was the size of a generation.
+
+The plateau looked like capacity: the network had 471,000 parameters against the reference's 1.6M,
+and it stopped improving at 30% of the reference's game count. Both readings pointed at a model too
+small to learn more.
+
+They were wrong, and the test that shows it holds the game budget fixed:
+
+| from generation 30 | self-play games | schedule | result, 300 games |
+|---|---|---|---|
+| generations 21–30 | 4,000 | **10 × 400** | 0.513 — level |
+| generations 31–32 | 4,000 | **2 × 2,000** | **0.597 — +68 Elo, significant** |
+
+Identical games, identical architecture, identical 600 simulations. Ten small generations bought
+nothing; two large ones bought a significant improvement. **The network was starved per generation,
+not saturated.**
+
+Why a generation's *size* matters when the total is the same: each generation trains on a buffer and
+takes a fixed number of gradient steps, so a 400-game generation makes a small, noisy update from a
+narrow slice of positions, and ten of those do not compose into the one update that 4,000 games
+supports. It also explains why the resume tax hurt so much — losing three of ten generations is
+severe when each generation is already marginal.
+
+The practical constraint is that a 2,000-game generation is 3.5–4 hours, and a checkpoint is only
+written at the end of one. On a machine that can be reclaimed, that is an all-or-nothing bet:
+**two of four such generations were lost minutes before being recorded.** 1,000 games is the
+compromise this repo settled on — still two and a half times the schedule that plateaued, at half
+the exposure.
+
 Two consequences worth carrying forward. **Checkpoint selection is choosing noise at this plateau**
 — the run picked generation 29 as best on a ladder score of 0.740, and generation 20 plays just as
 well. And **more generations is the wrong lever**: the reference uses 5,000 games an iteration
