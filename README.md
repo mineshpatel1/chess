@@ -49,6 +49,7 @@ lines — lives behind that contract in `games/`.
 | `ai/corpus.py`, `ai/generate.py` | Reading positions whose exact value was computed once, and choosing them |
 | `ai/players.py` | Naming a player — `minimax:9`, `model:best.pt+mcts:200` — in one place |
 | `ai/zero/` | The AlphaZero implementation: `mcts.py`, `net.py`, `selfplay.py`, `train.py`, `metrics.py` |
+| `rust/` | An optional Rust engine for Connect 4 self-play: the same games, about twenty times faster |
 | `play.py`, `zero.py`, `plot.py`, `bench.py` | Terminal front end; training and grading; metrics charts; solver timings |
 | `tests/conformance.py` | The tests every game must pass |
 
@@ -151,7 +152,7 @@ and `ai/zero/selfplay.py`; what each value was measured at is here:
 | `SYMMETRIES` | **False** | No benefit, and it is knowledge the network should not be given |
 | `DIRICHLET_EPSILON` / `ALPHA` | 0.25 / 1.0 | Root noise, self-play only — never at evaluation |
 | `BUFFER_SIZE` | 20,000 positions | Scale it with `--games` or a generation overflows it |
-| `GAMES_IN_FLIGHT` | 32 | Throughput only — see [Batching](#batching) |
+| `GAMES_IN_FLIGHT` | 32 | Throughput only — see [Batching](#batching). The Rust engine defaults to the whole generation |
 | Optimiser | Adam, lr 1e-3, decay 1e-4, batch 128 | |
 
 Those exploration values were measured on tic-tac-toe; the

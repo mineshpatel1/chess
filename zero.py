@@ -78,6 +78,8 @@ def train(args) -> None:
         extra['metric'] = args.metric
     if args.device:
         extra['device'] = args.device
+    if args.engine:
+        extra['engine'] = args.engine
 
     run(
         game,
@@ -348,6 +350,11 @@ def main(argv: Optional[list] = None) -> None:
                               'tic-tac-toe saturates the ladder and Connect 4 saturates agreement')
     trainer.add_argument('--games-in-flight', type=int, default=None,
                          help='self-play games advanced together (throughput only)')
+    trainer.add_argument('--engine', choices=('auto', 'python', 'rust'), default=None,
+                         help="which self-play implementation plays the games: 'auto' (default) "
+                              "takes the Rust one when it is built, 'rust' insists on it rather "
+                              "than quietly taking hours instead. They play the same games; see "
+                              'rust/README.md')
     trainer.add_argument('--device', default=None,
                          help="where the network runs: 'auto' (default) takes a CUDA card if "
                               "there is one, or name one torch understands. The ladder stays on "

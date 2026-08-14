@@ -457,6 +457,27 @@ identical planes, policy targets, value targets and game lengths; `cargo test` c
 tree against pinned answers, and perft 1–8 against [the counts above](#perft) — depth 8 in 0.03s
 against ~9s.
 
+```bash
+python3 zero.py --game connect4 train --engine rust --device cuda ...
+```
+
+`--engine auto` is the default and takes it when it is built; `--engine rust` insists rather than
+quietly taking hours. Through the training loop itself, on this machine, a **1,000-game
+generation** at 600 simulations:
+
+| engine | games in flight | ms/game | 1,000 games |
+|---|---|---|---|
+| Python | 32 (its default) | 1,923 | 32.1 min |
+| Python | 128 | 1,379 | 23.0 min |
+| Rust | 100 | 454 | 7.6 min |
+| **Rust** | **1,000 (its default)** | **73** | **1.2 min** |
+
+Both on the GPU, so the last three rows are the engine and the batch alone. `--games-in-flight`
+means a different thing on each: the Python driver's default of 32 is a cap on how many trees it
+can afford to walk, while this one defaults to the whole generation. Run to run the two engines
+produce **the same generation** — `tests/zero/test_fast.py` checks that from the same entry point
+`train` calls, and a two-generation run of each on the CPU agrees to four decimals on every loss.
+
 It is optional in the way PyTorch is optional. Not built, and `tests.test_all` skips those tests
 and a run uses the Python driver.
 

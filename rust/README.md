@@ -1,7 +1,8 @@
 # The Rust self-play engine
 
 Connect 4 self-play, fast enough to feed a GPU. Optional, in exactly the way PyTorch is optional:
-the engine, the tests and a training run all work without it.
+the engine, the tests and a training run all work without it, and `zero.py train --engine` is
+what asks for it.
 
 It exists because a 2,000-game generation at 600 simulations took three and a half hours, and the
 network was the reason only in the sense that it was being fed one position per game per pass.
@@ -32,10 +33,23 @@ maturin develop --release -m rust/crates/zero-rs/Cargo.toml
 python3 -c 'import zero_rs; print(zero_rs.GAME, zero_rs.PLANE_SHAPE)'
 ```
 
+```bash
+python3 zero.py --game connect4 train --engine rust --device cuda ...
+```
+
+`--engine auto` is the default and takes this engine when it is built; `--engine rust` insists on
+it, because a run started for the speed should not quietly take four hours instead. `--engine
+python` is always available and is how the two are compared.
+
 `ai/zero/fast.py` is the Python side of it: `available()` says whether the build is there and
 speaks for the game and the encoder in front of it, `why_unavailable()` gives the log line when it
 is not, and `play_games(net, count, simulations, ...)` plays a generation and hands back the three
 stacked arrays `ai/zero/replay.py` already stores.
+
+**`--games-in-flight` means something different on each engine.** For the Python driver it is a
+cap on how many trees it can afford to walk, and it defaults to 32. This one has no such cap, so
+it defaults to the whole generation - which is the point of it, since the batch is what the card
+is for.
 
 ## The two engines play the same games
 

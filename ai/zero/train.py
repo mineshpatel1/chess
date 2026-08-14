@@ -33,7 +33,7 @@ import log
 from games.base import GameState
 from ai import corpus
 from ai.oracle import Grade, Report, Table, benchmark, enumerate_positions, move_values
-from ai.zero import checkpoint, replay
+from ai.zero import checkpoint, fast, replay
 from ai.zero.checkpoint import save
 from ai.zero.metrics import Recorder, truncate_after
 from ai.zero.net import (
@@ -208,7 +208,7 @@ def train(
     steps: int = STEPS_PER_GENERATION,
     batch_size: int = BATCH_SIZE,
     buffer_size: int = BUFFER_SIZE,
-    games_in_flight: int = GAMES_IN_FLIGHT,
+    games_in_flight: Optional[int] = None,
     opening_plies: int = OPENING_PLIES,
     temperature_moves: int = TEMPERATURE_MOVES,
     final_temperature: float = FINAL_TEMPERATURE,
@@ -228,6 +228,7 @@ def train(
     resume_from: Optional[str] = None,
     seed: int = 0,
     device: Optional[str] = None,
+    engine: Optional[str] = None,
     on_generation: Optional[Callable[[Progress], None]] = None,
 ) -> ZeroNet:
     """
@@ -245,10 +246,12 @@ def train(
 
     device = choose_device(device)
     make_deterministic(device)
+    engine = choose_engine(engine, game)
+    in_flight = games_in_flight_for(engine, games_in_flight, games_per_generation)
 
     net = ZeroNet(encoder.PLANE_SHAPE, encoder.POLICY_SIZE, **architecture(game.__name__))
     net.to(device)
-    log.info(f'training on {device}')
+    log.info(f'training on {device}, {engine} self-play, {in_flight} games in flight')
     sets = grading_sets(game)
     optimiser = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
     buffer: Deque[Example] = deque(maxlen=buffer_size)
@@ -324,7 +327,7 @@ def train(
         fresh, drawn, lengths = _self_play(
             net, encoder, game, games_per_generation, simulations, opening_plies,
             temperature_moves, final_temperature, exploration, dirichlet_epsilon,
-            batch_size=games_in_flight, seed=f'{seed}:{generation}')
+            batch_size=in_flight, seed=f'{seed}:{generation}', engine=engine)
         play_seconds = time.perf_counter() - play_started
         buffer.extend(augment(fresh, encoder) if symmetries else fresh)
 
@@ -457,7 +460,7 @@ def _mean_score(standing) -> float:
 
 def _self_play(net, encoder, game, count, simulations, opening_plies,
                temperature_moves, final_temperature, exploration, dirichlet_epsilon,
-               batch_size, seed, report_every=REPORT_EVERY):
+               batch_size, seed, report_every=REPORT_EVERY, engine='auto'):
     """
     One generation's games, played concurrently and evaluated in batches.
 
@@ -465,12 +468,12 @@ def _self_play(net, encoder, game, count, simulations, opening_plies,
     together, which changes nothing about any individual game and is most of the difference between
     a Connect 4 generation costing seven minutes and costing one.
 
+    `engine` chooses which implementation plays them. Both play the same games - see
+    `ai/zero/fast.py` - so this is a speed choice and nothing else.
+
     Progress is reported with a rate and a projected finish, which is what tells a generation that
     has slowed down from one that has hung.
     """
-    def batch_evaluator(states):
-        return evaluate_batch(net, states, encoder)
-
     started = time.perf_counter()
 
     def report(completed, total):
@@ -480,6 +483,17 @@ def _self_play(net, encoder, game, count, simulations, opening_plies,
         rate = completed / elapsed
         log.info(f'    self-play {completed}/{total} games, {elapsed:.0f}s elapsed, '
                  f'{rate * 60:.1f}/min, ~{(total - completed) / rate:.0f}s left')
+
+    if engine == 'rust':
+        generation = fast.play_games(
+            net, count, simulations, exploration=exploration, seed=seed,
+            opening_plies=opening_plies, temperature_moves=temperature_moves,
+            final_temperature=final_temperature, dirichlet_epsilon=dirichlet_epsilon,
+            in_flight=batch_size, on_finished=report)
+        return fast.as_examples(generation), generation.drawn, generation.lengths
+
+    def batch_evaluator(states):
+        return evaluate_batch(net, states, encoder)
 
     played = play_games(
         batch_evaluator, encoder, game, count, simulations,
@@ -495,6 +509,39 @@ def _self_play(net, encoder, game, count, simulations, opening_plies,
         drawn += int(finished.result.winner is None)
         lengths.append(len(examples_from_game))
     return examples, drawn, lengths
+
+
+def choose_engine(requested: Optional[str], game) -> str:
+    """
+    Which self-play implementation to use, and a line in the log saying why.
+
+    'auto' takes the Rust engine when it is built and speaks for this game. Asking for it by name
+    and not getting it is an error rather than a fallback: a run started for the speed should not
+    quietly take four hours instead.
+    """
+    requested = requested or 'auto'
+    if requested == 'python':
+        return 'python'
+
+    if fast.available(game):
+        return 'rust'
+    if requested == 'rust':
+        raise ValueError(fast.why_unavailable(game))
+
+    log.info(f'self-play on the Python engine: {fast.why_unavailable(game)}')
+    return 'python'
+
+
+def games_in_flight_for(engine: str, requested: Optional[int], count: int) -> int:
+    """
+    How many games are advanced together, which is the size of the network's batch.
+
+    The Python engine's default is a cap on how many trees it can afford to walk. The Rust engine
+    has no such cap, so its default is the whole generation - which is the point of it.
+    """
+    if requested:
+        return requested
+    return count if engine == 'rust' else GAMES_IN_FLIGHT
 
 
 def _learn(net, optimiser, buffer, steps, batch_size, rng):

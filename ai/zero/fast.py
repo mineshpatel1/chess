@@ -136,15 +136,16 @@ def play_games(
 
 def as_examples(generation: Generation) -> List:
     """
-    The stacked arrays back as `selfplay.Example`s, for a caller that still wants them one by one.
+    The stacked arrays back as `selfplay.Example`s, which is what the replay buffer holds.
 
-    A copy of the whole generation into Python objects, which is what the arrays exist to avoid -
-    so this is for tests and for the buffer's slow path, not for a training run.
+    Converted whole-array rather than row by row: `tolist()` is one pass through C either way, and
+    forty thousand calls to it are not. The conversion only exists because the buffer is a deque
+    of Python lists; it is the last copy on the way in and worth removing at the source.
     """
     from ai.zero.selfplay import Example
 
     planes, policy, value = generation.examples
     return [
-        Example(planes[index].tolist(), policy[index].tolist(), float(value[index]))
-        for index in range(len(value))
+        Example(*example)
+        for example in zip(planes.tolist(), policy.tolist(), value.tolist())
     ]

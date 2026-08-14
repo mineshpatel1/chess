@@ -155,7 +155,12 @@ from tests.zero.test_net import (
     TestTrainingLearns,
 )
 from tests.zero.test_cli import TestResumeFrom, TestCommitter
-from tests.zero.test_fast import TestTheTreeIsTheSameTree, TestTheGamesAreTheSameGames
+from tests.zero.test_fast import (
+    TestTheTreeIsTheSameTree,
+    TestTheGamesAreTheSameGames,
+    TestChoosingAnEngine,
+    TestSwappingEnginesChangesNothingButSpeed,
+)
 
 
 def main():

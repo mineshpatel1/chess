@@ -191,6 +191,83 @@ class TestTheGamesAreTheSameGames(unittest.TestCase):
         self.assertEqual(drawn, self.generation.drawn)
 
 
+@needs_fast
+class TestChoosingAnEngine(unittest.TestCase):
+    """
+    `--engine` picks between them, and asking for one by name and not getting it is an error.
+
+    A run started for the speed that quietly takes four hours instead is worse than one that
+    refuses, which is the whole difference between `auto` and `rust`.
+    """
+
+    def setUp(self):
+        from ai.zero.train import choose_engine, games_in_flight_for
+
+        self.choose_engine = choose_engine
+        self.games_in_flight_for = games_in_flight_for
+
+    def test_auto_takes_the_rust_engine_where_it_speaks_for_the_game(self):
+        from games.tictactoe.board import TicTacToe
+
+        self.assertEqual('rust', self.choose_engine('auto', Connect4))
+        self.assertEqual('rust', self.choose_engine(None, Connect4))
+        self.assertEqual('python', self.choose_engine('auto', TicTacToe))
+
+    def test_python_is_always_available(self):
+        self.assertEqual('python', self.choose_engine('python', Connect4))
+
+    def test_asking_for_rust_and_not_getting_it_raises(self):
+        from games.tictactoe.board import TicTacToe
+
+        with self.assertRaises(ValueError):
+            self.choose_engine('rust', TicTacToe)
+
+    def test_the_rust_engine_holds_the_whole_generation_in_flight(self):
+        """The Python cap is how many trees it can afford to walk; the Rust engine has no cap."""
+        self.assertEqual(400, self.games_in_flight_for('rust', None, 400))
+        self.assertEqual(32, self.games_in_flight_for('python', None, 400))
+        self.assertEqual(64, self.games_in_flight_for('rust', 64, 400))
+
+
+@needs_fast
+@needs_torch
+class TestSwappingEnginesChangesNothingButSpeed(unittest.TestCase):
+    """
+    The integration point, from the caller `train` actually uses.
+
+    `TestTheGamesAreTheSameGames` compares the two drivers; this compares what a generation hands
+    the replay buffer, which is what a training run is actually made of.
+    """
+
+    def test_a_generation_comes_out_the_same_either_way(self):
+        from ai.zero.net import ZeroNet
+        from ai.zero.train import _self_play, architecture
+
+        torch.manual_seed(0)
+        encoder = Connect4Encoder()
+        net = ZeroNet(encoder.PLANE_SHAPE, encoder.POLICY_SIZE, **architecture('Connect4'))
+
+        def generation(engine):
+            return _self_play(
+                net, encoder, Connect4, count=6, simulations=40, opening_plies=0,
+                temperature_moves=30, final_temperature=0.0, exploration=2.0,
+                dirichlet_epsilon=0.25, batch_size=6, seed='5:1', report_every=0, engine=engine)
+
+        expected, drawn, lengths = generation('python')
+        examples, fast_drawn, fast_lengths = generation('rust')
+
+        self.assertEqual(lengths, fast_lengths)
+        self.assertEqual(drawn, fast_drawn)
+        self.assertEqual(len(expected), len(examples))
+        for index, example in enumerate(expected):
+            with self.subTest(position=index):
+                self.assertEqual(example.planes, examples[index].planes)
+                self.assertEqual(
+                    numpy.array(example.policy, dtype=numpy.float32).tolist(),
+                    examples[index].policy)
+                self.assertEqual(numpy.float32(example.value), examples[index].value)
+
+
 def write_fixture(path='rust/crates/c4-core/tests/fixtures/search_fixture.rs'):
     """Regenerates the pinned answers the Rust suite checks against without an interpreter."""
     lines = [
