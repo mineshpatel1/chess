@@ -44,7 +44,7 @@ from typing import Callable, List, NamedTuple, Optional, Sequence, Tuple, Type
 import log
 from ai.match import MatchResult, play_match
 from ai.oracle import openings_at, solve
-from ai.players import describe, player
+from ai.players import describe, player, parse_minimax_depth
 from games.base import GameState
 
 # Games per rung. Each opening is played twice with the sides swapped, so this is half as many
@@ -228,8 +228,11 @@ def climb(
     positions it happened to be given.
 
     `engine` picks which alpha-beta the `minimax:` rungs search with - `'auto'` (the default)
-    takes the Rust one where it is built, which is most of what a Connect 4 ladder costs. It has
-    nothing to say about the challenger, which is whatever `challenger` already is.
+    takes the Rust one where it is built. Where the challenger is a network searching with MCTS,
+    it also picks whether that search is batched across every game a rung needs at once, the
+    same three-valued contract extended to whichever half of the rung is actually the cost - see
+    `_rung_result`. It has nothing to say about a challenger that is not a network, which plays
+    exactly as `challenger` already does.
     """
     ladder = ladder or for_game(game)
     openings = openings_at(game, ladder.opening_plies)
@@ -255,13 +258,60 @@ def climb(
     for spec in ladder.rungs:
         if print_progress:
             log.info(f'  vs {describe(spec)}...')
-        result = play_match(
-            game, challenger, player(spec, engine=engine),
-            games=games, seed=seed, print_summary=False, openings=chosen,
-        )
+        result = _rung_result(game, challenger, spec, games, seed, chosen, engine)
         rungs.append(Rung(spec, result))
 
     return Standing(rungs, games, ladder.opening_plies, ladder.balanced)
+
+
+def _rung_result(
+    game: Type[GameState], challenger: Callable, spec: str, games: int, seed: int,
+    chosen: List[GameState], engine: str,
+) -> MatchResult:
+    """
+    One rung, batched through the Rust ladder driver where it applies, one game at a time
+    otherwise.
+
+    Batching needs three things to be true: the rung has to be a `minimax:` opponent - the only
+    one whose move is a synchronous Rust call, so the only one that can share a game with the
+    challenger's tree with no round trip back to Python - `challenger` has to be a network
+    carrying enough to search with, and `engine` has to allow it. The network comes one of two
+    ways: `.net`/`.encoder`, attached by `ai.zero.train._climb` to a network already in memory, or
+    `.checkpoint`, attached by `ai.zero.player.model_player` to one loaded from a path - both are
+    tried, so a standalone `zero.py ladder` run and a training run's ladder check take the same
+    fast path.
+
+    Falls straight through to `play_match` for anything that does not fit this shape - `'random'`,
+    a raw-policy challenger (`simulations == 0`), a non-Connect4 game, or `engine='python'` - so
+    this changes nothing about what gets played, only how. An unbuilt extension is different:
+    `engine='rust'` insists on it here exactly as `ai.players._choose_search` already does for the
+    opponent, rather than quietly taking the slow path a run asked to avoid.
+    """
+
+    simulations = getattr(challenger, 'simulations', 0)
+    depth = parse_minimax_depth(spec, game) if engine != 'python' and simulations > 0 else None
+
+    net, encoder = getattr(challenger, 'net', None), getattr(challenger, 'encoder', None)
+    if depth is not None and net is None and hasattr(challenger, 'checkpoint'):
+        from ai.zero.checkpoint import load
+        blob = load(challenger.checkpoint, game=game.__name__)
+        net, encoder = blob['net'], game.ENCODER
+
+    if depth is not None and net is not None and encoder is not None:
+        from ai.zero import ladder_fast
+        if ladder_fast.available(game):
+            return ladder_fast.climb(net, encoder, depth, chosen, simulations)
+        if engine == 'rust':
+            raise ValueError(ladder_fast.why_unavailable(game))
+        log.info(
+            f'  {game.__name__} ladder challenger on the Python search: '
+            f'{ladder_fast.why_unavailable(game)}'
+        )
+
+    return play_match(
+        game, challenger, player(spec, engine=engine),
+        games=games, seed=seed, print_summary=False, openings=chosen,
+    )
 
 
 def for_game(game: Type[GameState]) -> Ladder:

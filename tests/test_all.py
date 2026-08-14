@@ -166,6 +166,7 @@ from tests.connect4.test_native import (
     TestTheEvaluationIsTheSameEvaluation,
     TestChoosingAnEngine as TestChoosingANativeEngine,
 )
+from tests.zero.test_ladder_fast import TestTheChallengerIsTheSameChallenger
 
 
 def main():

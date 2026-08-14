@@ -19,10 +19,15 @@
 //! the network: a fixed-depth alpha-beta, for the ladder's Python opponents rather than the
 //! challenger. A position crosses as two bitboards and a turn, which is what a live board already
 //! holds - there is no reason to hand across a column list and replay it.
+//!
+//! `LadderMatch` is a third: the challenger's own MCTS, played against that alpha-beta, with
+//! every game a rung needs in flight together - the same `pending`/`submit` contract as
+//! `SelfPlay`, so the ladder's network calls batch the way self-play's already do.
 
 use c4_core::constants::{COLS, ROWS};
 use c4_core::encode::{PLANE_BYTES, POLICY_SIZE};
 use c4_core::evaluation::value as evaluation_value;
+use c4_core::ladder::{Config as LadderConfig, LadderMatch as LadderDriver};
 use c4_core::mcts::State as SearchState;
 use c4_core::search::{best_move as search_best_move, root_scores as search_root_scores, MATE};
 use c4_core::selfplay::{Config, SelfPlay as Driver};
@@ -251,6 +256,92 @@ fn evaluate(yellow: u64, red: u64, turn: bool) -> PyResult<i32> {
     Ok(evaluation_value(&board))
 }
 
+// ---- the ladder's challenger, batched -------------------------------------------------------
+//
+// `ai/zero/train.py::_climb` plays the challenger's own MCTS one game at a time, which is why it
+// runs on the CPU rather than the GPU a training run otherwise uses - a batch of one costs more
+// on a card than off it. This plays every game a rung needs in flight together instead, so the
+// network calls batch the way self-play's already do; the opponent's `minimax:N` replies resolve
+// inside Rust, no round trip at all.
+
+/// One rung of the ladder: every opening played twice, the challenger's turns batched, the
+/// opponent's resolved synchronously with `best_move`.
+#[pyclass(module = "zero_rs")]
+struct LadderMatch {
+    driver: LadderDriver,
+}
+
+#[pymethods]
+impl LadderMatch {
+    #[new]
+    #[pyo3(signature = (openings, depth, simulations, exploration, in_flight = None))]
+    fn new(
+        openings: Vec<(u64, u64, bool)>,
+        depth: i32,
+        simulations: u32,
+        exploration: f64,
+        in_flight: Option<usize>,
+    ) -> PyResult<Self> {
+        let mut boards = Vec::with_capacity(openings.len());
+        for (yellow, red, turn) in openings {
+            boards.push(board_from_discs(yellow, red, turn)?);
+        }
+        // Every game in flight by default, exactly `SelfPlay`'s reasoning: the batch is what a
+        // GPU is worth having for, and a rung's games cost little enough to hold all of at once.
+        // Each opening is played twice, so that is twice `boards.len()`.
+        let in_flight = in_flight.unwrap_or_else(|| (boards.len() * 2).max(1));
+        Ok(LadderMatch {
+            driver: LadderDriver::new(boards, LadderConfig { depth, simulations, exploration, in_flight }),
+        })
+    }
+
+    /// The positions every game in flight is waiting on, or `None` once the rung is finished.
+    /// Same shapes as `SelfPlay.pending`: planes `(batch, 2, 6, 7)`, legality `(batch, 7)`.
+    fn pending<'py>(&mut self, py: Python<'py>) -> Option<Batch<'py>> {
+        let batch = self.driver.pending()?;
+        let positions = batch.positions;
+
+        let planes = PyArray1::from_slice(py, batch.planes)
+            .reshape([positions, 2, ROWS as usize, COLS as usize])
+            .expect("the planes buffer is one batch of boards");
+        let legal = PyArray1::from_slice(py, batch.legal)
+            .reshape([positions, POLICY_SIZE])
+            .expect("the mask buffer is one batch of actions");
+        Some((planes, legal))
+    }
+
+    /// Answers the batch `pending` reported: a policy over the whole action space per position,
+    /// and one value per position, both from the mover's point of view.
+    fn submit(
+        &mut self,
+        py: Python<'_>,
+        priors: PyReadonlyArray2<'_, f32>,
+        values: PyReadonlyArray1<'_, f32>,
+    ) -> PyResult<()> {
+        let priors = priors
+            .as_slice()
+            .map_err(|_| PyValueError::new_err("priors must be contiguous"))?;
+        let values = values
+            .as_slice()
+            .map_err(|_| PyValueError::new_err("values must be contiguous"))?;
+
+        py.detach(|| self.driver.submit(priors, values));
+        Ok(())
+    }
+
+    /// Wins, draws and losses from the challenger's point of view - `ai.match.MatchResult`'s
+    /// three fields, in that order.
+    fn tally(&self) -> (u32, u32, u32) {
+        let tally = self.driver.tally();
+        (tally.wins, tally.draws, tally.losses)
+    }
+
+    #[getter]
+    fn completed(&self) -> usize {
+        self.driver.completed()
+    }
+}
+
 /// Runs one search with noise off, and reports its visit counts and the move it chose.
 #[pyfunction]
 fn search(
@@ -306,6 +397,7 @@ fn encode(columns: Vec<u8>) -> PyResult<Encoded> {
 #[pymodule]
 fn zero_rs(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<SelfPlay>()?;
+    module.add_class::<LadderMatch>()?;
     module.add_function(wrap_pyfunction!(search, module)?)?;
     module.add_function(wrap_pyfunction!(encode, module)?)?;
     module.add_function(wrap_pyfunction!(best_move, module)?)?;

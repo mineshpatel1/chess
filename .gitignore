@@ -38,3 +38,5 @@ rust/target/
 *.so
 *.pyd
 *.egg-info/
+
+scratchpad.py

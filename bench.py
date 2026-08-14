@@ -4,7 +4,8 @@ Measuring the things here whose whole point is speed: the solver, self-play, and
     python3 bench.py corpus                     # re-solve the pinned corpus, timed
     python3 bench.py frontier --plies 20 18 16  # how expensive fresh positions are
     python3 bench.py selfplay --games 200       # what a generation costs, per engine
-    python3 bench.py search --depths 6 7 8      # what a ladder rung costs, per engine
+    python3 bench.py search --depths 6 7 8      # what a ladder rung's opponent costs, per engine
+    python3 bench.py ladder --simulations 600   # what a ladder rung's challenger costs, per engine
 
 The third of the root scripts, joining `play.py` (play a game) and `zero.py` (learn one). The
 split is by kind of use: this one exists because "identical results but faster" is a claim, and a
@@ -34,6 +35,10 @@ row that names it; the solver commands need neither.
 `search` times `ai.search.alpha_beta` against `ai.native.alpha_beta` - the ladder's opponents,
 not its challenger - over the same sample of positions at each depth. Neither needs PyTorch; the
 Rust row needs the extension built.
+
+`ladder` times the other half: `ai.zero.train._climb`'s network challenger, one game at a time in
+Python against every game a rung needs batched in Rust, at a few simulation counts. Needs PyTorch;
+the Rust row needs the ladder driver built.
 
 Nothing here asserts a time. Timing assertions belong in a report, not a test suite - how long a
 solve takes depends on the machine, and a test that fails on a slow one is a test that gets
@@ -262,6 +267,53 @@ def search(args) -> None:
         log.info(row)
 
 
+def ladder(args) -> None:
+    """
+    What the ladder's network challenger costs, per engine and per simulation count.
+
+    Not the opponent - `search`'s subject - but `ai.zero.train._climb`'s own MCTS, played one
+    game at a time in Python against every game a rung needs in flight together in Rust. Times
+    `_climb` itself rather than a hand-rolled loop, so this is the number `ladder_seconds` in a
+    run's metrics actually comes from, against a single fixed-depth rung so the result is not
+    also a measurement of `search`'s opponent.
+    """
+    try:
+        from ai.zero import ladder_fast
+        from ai.zero.net import ZeroNet, choose_device, for_game, make_deterministic
+        from ai.zero.train import _climb
+        from games.connect4.encoding import Connect4Encoder
+        import torch
+    except ImportError:
+        raise SystemExit('ladder needs PyTorch: pip install -r requirements-zero.txt')
+
+    engines = list(args.engines)
+    if 'rust' in engines and not ladder_fast.available(Connect4):
+        raise SystemExit(ladder_fast.why_unavailable(Connect4))
+
+    device = choose_device(args.device)
+    make_deterministic(device)
+    encoder = Connect4Encoder()
+    torch.manual_seed(args.seed)
+    net = ZeroNet(encoder.PLANE_SHAPE, encoder.POLICY_SIZE, **for_game('Connect4')).to(device)
+
+    log.info(f'{args.games} games vs minimax:{args.depth}, on {device}:')
+    log.newline()
+    header = f'  {"simulations":>11}  ' + '  '.join(f'{name:>10}' for name in engines)
+    log.info(header + ('    speedup' if len(engines) == 2 else ''))
+
+    for simulations in sorted(args.simulations):
+        timings = {}
+        for name in engines:
+            started = time.perf_counter()
+            _climb(net, encoder, Connect4, [f'minimax:{args.depth}'], args.games, args.seed,
+                  simulations, engine=name)
+            timings[name] = time.perf_counter() - started
+        row = f'  {simulations:>11}  ' + '  '.join(f'{timings[name]:>9.1f}s' for name in engines)
+        if 'python' in timings and 'rust' in timings:
+            row += f'    {timings["python"] / timings["rust"]:>6.1f}x'
+        log.info(row)
+
+
 class Throughput:
     """What one self-play run cost, and what it says about where the time went."""
 
@@ -466,6 +518,17 @@ def main(argv: Optional[List[str]] = None) -> None:
                            choices=('python', 'rust'), help='which to time, in order')
     opponents.add_argument('--seed', type=int, default=0)
     opponents.set_defaults(run=search)
+
+    challenger = commands.add_parser('ladder', help="what the ladder's network challenger costs")
+    challenger.add_argument('--simulations', type=int, nargs='+', default=[100, 300, 600])
+    challenger.add_argument('--depth', type=int, default=7, help='the opponent rung, minimax:N')
+    challenger.add_argument('--games', type=int, default=100)
+    challenger.add_argument('--engines', nargs='+', default=['python', 'rust'],
+                            choices=('python', 'rust'), help='which to time, in order')
+    challenger.add_argument('--device', default=None,
+                            help="'auto' takes a CUDA card if there is one")
+    challenger.add_argument('--seed', type=int, default=0)
+    challenger.set_defaults(run=ladder)
 
     args = parser.parse_args(argv)
     args.run(args)

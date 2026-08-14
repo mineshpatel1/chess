@@ -511,11 +511,40 @@ network's raw policy so the number is the opponents' cost and nothing else — *
 4.1s in Rust**, identical scores on both. That is the pair of rungs `ai.zero.train._climb` plays
 every few generations, and it is most of what made the old ladder cost minutes it no longer does.
 
-**What is left is the challenger, not the opponent.** With the ladder's `minimax:7`/`:8` opponents
-no longer the cost, a rung's wall-clock is what remains: 100 games of the network's own MCTS,
-searched one position at a time because `train._climb` rebuilds the tree fresh every move
-(`train.py:656`). Batching it is the obvious next step and needs a driver in the shape
-`selfplay.rs` already has — games in flight, batch out and batch in — which is not this port.
+## The Rust ladder
+
+With the opponent no longer the cost, what was left was the challenger: `train._climb` searched
+its own MCTS one game at a time, on the CPU rather than the GPU a run otherwise trains on, because
+a batch of one costs more on a card than off it — there was no batch to speed up. Wanting to grade
+a checkpoint at 600 simulations, matching a reference paper's challenger, made that the actual
+bottleneck: at 100 simulations a rung already ran to several minutes, and 600 scales that roughly
+linearly.
+
+`c4-core::ladder` is the fix self-play already had, aimed the other way: every game a rung needs
+*in flight* together, so the network's forward passes batch across games and a card is worth using
+again. It reuses `mcts::Search` and `search::best_move` exactly as they already are — both are
+already parity-tested against their Python originals by the two ports above it on this page — so
+nothing here is a new search to prove, only the scheduler that plays them against each other with
+the challenger's turns batched and the opponent's resolved synchronously, no round trip to Python
+at all. `python3 bench.py ladder --simulations 100 300 600`, 100 games against `minimax:7`:
+
+| simulations | Python | Rust | speedup |
+|---|---|---|---|
+| 100 | 196.2s | 6.5s | 30.3× |
+| 300 | 426.9s | 13.2s | 32.4× |
+
+600 - the reference paper's own challenger, and the reason this got built - was not run to
+completion on the Python side: at roughly twice 300's cost that is the better part of fifteen
+minutes for one number, and 100 and 300 already say what it would show. The Rust column is the
+one that answers the question that mattered: seconds, not minutes, at whatever simulation count a
+reference paper asks for.
+
+`ai.ladder.climb` is where it is reached from automatically: the same `minimax:` rung, the same
+network, whether the challenger is the run's own in-memory net (`train._climb`) or one loaded from
+a checkpoint (`zero.py ladder --player model:PATH+mcts:600`) — both carry enough for `climb` to
+recognise them, so a standalone grading run and a training run's own ladder check take the same
+fast path. See [`rust/README.md`](../../rust/README.md#the-ladder) for the wiring and the parity
+tests.
 
 ## Tests
 

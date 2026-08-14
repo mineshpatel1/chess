@@ -386,7 +386,8 @@ def main(argv: Optional[list] = None) -> None:
     climber.add_argument('--seed', type=int, default=0)
     climber.add_argument('--engine', choices=('auto', 'python', 'rust'), default='auto',
                          help="which alpha-beta the 'minimax:' rungs (and player, if it is one) "
-                              "search with; see 'train --engine'")
+                              "search with, and whether a 'model:' player's own MCTS is batched "
+                              "across every game a rung needs at once; see 'train --engine'")
     climber.set_defaults(run=climb_ladder)
 
     matcher = commands.add_parser('match', help='play two players off against each other')

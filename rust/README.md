@@ -1,9 +1,10 @@
 # The Rust Connect 4 engine
 
-Connect 4, fast enough to feed a GPU and to grade what it learns. Two ports, sharing one board:
-self-play (below) and [the ladder's alpha-beta opponents](#the-alpha-beta). Optional, in exactly
-the way PyTorch is optional: the engine, the tests and a training run all work without it, and
-`zero.py train --engine` is what asks for it.
+Connect 4, fast enough to feed a GPU and to grade what it learns. Three ports, sharing one board:
+self-play (below), [the ladder's alpha-beta opponents](#the-alpha-beta), and
+[the ladder's network challenger](#the-ladder) that plays the two of them against each other.
+Optional, in exactly the way PyTorch is optional: the engine, the tests and a training run all
+work without it, and `zero.py train --engine` is what asks for it.
 
 It exists because a 2,000-game generation at 600 simulations took three and a half hours, and the
 network was the reason only in the sense that it was being fed one position per game per pass.
@@ -102,6 +103,65 @@ corpus `tests/connect4/test_search_equivalence.py` already uses, and pins a fixt
 `cargo test` can check the same answers - scores and the number of leaves reached - without an
 interpreter; regenerate it with `python3 -m tests.connect4.test_native --write-fixture`.
 
+## The ladder
+
+The alpha-beta made the opponent free; this is the half of the ladder that was left; the
+challenger's own MCTS. `ai.zero.train._climb` played it one game at a time in Python - a batch of
+one forward pass per network call, which is why it ran on the CPU rather than the GPU a training
+run otherwise uses: a batch of one costs more on a card than off it. `crates/c4-core/src/ladder.rs`
+is the same fix self-play already got, aimed at the ladder instead: every game a rung needs *in
+flight* together, so the network's forward passes batch across games and a card is worth using
+again. It is asymmetric where `selfplay.rs` is symmetric - only the challenger's moves need a
+network evaluation, so only the challenger's turns ever leave a game waiting on one; the opponent's
+`minimax:N` replies resolve with `search::best_move`, synchronously, no round trip back to Python
+at all. Nothing here is a new algorithm: `mcts::Search` and `search::best_move` are reused exactly
+as they already are and are already parity-tested against their Python originals by the two ports
+above, so this is a scheduler in the shape `selfplay.rs` already is, not a third search to prove.
+
+```bash
+python3 bench.py ladder --simulations 100 300 600   # what a ladder rung's challenger costs
+python3 zero.py --game connect4 ladder --engine rust --player model:PATH+mcts:600 --rungs minimax:7 minimax:8
+```
+
+| games vs `minimax:7`, 100 each | python | rust | speedup |
+|---|---|---|---|
+| 100 simulations | 196.2s | 6.5s | 30.3× |
+| 300 simulations | 426.9s | 13.2s | 32.4× |
+
+600 simulations - the reference paper's own challenger, and the number that made this worth
+building - was not run to completion in Python on this machine: at roughly twice 300's cost, it is
+the better part of fifteen minutes for one row of one table, and the trend across 100 and 300
+already says what it would show. It is the Rust column that answers the question that mattered:
+seconds, not minutes, whatever the simulation count.
+
+`ai/zero/ladder_fast.py` is the Python side, in the same `pending`/`submit` shape `ai/zero/fast.py`
+already drives: `available()`, `why_unavailable()`, and `climb(net, encoder, depth, chosen,
+simulations, ...)` plays one rung and returns an `ai.match.MatchResult`. `ai.ladder.climb` is where
+it is reached from - inside the existing per-rung loop, `_rung_result` takes this path when the
+rung is `minimax:N`, the challenger is a network carrying enough to search with (`.net`/`.encoder`
+from a network already in memory, or `.checkpoint` from one loaded off disk - both are tried, so a
+training run's ladder check and a standalone `zero.py ladder` take the same fast path), and
+`engine` allows it - falling back to `play_match`, one game at a time, for anything that does not
+fit that shape (`'random'`, a raw-policy challenger, `engine='python'`). `engine='rust'` insists on
+it here exactly as it already does for the alpha-beta, rather than quietly taking the slow path.
+
+```bash
+cargo test --manifest-path rust/Cargo.toml --test ladder     # the driver against itself
+python3 -m unittest tests.zero.test_ladder_fast -v            # the pinned fixture, and _climb live
+```
+
+Two parity claims, proven two different ways. The *game* - challenger MCTS plus alpha-beta
+opponent plus the pairing and tally `ai.match.play_match` already defines - is checked with the
+same hashed evaluator `tests/zero/test_fast.py` pins its own fixture with, so no network or torch
+is needed: a Python reference plays it move for move, `rust/crates/c4-core/tests/fixtures/
+ladder_fixture.rs` pins the answers, and `tests/ladder.rs` replays them against an unbatched
+reference in Rust that the same test file separately proves plays identically to the batched
+driver - regenerate with `python3 -m tests.zero.test_ladder_fast --write-fixture`. The
+*integration* - `ai.zero.train._climb` itself, with a real network - is `test_ladder_fast.py`'s
+live comparison, `engine='python'` against `engine='rust'`, both pinned to the CPU: a GPU batched
+forward pass is not guaranteed bit-identical to a CPU single-position one, so a live GPU run is a
+strength match against the Python path rather than a move-for-move-identical one.
+
 ## Layout
 
 ```
@@ -111,11 +171,13 @@ crates/c4-core/          no Python, no torch, no unsafe
   src/connect4.rs        two integers, make/unmake, win detection
   src/encode.rs          two planes of 6x7, seven shared actions
   src/evaluation.rs      open threes, weighted by direction and by whether they can be played
+  src/ladder.rs          the challenger's MCTS against the alpha-beta, games in flight
   src/mcts.rs            the PUCT tree, as a state machine over the same three moments
   src/rng.rs             CPython's random.Random
   src/search.rs          fixed-depth alpha-beta, the ladder's minimax:N opponents
   src/selfplay.rs        games in flight, batch out and batch in
-crates/zero-rs/          the PyO3 module: SelfPlay, the alpha-beta hooks, and the parity hooks
+crates/zero-rs/          the PyO3 module: SelfPlay, LadderMatch, the alpha-beta hooks, the parity
+                         hooks
 ```
 
 `c4-core` depends on `sha2` alone, and only to seed the Mersenne Twister the way

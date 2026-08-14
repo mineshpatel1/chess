@@ -131,6 +131,20 @@ def _minimax(alpha_beta: Callable, depth: Optional[int], engine: str) -> Callabl
     return chooser
 
 
+def parse_minimax_depth(spec: str, game: Type[GameState]) -> Optional[int]:
+    """
+    The depth a `minimax:` spec means, or `None` if `spec` names something else.
+
+    Resolves a bare `minimax` the same way `_minimax`'s chooser does, via `default_depth(game)`,
+    so a caller deciding whether a rung can be batched sees the depth it will actually search at
+    rather than having to know the default itself.
+    """
+    head = _parse(spec)[0]
+    if head[0].lower() != 'minimax':
+        return None
+    return _int(head[1], 'plies') if len(head) > 1 else default_depth(game)
+
+
 def _choose_search(requested: str, game: Type[GameState]) -> Callable:
     """
     Which alpha-beta a `minimax:` player searches with, and a line in the log saying why.

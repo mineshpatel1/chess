@@ -630,33 +630,47 @@ def _climb(net, encoder, game, rungs, games, seed, simulations=0, engine='auto')
 
     `simulations` chooses which player is measured. Raw (0) costs about 15s a rung and understates
     the player badly - it says which way a run is going and nothing about how strong it is.
-    Searched is the player itself, at roughly 7 minutes a rung over 100 games.
+    Searched is the player itself - one game at a time in Python, roughly 7 minutes a rung over
+    100 games, or batched through `ai.zero.ladder_fast` when `ai.ladder.climb` finds it can, which
+    is most of a Connect 4 ladder's cost turned back into seconds.
 
-    Played on the CPU whatever the run trains on. This is the one path with no batch in it - a
-    ladder rung is two hundred thousand single positions - and a batch of one costs half as much
-    again on a card as it does here. Copying the weights across is a couple of megabytes once.
+    `net` stays on whatever device the run trains on - the batched path wants it there, batching
+    being what makes a card worth using for this at all. `raw`/`searched` fall back to a CPU copy,
+    made once and only if they are actually called: on the CPU is still where a *single* position
+    is cheapest, half again the cost on a card, so the copy is worth paying only for whichever
+    rungs the batched path does not reach - `'random'`, or a run with the extension not built.
 
-    `engine` is the one this run's self-play already resolved, passed straight through: the
-    `minimax:` rungs are most of a Connect 4 ladder's cost, and there is no reason for a run
-    started with `--engine rust` to search its opponents in Python.
+    `engine` is the one this run's self-play already resolved, passed straight through: it is
+    `ai.ladder.climb` that decides what it buys, for the opponent and, where the challenger is a
+    network, for the challenger too.
     """
     from ai import ladder as ladders  # Local: keeps `ai.zero` importable without the match harness
     from ai.zero.mcts import MCTS
 
-    if device_of(net).type != 'cpu':
-        net = copy.deepcopy(net).to('cpu')
+    cpu_net = None
+
+    def on_cpu():
+        nonlocal cpu_net
+        if cpu_net is None:
+            cpu_net = net if device_of(net).type == 'cpu' else copy.deepcopy(net).to('cpu')
+        return cpu_net
 
     def raw(state):
-        priors, _ = evaluate(net, state, encoder)
+        priors, _ = evaluate(on_cpu(), state, encoder)
         return max(state.legal_moves, key=lambda move: priors[encoder.action_index(move)])
 
     def searched(state):
         # No noise, and the most-visited move rather than a sample: a player being measured should
         # give its actual opinion.
-        search = MCTS(lambda s: evaluate(net, s, encoder), encoder, simulations=simulations)
+        search = MCTS(lambda s: evaluate(on_cpu(), s, encoder), encoder, simulations=simulations)
         return search.search(state, noise=False).move
 
     challenger = searched if simulations > 0 else raw
+    # What `ai.ladder.climb` needs to recognise this as a network it can search in Rust instead -
+    # see `ai.ladder._rung_result`.
+    challenger.net = net
+    challenger.encoder = encoder
+    challenger.simulations = simulations
 
     default = ladders.for_game(game)
     rung_ladder = ladders.Ladder(
