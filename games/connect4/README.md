@@ -414,39 +414,50 @@ on every relaunch, and a resume that drops them continues the run as a different
 ## The Rust self-play engine
 
 The 2,000-game generation above is 3.5–4 hours, which is what made it an all-or-nothing bet and
-what "1,000 games is the compromise this repo settled on" was a retreat from. It takes **119
-seconds** through [`rust/`](../../rust/README.md).
+what "1,000 games is the compromise this repo settled on" was a retreat from. It is now
+**two minutes** through [`rust/`](../../rust/README.md), and everything below comes out of
+`python3 bench.py selfplay` on this machine — an RTX 3080 and a Ryzen 9 5900X.
 
-The network was never the reason. Timed on this machine — RTX 3080, Ryzen 9 5900X — a forward pass
-costs 1,101µs alone, 111µs amortised in a batch of 64, and **2.8µs amortised in a batch of 4,096**:
+The network was never the reason. It is so far from saturated that **a batch of one and a batch of
+sixty-four cost the same call**:
 
-| batch | 1 | 64 | 512 | 4,096 | 16,384 |
-|---|---|---|---|---|---|
-| positions/sec | 682 | 24,434 | 226,641 | **355,959** | 330,325 |
+| batch | per call | per position | positions/sec |
+|---|---|---|---|
+| 1 | 1,458µs | 1,458µs | 686 |
+| 64 | 1,446µs | 22.6µs | 44,267 |
+| 512 | 2,151µs | 4.2µs | 238,003 |
+| 4,096 | 12,834µs | 3.1µs | **319,150** |
 
 `selfplay.play_games` evaluates one position per game per pass, so its batch *is*
-`--games-in-flight`, and raising that only moves the cost into the Python trees. At 600 simulations
-the whole run sits between the two leftmost columns:
+`--games-in-flight` — and raising that does not fix it, because the Python trees it has to walk to
+build a wider batch cost more than the wider batch saves. 200 games at 600 simulations:
 
-| | s/game | evals/sec | mean batch | in the forward pass |
+| engine | in flight | mean batch | evals/sec | in the forward pass | min per 1,000 games |
+|---|---|---|---|---|---|
+| Python | 32 *(its default)* | 29 | 5,214 | 81% | 34.0 |
+| **Rust** | 32 | 29 | **10,607** | 99% | 16.7 |
+| Python | 128 | 76 | 7,299 | **65%** | 24.3 |
+| **Rust** | 128 | 76 | **27,452** | 98% | 6.5 |
+| Rust | 200 *(all of them)* | 100 | 36,089 | 98% | 4.9 |
+
+Read the pairs: **at the same batch size, the engine alone is worth 2.0× at 32 and 3.8× at 128**,
+and the reason the second number is bigger is the fourth column. The Python driver's time in the
+network falls from 81% to 65% as the batch grows, because the trees it is walking grow with it —
+so it gets slower at approaching the card, not faster. The Rust engine stays at 98%, which is what
+"the batch is the only thing left to spend on" looks like.
+
+So spend on it. With every game of a generation in flight:
+
+| a whole generation at 600 simulations | mean batch | evals/sec | ms/game | generation |
 |---|---|---|---|---|
-| Python, 32 in flight | 2.724 | 3,560 | 16.8 | 84% |
-| Python, 128 in flight | 2.103 | 4,949 | 66.0 | 71% |
+| Python, 32 in flight | 29 | 5,214 | 2,040 | 1,000 games: 34.0 min |
+| **Rust, 1,000 in flight** | **485** | **106,713** | **97** | **1,000 games: 1.6 min** |
+| **Rust, 2,000 in flight** | **968** | **170,317** | **60** | **2,000 games: 2.0 min** |
 
-So the card is being fed at about 1% of what it will take. Moving the board, the tree and the
-driver to Rust lifts the cap to *every game in the generation*, and the tree stops being a cost at
-all — 2,000 games of tree work, encoding and driver together come to 7.7s of the 119:
-
-| 600 simulations, fresh weights | s/game | 2,000 games |
-|---|---|---|
-| Python engine, CPU | 2.103 | 3.5–4 h |
-| Rust engine, CPU inference | 0.743 | 25 min |
-| Rust engine, GPU, 400 games | 0.176 | 5.9 min |
-| **Rust engine, GPU, 2,000 games** | **0.060** | **2.0 min** |
-
-The middle row is the control that says which half did the work: the engine alone is worth about
-3×, and the batch it makes possible is worth another 9× on top. A bigger generation is also a
-*cheaper* one per game, because a 2,000-wide batch uses the card and a 400-wide one does not.
+**21× at a thousand games and 34× at two thousand.** The mean batch being half the games in flight
+is the tail — games finish at different plies, so the batch decays through the generation — and it
+is why a bigger generation is a *cheaper* one per game rather than a dearer one. The constraint
+that made 2,000 an all-or-nothing bet is gone.
 
 **The two engines play the same games — not equivalent ones, the same ones.** The search is a
 literal port (f64 in the same order, children in generation order, ties broken by it, no tree
@@ -458,28 +469,35 @@ tree against pinned answers, and perft 1–8 against [the counts above](#perft) 
 against ~9s.
 
 ```bash
-python3 zero.py --game connect4 train --engine rust --device cuda ...
+python3 bench.py selfplay --games 200                       # the tables above
+python3 zero.py --game connect4 train --engine rust ...     # the flag
 ```
 
 `--engine auto` is the default and takes it when it is built; `--engine rust` insists rather than
-quietly taking hours. Through the training loop itself, on this machine, a **1,000-game
-generation** at 600 simulations:
-
-| engine | games in flight | ms/game | 1,000 games |
-|---|---|---|---|
-| Python | 32 (its default) | 1,923 | 32.1 min |
-| Python | 128 | 1,379 | 23.0 min |
-| Rust | 100 | 454 | 7.6 min |
-| **Rust** | **1,000 (its default)** | **73** | **1.2 min** |
-
-Both on the GPU, so the last three rows are the engine and the batch alone. `--games-in-flight`
-means a different thing on each: the Python driver's default of 32 is a cap on how many trees it
-can afford to walk, while this one defaults to the whole generation. Run to run the two engines
-produce **the same generation** — `tests/zero/test_fast.py` checks that from the same entry point
-`train` calls, and a two-generation run of each on the CPU agrees to four decimals on every loss.
+quietly taking hours. `--games-in-flight` means a different thing on each — the Python driver's 32
+is a cap on how many trees it can afford to walk, and the Rust engine defaults to the whole
+generation.
 
 It is optional in the way PyTorch is optional. Not built, and `tests.test_all` skips those tests
 and a run uses the Python driver.
+
+### What is left
+
+Self-play is no longer where a generation goes. Measured at the sizes the run above uses:
+
+| per 1,000-game generation | |
+|---|---|
+| Self-play | 1.6 min |
+| 750 gradient steps over a 120,000-position buffer | 10.6s |
+| Grading, all three tiers (33,300 positions) | 1.5s |
+| **The ladder, `minimax:7` and `:8` at 100 games** | **~9 min** |
+
+**The ladder is now the run**, and not for the reason it looks like. It searches one position at a
+time, so batching it is the obvious move — but the network is the smaller half of it. Per move:
+the challenger at 100 simulations costs 35.7ms, `minimax:6` 32.0ms, `minimax:7` 95.4ms and
+`minimax:8` 348.7ms. Against the rungs that actually discriminate, it is **the opponent's
+alpha-beta in Python** that costs, and batching the challenger would buy a tenth of it. The board
+it would need is already in `c4-core`.
 
 ## Tests
 

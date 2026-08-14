@@ -19,6 +19,7 @@ reproduces the PUCT arithmetic and CPython's Mersenne Twister, so a generation p
 comes out example for example identical, which is what makes `--engine` a fair comparison.
 """
 
+import time
 from typing import Any, List, NamedTuple, Optional, Tuple
 
 try:
@@ -86,12 +87,17 @@ def play_games(
     in_flight: Optional[int] = None,
     device: Optional[str] = None,
     on_finished=None,
+    on_batch=None,
 ) -> Generation:
     """
     Plays `count` games, evaluating every game's pending position in one pass.
 
     `in_flight` defaults to the whole generation, which is the point of the exercise; lowering it
     only shrinks the batch, and cannot change what is played.
+
+    `on_batch(positions, network_seconds)` is called per pass. It exists so `bench.py selfplay`
+    can measure how much of a generation is the network rather than infer it, which is the only
+    number that says whether more games in flight would still help.
     """
     import torch
     import torch.nn.functional as F
@@ -116,6 +122,7 @@ def play_games(
             if batch is None:
                 break
             planes, legal = batch
+            started = time.perf_counter()
 
             logits, values = net(torch.from_numpy(planes).to(device, torch.float32))
 
@@ -124,8 +131,14 @@ def play_games(
             mask = torch.where(torch.from_numpy(legal).to(device), 0.0, MASKED)
             priors = F.softmax(logits + mask, dim=1)
 
-            engine.submit(priors.to('cpu', torch.float32).numpy(),
-                          values.to('cpu', torch.float32).numpy())
+            # Copying the answers back is what waits for the card, so the timing above covers the
+            # forward pass rather than just the launching of it.
+            answers = (priors.to('cpu', torch.float32).numpy(),
+                       values.to('cpu', torch.float32).numpy())
+            if on_batch:
+                on_batch(len(planes), time.perf_counter() - started)
+
+            engine.submit(*answers)
 
             if on_finished and engine.completed != reported:
                 reported = engine.completed
