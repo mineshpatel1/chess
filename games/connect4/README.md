@@ -385,6 +385,30 @@ positions that occur in games between competent players, where it now matches de
 Self-play visits those positions, so capacity moved there, away from exhaustively enumerated
 openings it will rarely face and random positions no sensible game reaches.
 
+### Continuing the run
+
+The 2,000-game generation, with the gradient steps scaled to it:
+
+```bash
+python3 zero.py --game connect4 train \
+    --games 2000 --steps 750 --simulations 600 --exploration 2.0 \
+    --generations 40 --buffer-size 70000 \
+    --out models/connect4-g2000-best.pt --latest models/connect4-g2000-latest.pt \
+    --metrics runs/connect4-g2000.jsonl --resume --commit-every 1
+```
+
+**`--steps` is the half of "starved per generation" that a bigger generation does not fix by
+itself.** 60 steps at a batch of 128 draw 7,680 positions — three fifths of a 400-game generation
+and an eighth of a 2,000-game one, so most of what the larger schedule collects was never trained
+on. 750 steps draw 96,000, about one and a half times the buffer. `--buffer-size` holds one
+generation of that size; the 20,000 default holds under a third of it.
+
+`--simulations` and `--exploration` are not the defaults — those are tic-tac-toe's — so they belong
+on every relaunch, and a resume that drops them continues the run as a different player.
+`--generations` is the generation to stop at rather than a count, so it has to be above the one
+`--latest` holds or the run does nothing. `--commit-every 1` because a lost generation here is
+3.5–4 hours.
+
 ## Tests
 
 ```bash
