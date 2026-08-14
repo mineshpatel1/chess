@@ -76,6 +76,8 @@ def train(args) -> None:
         extra['ladder_simulations'] = args.ladder_simulations
     if args.metric:
         extra['metric'] = args.metric
+    if args.device:
+        extra['device'] = args.device
 
     run(
         game,
@@ -346,6 +348,10 @@ def main(argv: Optional[list] = None) -> None:
                               'tic-tac-toe saturates the ladder and Connect 4 saturates agreement')
     trainer.add_argument('--games-in-flight', type=int, default=None,
                          help='self-play games advanced together (throughput only)')
+    trainer.add_argument('--device', default=None,
+                         help="where the network runs: 'auto' (default) takes a CUDA card if "
+                              "there is one, or name one torch understands. The ladder stays on "
+                              'the CPU either way, being the one path with no batch in it')
     trainer.add_argument('--seed', type=int, default=1)
     trainer.set_defaults(run=train)
 

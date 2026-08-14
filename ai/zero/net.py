@@ -15,7 +15,7 @@ Latency is the binding constraint on both: MCTS calls this once per simulation a
 makes millions of forward passes, which is why `evaluate_batch` exists.
 """
 
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import torch
 import torch.nn as nn
@@ -46,6 +46,41 @@ MASKED = -1e9
 def for_game(game_name: str) -> dict:
     """The trunk settings for a game, empty for one that wants the dense default."""
     return dict(ARCHITECTURES.get(game_name, {}))
+
+
+def choose_device(requested: Optional[str] = None) -> str:
+    """
+    Where a training run should put the network. `None` or `'auto'` takes a CUDA card if there is
+    one; anything else is passed through to torch, so an untested backend can still be asked for.
+
+    A GPU is worth having only where the batch is. A batch of one costs 1875us on a 3080 against
+    1221us on this CPU - the call is launch overhead either way, and the card loses - so the
+    unbatched paths stay where they are and it is self-play, grading and gradient steps that move.
+    That is a recent change: the batch used to be capped at `--games-in-flight`, and at 32 or 64
+    positions there was nothing here for a card to do.
+    """
+    if requested not in (None, 'auto'):
+        return requested
+    return 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
+def make_deterministic(device: str) -> None:
+    """
+    Keeps `--seed` meaning what it says on a GPU.
+
+    cuDNN picks convolution algorithms by benchmarking unless told not to, and different
+    algorithms give different last bits. Pinning them costs nothing measurable for a network this
+    small. Runs on different devices still differ from each other; only the promise that a seed
+    reproduces a run on *one* machine is being kept.
+    """
+    if torch.device(device).type == 'cuda':
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+
+def device_of(net: nn.Module) -> torch.device:
+    """Where a network's weights live, which is where its inputs have to be built."""
+    return next(net.parameters()).device
 
 
 class Residual(nn.Module):
@@ -160,8 +195,8 @@ class ZeroNet(nn.Module):
         }
 
 
-def to_tensor(planes_batch: Sequence, device: str = 'cpu') -> torch.Tensor:
-    """Nested lists of ints from an encoder into a float batch."""
+def to_tensor(planes_batch: Sequence, device='cpu') -> torch.Tensor:
+    """Nested lists of ints from an encoder into a float batch, where the weights are."""
     return torch.tensor(planes_batch, dtype=torch.float32, device=device)
 
 
@@ -193,8 +228,9 @@ def evaluate_batch(
         return []
 
     net.eval()
+    device = device_of(net)
     with torch.no_grad():
-        logits, values = net(to_tensor([encoder.planes(state) for state in states]))
+        logits, values = net(to_tensor([encoder.planes(state) for state in states], device))
 
         # The mask is built as plain Python lists and becomes a tensor exactly once. Writing it
         # element by element into a tensor is a dispatched operation per write, around a hundred
@@ -206,7 +242,8 @@ def evaluate_batch(
                 row[encoder.action_index(move)] = 0.0
             rows.append(row)
 
-        policies = F.softmax(logits + torch.tensor(rows, dtype=torch.float32), dim=1)
+        policies = F.softmax(
+            logits + torch.tensor(rows, dtype=torch.float32, device=device), dim=1)
 
     return list(zip(policies.tolist(), values.tolist()))
 
@@ -251,7 +288,7 @@ def evaluate(net: ZeroNet, state, encoder: Encoder) -> Tuple[List[float], float]
     """
     net.eval()
     with torch.no_grad():
-        logits, value = net(to_tensor([encoder.planes(state)]))
+        logits, value = net(to_tensor([encoder.planes(state)], device_of(net)))
 
     legal = [encoder.action_index(move) for move in state.legal_moves]
     return masked_policy(logits[0], legal, encoder.POLICY_SIZE), float(value[0])

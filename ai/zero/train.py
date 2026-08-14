@@ -19,6 +19,7 @@ Progress is measured against `ai.oracle` and `ai.ladder` rather than against the
 because a self-play win rate can be gamed by both sides getting worse together.
 """
 
+import copy
 import math
 import random
 import time
@@ -36,7 +37,8 @@ from ai.zero import checkpoint, replay
 from ai.zero.checkpoint import save
 from ai.zero.metrics import Recorder, truncate_after
 from ai.zero.net import (
-    ZeroNet, evaluate, evaluate_batch, flush_denormals, for_game as architecture, to_tensor,
+    ZeroNet, choose_device, device_of, evaluate, evaluate_batch, flush_denormals,
+    for_game as architecture, make_deterministic, to_tensor,
 )
 from ai.zero.mcts import DIRICHLET_EPSILON
 from ai.zero.selfplay import (
@@ -225,6 +227,7 @@ def train(
     metrics_path: Optional[str] = None,
     resume_from: Optional[str] = None,
     seed: int = 0,
+    device: Optional[str] = None,
     on_generation: Optional[Callable[[Progress], None]] = None,
 ) -> ZeroNet:
     """
@@ -240,7 +243,12 @@ def train(
     rng = random.Random(seed)
     torch.manual_seed(seed)
 
+    device = choose_device(device)
+    make_deterministic(device)
+
     net = ZeroNet(encoder.PLANE_SHAPE, encoder.POLICY_SIZE, **architecture(game.__name__))
+    net.to(device)
+    log.info(f'training on {device}')
     sets = grading_sets(game)
     optimiser = torch.optim.Adam(net.parameters(), lr=learning_rate, weight_decay=WEIGHT_DECAY)
     buffer: Deque[Example] = deque(maxlen=buffer_size)
@@ -265,6 +273,7 @@ def train(
     if resume_from:
         blob = checkpoint.load(resume_from, game=game.__name__)
         net.load_state_dict(blob['weights'])
+        net.to(device)
         if blob.get('optimiser'):
             optimiser.load_state_dict(blob['optimiser'])
         first = blob['generation'] + 1
@@ -501,12 +510,15 @@ def _learn(net, optimiser, buffer, steps, batch_size, rng):
 
     net.train()
     totals = [0.0, 0.0, 0.0]
+    device = device_of(net)
 
     for _ in range(steps):
         batch = rng.sample(list(buffer), k=min(batch_size, len(buffer)))
-        planes = to_tensor([example.planes for example in batch])
-        target_policy = torch.tensor([list(e.policy) for e in batch], dtype=torch.float32)
-        target_value = torch.tensor([e.value for e in batch], dtype=torch.float32)
+        planes = to_tensor([example.planes for example in batch], device)
+        target_policy = torch.tensor(
+            [list(e.policy) for e in batch], dtype=torch.float32, device=device)
+        target_value = torch.tensor(
+            [e.value for e in batch], dtype=torch.float32, device=device)
 
         logits, value = net(planes)
         policy_loss = -(target_policy * F.log_softmax(logits, dim=1)).sum(dim=1).mean()
@@ -571,9 +583,16 @@ def _climb(net, encoder, game, rungs, games, seed, simulations=0):
     `simulations` chooses which player is measured. Raw (0) costs about 15s a rung and understates
     the player badly - it says which way a run is going and nothing about how strong it is.
     Searched is the player itself, at roughly 7 minutes a rung over 100 games.
+
+    Played on the CPU whatever the run trains on. This is the one path with no batch in it - a
+    ladder rung is two hundred thousand single positions - and a batch of one costs half as much
+    again on a card as it does here. Copying the weights across is a couple of megabytes once.
     """
     from ai import ladder as ladders  # Local: keeps `ai.zero` importable without the match harness
     from ai.zero.mcts import MCTS
+
+    if device_of(net).type != 'cpu':
+        net = copy.deepcopy(net).to('cpu')
 
     def raw(state):
         priors, _ = evaluate(net, state, encoder)

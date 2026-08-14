@@ -6,7 +6,11 @@
 #
 #     pip install -r requirements-zero.txt
 #
-# CPU is enough. Tic-tac-toe trains to near-perfect play in a few minutes on four threads, and
-# the network is a few thousand parameters, so a GPU would spend more time on transfers than on
-# arithmetic.
+# CPU is enough for tic-tac-toe, which trains to near-perfect play in a few minutes on four
+# threads with a network of a few thousand parameters.
+#
+# Connect 4 is a different question now that the batch is one. `zero.py train --device` defaults
+# to a CUDA card when there is one, and `rust/` is what makes a batch big enough to be worth
+# giving it - see games/connect4/README.md. Install the CUDA build of torch if you have a card.
+# The ladder stays on the CPU either way, being the one path with no batch in it.
 torch>=2.0
