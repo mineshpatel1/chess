@@ -392,7 +392,7 @@ The 2,000-game generation, with the gradient steps scaled to it:
 ```bash
 python3 zero.py --game connect4 train \
     --games 2000 --steps 750 --simulations 600 --exploration 2.0 \
-    --generations 40 --buffer-size 70000 \
+    --generations 30 --buffer-size 120000 \
     --out models/connect4-g2000-best.pt --latest models/connect4-g2000-latest.pt \
     --metrics runs/connect4-g2000.jsonl --resume --commit-every 1
 ```
