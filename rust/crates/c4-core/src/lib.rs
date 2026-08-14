@@ -11,7 +11,9 @@ pub mod constants;
 pub mod encode;
 pub mod mcts;
 pub mod rng;
+pub mod selfplay;
 
 pub use connect4::{Connect4, Outcome, DRAW};
 pub use mcts::{Search, SearchResult};
 pub use rng::PyRandom;
+pub use selfplay::{Config, SelfPlay};

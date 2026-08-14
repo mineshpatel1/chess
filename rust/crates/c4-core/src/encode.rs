@@ -29,9 +29,10 @@ pub fn planes(state: &Connect4, out: &mut [u8]) {
 }
 
 /// Which actions are legal, in action-space order rather than the order moves are generated in.
-pub fn legal_mask(state: &Connect4, out: &mut [bool; POLICY_SIZE]) {
+pub fn legal_mask(state: &Connect4, out: &mut [bool]) {
+    debug_assert_eq!(out.len(), POLICY_SIZE);
     let landing = crate::bitboard::drops(state.occupied());
-    for column in 0..COLS as usize {
-        out[column] = landing & COLUMN_MASKS[column] != 0;
+    for (column, legal) in out.iter_mut().enumerate() {
+        *legal = landing & COLUMN_MASKS[column] != 0;
     }
 }
