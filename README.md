@@ -224,12 +224,27 @@ which is what a resume must read. Resuming from the best checkpoint silently rep
 generation since the last improvement — the metrics file grows a repeated generation number where
 the seam is, which is how this was caught.
 
-**The replay buffer deliberately does not travel in a checkpoint** — it is hundreds of megabytes
-and refills in a few generations. So a resume trains its first generation on a fraction of the
-usual data and gets worse, and **costs about three generations** while it refills. That is an
-acceptable price for rescuing a run and a trap when it is not told apart from progress: a Connect 4
-run's ladder score "improved" from 0.637 to 0.730 over six generations after a resume, and the
-curve was the shape of the buffer rather than of the player.
+**The replay buffer travels beside the checkpoint, not inside it.** `--latest` is the file that
+gets committed and pushed every couple of generations, so putting the self-play in it would put
+megabytes of games into the history forever to save the one machine that already has them a few
+minutes. It goes in a git-ignored `models/connect4-latest.buffer` instead — written every
+generation, immediately after the checkpoint, so an interrupted pair leaves the buffer a generation
+behind the weights rather than a generation ahead of them.
+
+It matters more than its size suggests. A resume that started with an empty buffer trained its
+first generation on a fraction of the usual data and got worse for it, then **spent about three
+generations** climbing back — which is an acceptable price for rescuing a run and a trap when it is
+not told apart from progress. A Connect 4 run's ladder score "improved" from 0.637 to 0.730 over
+six generations after a resume, and the curve was the shape of the buffer rather than of the
+player. A run interrupted every few generations never leaves that recovery at all.
+
+Stored as three stacked tensors rather than as the examples themselves: 20,000 Connect 4 positions
+are **2.32MB and 0.09s** that way against 7.64MB and 0.44s pickled whole, which is what keeps a
+per-generation write from becoming something to think about. Nothing about it is load-bearing — a
+missing buffer, one from another game, or one whose planes are the shape an older encoder produced
+all log a line and start empty, because a bad buffer costs a few generations and refusing to start
+costs the run. A fresh clone finds the pushed checkpoint, no buffer, and resumes exactly as it did
+before any of this existed.
 
 #### Metrics
 

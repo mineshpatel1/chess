@@ -14,6 +14,8 @@ import os
 import tempfile
 import unittest
 
+import log
+
 try:
     import torch
     TORCH = True
@@ -550,6 +552,136 @@ class TestResuming(unittest.TestCase):
 
             recorded = [entry['generation'] for entry in read(os.path.join(directory, 'run.jsonl'))]
             self.assertEqual([1, 2], recorded)
+
+
+@needs_torch
+class TestResumingTheReplayBuffer(unittest.TestCase):
+    """
+    Keeping the games as well as the weights, which is the other half of surviving an interruption.
+
+    A resume that dropped the buffer trained its first generation on one generation of data instead
+    of several and scored lower for it - for about three generations of a Connect 4 run, which then
+    climbed back to where it already was and looked exactly like the player improving.
+    """
+
+    def _train(self, directory, generations, resume=False):
+        from ai.zero.train import train
+
+        return train(
+            TicTacToe,
+            generations=generations,
+            games_per_generation=4,
+            simulations=5,
+            steps=2,
+            benchmark_every=1000,
+            latest_path=os.path.join(directory, 'latest.pt'),
+            metrics_path=os.path.join(directory, 'run.jsonl'),
+            resume_from=os.path.join(directory, 'latest.pt') if resume else None,
+            seed=0,
+        )
+
+    def _sizes(self, directory):
+        from ai.zero.metrics import read
+
+        return [entry['examples'] for entry in read(os.path.join(directory, 'run.jsonl'))]
+
+    def test_a_resumed_run_carries_on_with_the_positions_it_already_had(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self._train(directory, generations=2)
+            stopped = self._sizes(directory)[-1]
+
+            self._train(directory, generations=3, resume=True)
+            self.assertGreater(self._sizes(directory)[-1], stopped,
+                               'the resumed generation should have added to the buffer it was '
+                               'left, not started a new one')
+
+    def test_the_buffer_lives_beside_the_checkpoint_rather_than_inside_it(self):
+        """
+        The split the file layout exists for: the checkpoint is what `--commit-every` pushes, and
+        it must not grow tens of megabytes of self-play per generation to make a resume cheaper.
+        """
+        from ai.zero.checkpoint import load
+
+        with tempfile.TemporaryDirectory() as directory:
+            self._train(directory, generations=1)
+
+            self.assertIn('latest.buffer', os.listdir(directory))
+            self.assertNotIn('examples', load(os.path.join(directory, 'latest.pt')))
+
+    def test_a_resume_without_a_buffer_still_resumes(self):
+        """A fresh clone has the pushed checkpoint and no buffer, and must train rather than fail."""
+        with tempfile.TemporaryDirectory() as directory:
+            self._train(directory, generations=2)
+            os.remove(os.path.join(directory, 'latest.buffer'))
+
+            from ai.zero.metrics import read
+
+            self._train(directory, generations=3, resume=True)
+            recorded = [entry['generation'] for entry in read(os.path.join(directory, 'run.jsonl'))]
+            self.assertEqual([1, 2, 3], recorded)
+
+    def test_a_smaller_buffer_size_keeps_the_newest_positions(self):
+        """
+        Lowering `--buffer-size` between runs must not hand the deque more than it agreed to hold,
+        and what it drops has to be the oldest - the whole point of the buffer being bounded is
+        that the network stops imitating a version of itself it has outgrown.
+        """
+        from ai.zero.replay import load, path_for, save
+        from ai.zero.selfplay import Example
+        from collections import deque
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = path_for(os.path.join(directory, 'latest.pt'))
+            written = [Example(Encoder.planes(TicTacToe([])), [0.0] * 9, float(n) / 10)
+                       for n in range(10)]
+            save(written, path, game='TicTacToe', generation=1)
+
+            buffer = deque(maxlen=4)
+            buffer.extend(load(path, 'TicTacToe', Encoder))
+            self.assertEqual([0.6, 0.7, 0.8, 0.9],
+                             [round(example.value, 1) for example in buffer])
+
+    def test_a_buffer_from_another_game_is_refused_rather_than_trained_on(self):
+        """
+        Nothing here raises - a bad buffer costs a few generations of refilling and a refusal to
+        start costs the run - but a Connect 4 buffer must not be fed to a tic-tac-toe network,
+        which would train it on positions that are not positions.
+        """
+        from ai.zero.replay import load, path_for, save
+        from ai.zero.selfplay import Example
+        from games.connect4.board import Connect4
+        from games.connect4.encoding import Connect4Encoder
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = path_for(os.path.join(directory, 'latest.pt'))
+            save([Example(Connect4Encoder.planes(Connect4()), [0.0] * 7, 0.0)],
+                 path, game='Connect4', generation=1)
+
+            with self.assertLogs(log.CLIENT_NAME, level='WARNING'):
+                self.assertEqual([], load(path, 'TicTacToe', Encoder))
+
+    def test_the_examples_survive_the_round_trip(self):
+        """Stored as stacked tensors rather than as themselves, so this is not free."""
+        from ai.zero.replay import load, path_for, save
+        from ai.zero.selfplay import play_game
+        from ai.zero.net import ZeroNet, evaluate
+
+        net = ZeroNet(Encoder.PLANE_SHAPE, Encoder.POLICY_SIZE)
+        played, _ = play_game(lambda state: evaluate(net, state, Encoder),
+                              Encoder, TicTacToe, simulations=8)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = path_for(os.path.join(directory, 'latest.pt'))
+            save(played, path, game='TicTacToe', generation=1)
+            back = load(path, 'TicTacToe', Encoder)
+
+        self.assertEqual([example.planes for example in played],
+                         [example.planes for example in back])
+        self.assertEqual([example.value for example in played],
+                         [example.value for example in back])
+        for original, restored in zip(played, back):
+            for wanted, got in zip(original.policy, restored.policy):
+                self.assertAlmostEqual(wanted, got, places=6)
 
 
 @needs_torch

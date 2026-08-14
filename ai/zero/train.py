@@ -35,7 +35,7 @@ import log
 from games.base import GameState
 from ai import corpus
 from ai.oracle import Grade, Report, Table, benchmark, enumerate_positions, move_values
-from ai.zero import checkpoint
+from ai.zero import checkpoint, replay
 from ai.zero.checkpoint import save
 from ai.zero.metrics import Recorder, truncate_after
 from ai.zero.net import (
@@ -365,10 +365,12 @@ def train(
         log.warning('selection asked for the ladder but it is switched off; using agreement')
         measure = 'agreement'
 
+    # Where the buffer is written and read, which is beside the checkpoint a resume reads rather
+    # than inside it - see `ai/zero/replay.py`. No `--latest` means no resume point at all, and a
+    # run with nothing to resume from has nothing to keep a buffer for either.
+    buffer_path = replay.path_for(latest_path) if latest_path else None
+
     if resume_from:
-        # The replay buffer is deliberately not restored - see ai/zero/checkpoint.py. The first
-        # generation after a resume therefore learns from a buffer holding one generation rather
-        # than several, which costs a little and saves carrying hundreds of megabytes around.
         blob = checkpoint.load(resume_from, game=game.__name__)
         net.load_state_dict(blob['weights'])
         if blob.get('optimiser'):
@@ -398,6 +400,17 @@ def train(
             dropped = truncate_after(metrics_path, blob['generation'])
             if dropped:
                 log.info(f'dropped {dropped} recorded generation(s) past the checkpoint')
+
+        # The buffer beside that checkpoint, if this machine still has it. Restored *after* the
+        # deque exists so a run that lowered `--buffer-size` keeps the newest positions and drops
+        # the rest, rather than being handed more than it asked to hold.
+        restored = replay.load(replay.path_for(resume_from), game.__name__, encoder)
+        if restored:
+            buffer.extend(restored)
+            log.info(f'restored {len(buffer):,} positions to the replay buffer')
+        else:
+            log.info('no replay buffer beside the checkpoint; the first generation or two will '
+                     'learn from less data than usual and score lower for it')
 
     recorder = Recorder(metrics_path, append=bool(resume_from))
     last_reports = {tier: _EMPTY_REPORT for tier in sets}
@@ -492,6 +505,13 @@ def train(
                            'optimal_rate': report.overall.rate,
                            'simulations': simulations},
                  optimiser=optimiser)
+
+        # And the games behind it, beside it. After the checkpoint rather than before, so an
+        # interrupted pair leaves the buffer a generation *behind* the weights: a resume then
+        # replays nothing and merely misses one generation's games, where a buffer a generation
+        # ahead would have the replayed generation's games in it twice.
+        if buffer_path:
+            replay.save(buffer, buffer_path, game=game.__name__, generation=generation)
 
         # After the checkpoint, not before. A hook that copies the run somewhere - which is what
         # `zero.py train --commit-every` does - would otherwise take generation N's metrics line

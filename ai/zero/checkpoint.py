@@ -16,9 +16,11 @@ zero and the first steps after a resume are effectively unmomented. On a run mea
 where the reason for resuming is that the machine went away, that is worth the file being three
 times the size.
 
-What deliberately does *not* travel is the replay buffer. It is a couple of hundred megabytes for
-a Connect 4 run and refills within a few generations, so carrying it would make every checkpoint
-unwieldy to store or push in order to save a few minutes of self-play.
+What deliberately does *not* travel *inside* a checkpoint is the replay buffer. A checkpoint is the
+file that gets committed and pushed as a run produces it, and putting the buffer in it would put
+tens of megabytes of self-play into the history every generation to save the machine that already
+has them a few minutes. It goes in a git-ignored file beside the checkpoint instead, which is
+`ai/zero/replay.py` - the same resume point, split by what is worth keeping forever.
 """
 
 import os

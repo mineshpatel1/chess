@@ -320,7 +320,8 @@ def main(argv: Optional[list] = None) -> None:
                          help='where every generation is written, whether or not it improved; '
                               'this is the file --resume reads')
     trainer.add_argument('--resume', action='store_true',
-                         help='continue from --latest if it exists, rather than starting over')
+                         help='continue from --latest, and the replay buffer beside it, if they '
+                              'exist rather than starting over')
     trainer.add_argument('--commit-every', type=int, default=0,
                          help='commit and push --latest and --metrics every N generations, so '
                               'losing the machine costs generations rather than the run')
