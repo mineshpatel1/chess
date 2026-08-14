@@ -411,6 +411,55 @@ on every relaunch, and a resume that drops them continues the run as a different
 `--latest` holds or the run does nothing. `--commit-every 1` because a lost generation here is
 3.5–4 hours.
 
+## The Rust self-play engine
+
+The 2,000-game generation above is 3.5–4 hours, which is what made it an all-or-nothing bet and
+what "1,000 games is the compromise this repo settled on" was a retreat from. It takes **119
+seconds** through [`rust/`](../../rust/README.md).
+
+The network was never the reason. Timed on this machine — RTX 3080, Ryzen 9 5900X — a forward pass
+costs 1,101µs alone, 111µs amortised in a batch of 64, and **2.8µs amortised in a batch of 4,096**:
+
+| batch | 1 | 64 | 512 | 4,096 | 16,384 |
+|---|---|---|---|---|---|
+| positions/sec | 682 | 24,434 | 226,641 | **355,959** | 330,325 |
+
+`selfplay.play_games` evaluates one position per game per pass, so its batch *is*
+`--games-in-flight`, and raising that only moves the cost into the Python trees. At 600 simulations
+the whole run sits between the two leftmost columns:
+
+| | s/game | evals/sec | mean batch | in the forward pass |
+|---|---|---|---|---|
+| Python, 32 in flight | 2.724 | 3,560 | 16.8 | 84% |
+| Python, 128 in flight | 2.103 | 4,949 | 66.0 | 71% |
+
+So the card is being fed at about 1% of what it will take. Moving the board, the tree and the
+driver to Rust lifts the cap to *every game in the generation*, and the tree stops being a cost at
+all — 2,000 games of tree work, encoding and driver together come to 7.7s of the 119:
+
+| 600 simulations, fresh weights | s/game | 2,000 games |
+|---|---|---|
+| Python engine, CPU | 2.103 | 3.5–4 h |
+| Rust engine, CPU inference | 0.743 | 25 min |
+| Rust engine, GPU, 400 games | 0.176 | 5.9 min |
+| **Rust engine, GPU, 2,000 games** | **0.060** | **2.0 min** |
+
+The middle row is the control that says which half did the work: the engine alone is worth about
+3×, and the batch it makes possible is worth another 9× on top. A bigger generation is also a
+*cheaper* one per game, because a 2,000-wide batch uses the card and a 400-wide one does not.
+
+**The two engines play the same games — not equivalent ones, the same ones.** The search is a
+literal port (f64 in the same order, children in generation order, ties broken by it, no tree
+reuse, no virtual loss) and the random numbers are CPython's, Mersenne Twister through
+`gammavariate` and `choices` and `random.Random('1:37')`'s SHA-512 seeding, so the root noise and
+the sampled move match too. `tests/zero/test_fast.py` plays a generation with each and requires
+identical planes, policy targets, value targets and game lengths; `cargo test` checks the same
+tree against pinned answers, and perft 1–8 against [the counts above](#perft) — depth 8 in 0.03s
+against ~9s.
+
+It is optional in the way PyTorch is optional. Not built, and `tests.test_all` skips those tests
+and a run uses the Python driver.
+
 ## Tests
 
 ```bash

@@ -117,7 +117,8 @@ from tests.tictactoe.test_encoding import (
 
 # The learned player. Only tests/zero/test_net.py needs PyTorch, and it skips without it - the
 # tree and the training targets, which are the parts most likely to be wrong, are checked with
-# nothing installed at all.
+# nothing installed at all. tests/zero/test_fast.py skips the same way when the Rust engine is
+# not built.
 from tests.test_oracle import (
     TestSolver,
     TestEnumeration,
@@ -154,6 +155,7 @@ from tests.zero.test_net import (
     TestTrainingLearns,
 )
 from tests.zero.test_cli import TestResumeFrom, TestCommitter
+from tests.zero.test_fast import TestTheTreeIsTheSameTree, TestTheGamesAreTheSameGames
 
 
 def main():

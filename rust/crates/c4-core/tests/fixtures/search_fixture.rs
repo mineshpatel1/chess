@@ -1,5 +1,6 @@
 // The Python search's answers, generated once and pinned. Regenerate with
-// `python3 -m tests.zero.fixture`; see tests/search.rs for what they are compared against.
+// `python3 -m tests.zero.test_fast --write-fixture`; see tests/search.rs for what they
+// are compared against.
 
 /// A position, the search that ran on it, and the visit counts and move it produced.
 pub type Pinned = (&'static [u8], f64, u32, [u32; 7], u8);
