@@ -481,23 +481,41 @@ generation.
 It is optional in the way PyTorch is optional. Not built, and `tests.test_all` skips those tests
 and a run uses the Python driver.
 
-### What is left
+## The Rust alpha-beta
 
-Self-play is no longer where a generation goes. Measured at the sizes the run above uses:
+Self-play stopped being where a generation goes, and that moved the bottleneck rather than
+removing it: `train._climb` plays the network up the ladder — `minimax:7` and `:8` at 100 games
+each — every few generations, and it searches one position at a time with no batch to speed it up.
+`ai.search.alpha_beta` is a plain fixed-depth negamax: no transposition table, no killer moves, no
+ordering beyond the board's own centre-first `legal_moves`. That made it a small, strictly
+provable port rather than a project — `c4-core::search` and `c4-core::evaluation` are the same
+code with nothing added, checked against the Python search element for element on every root move,
+at every depth, and by the number of leaves each one reaches. `python3 bench.py search` on this
+machine, best of five passes, cold every move — no transposition table on either side:
 
-| per 1,000-game generation | |
-|---|---|
-| Self-play | 1.6 min |
-| 750 gradient steps over a 120,000-position buffer | 10.6s |
-| Grading, all three tiers (33,300 positions) | 1.5s |
-| **The ladder, `minimax:7` and `:8` at 100 games** | **~9 min** |
+| depth | Python | Rust | speedup |
+|---|---|---|---|
+| 4 | 3.82ms | 0.02ms | 157× |
+| 5 | 12.68ms | 0.07ms | 170× |
+| 6 | 48.53ms | 0.28ms | 175× |
+| 7 | 172.13ms | 0.93ms | 185× |
+| **8** | **678.68ms** | **3.60ms** | **189×** |
 
-**The ladder is now the run**, and not for the reason it looks like. It searches one position at a
-time, so batching it is the obvious move — but the network is the smaller half of it. Per move:
-the challenger at 100 simulations costs 35.7ms, `minimax:6` 32.0ms, `minimax:7` 95.4ms and
-`minimax:8` 348.7ms. Against the rungs that actually discriminate, it is **the opponent's
-alpha-beta in Python** that costs, and batching the challenger would buy a tenth of it. The board
-it would need is already in `c4-core`.
+`ai.players.player('minimax:N', engine='rust')` takes it automatically where it is built —
+`'auto'` is the default and `zero.py train --engine rust` already asks for it — so every
+`minimax:` opponent in the project is faster for free: the ladder, `zero.py match`, `play.py`'s
+computer opponent, `ai/generate.py`'s corpus generation.
+
+End to end, not just per move: `minimax:7` and `:8` at 100 games each, against an untrained
+network's raw policy so the number is the opponents' cost and nothing else — **399.8s in Python,
+4.1s in Rust**, identical scores on both. That is the pair of rungs `ai.zero.train._climb` plays
+every few generations, and it is most of what made the old ladder cost minutes it no longer does.
+
+**What is left is the challenger, not the opponent.** With the ladder's `minimax:7`/`:8` opponents
+no longer the cost, a rung's wall-clock is what remains: 100 games of the network's own MCTS,
+searched one position at a time because `train._climb` rebuilds the tree fresh every move
+(`train.py:656`). Batching it is the obvious next step and needs a driver in the shape
+`selfplay.rs` already has — games in flight, batch out and batch in — which is not this port.
 
 ## Tests
 

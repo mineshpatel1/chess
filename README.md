@@ -201,6 +201,15 @@ the same twelve games at batch 1, 2, 5, 12 and 64 and requires **identical examp
 batched too, and there it is free — 22,100 independent positions with no tree involved took 37s one
 at a time and take **3.8s** in chunks of `GRADING_CHUNK`.
 
+The table above is the Python driver's ceiling, not the game's — its batch is capped at
+`--games-in-flight` because that many trees is as much as Python can afford to walk between passes
+through the network. [Connect 4 has a second engine](games/connect4/README.md#the-rust-self-play-engine)
+that removes the cap rather than raising it: the board, the tree and the driver are a literal port
+to Rust, so a batch is *every game in the generation* — 2,000 rather than 64 — and a 2,000-game
+generation that took 3.5–4 hours in Python takes about three minutes. **`GAMES_IN_FLIGHT` means a
+different thing on each engine**: a ceiling on the Python driver, and the whole generation by
+default on the Rust one, since there the batch is the only thing left to spend on.
+
 #### Checkpoints and resuming
 
 A run measured in hours has to survive the machine going away. A checkpoint carries its optimiser

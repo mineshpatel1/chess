@@ -1,9 +1,10 @@
 """
-Measuring the two things here whose whole point is speed: the solver, and self-play.
+Measuring the things here whose whole point is speed: the solver, self-play, and the ladder.
 
     python3 bench.py corpus                     # re-solve the pinned corpus, timed
     python3 bench.py frontier --plies 20 18 16  # how expensive fresh positions are
     python3 bench.py selfplay --games 200       # what a generation costs, per engine
+    python3 bench.py search --depths 6 7 8      # what a ladder rung costs, per engine
 
 The third of the root scripts, joining `play.py` (play a game) and `zero.py` (learn one). The
 split is by kind of use: this one exists because "identical results but faster" is a claim, and a
@@ -29,6 +30,10 @@ because it decides how the eventual Connect 4 benchmark can be sampled.
 
 `selfplay` times a generation through each engine. It needs PyTorch, and the Rust engine for the
 row that names it; the solver commands need neither.
+
+`search` times `ai.search.alpha_beta` against `ai.native.alpha_beta` - the ladder's opponents,
+not its challenger - over the same sample of positions at each depth. Neither needs PyTorch; the
+Rust row needs the extension built.
 
 Nothing here asserts a time. Timing assertions belong in a report, not a test suite - how long a
 solve takes depends on the machine, and a test that fails on a slow one is a test that gets
@@ -209,6 +214,52 @@ def verify(args) -> None:
     if wrong:
         raise SystemExit(f'{wrong} positions disagree with our own solver')
     log.info(f'Our solver agrees with the corpus in all {len(entries)} positions it can reach.')
+
+
+def _timed_search(chooser, boards: List[Connect4], depth: int, repeats: int) -> float:
+    """Milliseconds per move, best of `repeats` passes over the same positions and depth."""
+    best = float('inf')
+    for _ in range(repeats):
+        started = time.perf_counter()
+        for board in boards:
+            chooser(board, depth=depth)
+        best = min(best, time.perf_counter() - started)
+    return best / len(boards) * 1000
+
+
+def search(args) -> None:
+    """
+    What the ladder's `minimax:N` opponents cost, per engine and per depth.
+
+    Not the challenger - `zero.py train`'s own MCTS - but the fixed-depth alpha-beta the ladder
+    plays *against*, which `games/connect4/README.md` names as the reason a generation's ladder
+    took as long as it did. Cold every move, exactly as `ai.players.player('minimax:N')` searches:
+    no transposition table carried between positions, because neither engine has one.
+    """
+    from ai.native import alpha_beta as native_alpha_beta
+    from ai.native import available as native_available
+    from ai.search import alpha_beta as python_alpha_beta
+    from tests.connect4.corpus import positions
+
+    engines = list(args.engines)
+    if 'rust' in engines and not native_available(Connect4):
+        raise SystemExit('the Rust alpha-beta is not built; see rust/README.md')
+
+    choosers = {'python': python_alpha_beta, 'rust': native_alpha_beta}
+    boards = [Connect4(columns) for columns in positions(args.count, seed=args.seed)]
+
+    log.info(f'{len(boards)} positions, best of {args.repeats} passes:')
+    log.newline()
+    header = f'  {"depth":>5}  ' + '  '.join(f'{name:>10}' for name in engines)
+    log.info(header + ('    speedup' if len(engines) == 2 else ''))
+
+    for depth in sorted(args.depths):
+        timings = {name: _timed_search(choosers[name], boards, depth, args.repeats)
+                  for name in engines}
+        row = f'  {depth:>5}  ' + '  '.join(f'{timings[name]:>8.2f}ms' for name in engines)
+        if 'python' in timings and 'rust' in timings:
+            row += f'    {timings["python"] / timings["rust"]:>6.1f}x'
+        log.info(row)
 
 
 class Throughput:
@@ -406,6 +457,15 @@ def main(argv: Optional[List[str]] = None) -> None:
                        help='overrides each engine default: 32 for python, all of them for rust')
     games.add_argument('--seed', type=int, default=1)
     games.set_defaults(run=selfplay)
+
+    opponents = commands.add_parser('search', help="what the ladder's minimax:N opponents cost")
+    opponents.add_argument('--depths', type=int, nargs='+', default=[4, 5, 6, 7, 8])
+    opponents.add_argument('--count', type=int, default=20, help='positions searched at each depth')
+    opponents.add_argument('--repeats', type=int, default=5, help='passes; the fastest is kept')
+    opponents.add_argument('--engines', nargs='+', default=['python', 'rust'],
+                           choices=('python', 'rust'), help='which to time, in order')
+    opponents.add_argument('--seed', type=int, default=0)
+    opponents.set_defaults(run=search)
 
     args = parser.parse_args(argv)
     args.run(args)

@@ -1,8 +1,9 @@
-# The Rust self-play engine
+# The Rust Connect 4 engine
 
-Connect 4 self-play, fast enough to feed a GPU. Optional, in exactly the way PyTorch is optional:
-the engine, the tests and a training run all work without it, and `zero.py train --engine` is
-what asks for it.
+Connect 4, fast enough to feed a GPU and to grade what it learns. Two ports, sharing one board:
+self-play (below) and [the ladder's alpha-beta opponents](#the-alpha-beta). Optional, in exactly
+the way PyTorch is optional: the engine, the tests and a training run all work without it, and
+`zero.py train --engine` is what asks for it.
 
 It exists because a 2,000-game generation at 600 simulations took three and a half hours, and the
 network was the reason only in the sense that it was being fed one position per game per pass.
@@ -73,6 +74,34 @@ give identical planes, policy targets and value targets. `crates/c4-core/tests/s
 the same answers so `cargo test` can check them without an interpreter; regenerate them with
 `python3 -m tests.zero.test_fast --write-fixture` if the search ever legitimately changes.
 
+## The alpha-beta
+
+The other cost once self-play stopped being one: `train._climb` plays the network up a ladder of
+`minimax:N` opponents every few generations, and `minimax:7`/`:8` at 100 games each is most of a
+generation once self-play is minutes rather than hours. `ai.search.alpha_beta` is a plain
+fixed-depth negamax with no transposition table and no move ordering beyond the board's own
+centre-first `legal_moves` - which makes it a small, strictly provable port: `c4-core::search` and
+`c4-core::evaluation` are the same ~90 lines with nothing added, not a table, not a killer move,
+not an ordering the Python search does not have. Adding any of those would be real speed and would
+also change which move comes back, and that is a different, separately measured piece of work.
+
+```bash
+python3 bench.py search --depths 6 7 8    # what a ladder rung costs, per engine
+python3 zero.py --game connect4 ladder --engine rust --player model:PATH --rungs minimax:7 minimax:8
+```
+
+`ai/native.py` is the Python side, in the same three-part shape as `ai/zero/fast.py`:
+`available()`, `why_unavailable()`, and `alpha_beta(state, depth, evaluate=None)` - which refuses
+a custom `evaluate` rather than silently ignoring it, since the tests that pass one need the
+Python search's ordering, not a faster copy of it. `ai.players.player(spec, engine=...)` is where
+every `minimax:` clause resolves, so `zero.py train --engine rust` means the Rust search for both
+self-play and the ladder, and `play.py`'s computer opponent gets it for free.
+
+`tests/connect4/test_native.py` compares every root move's score at every depth over the same
+corpus `tests/connect4/test_search_equivalence.py` already uses, and pins a fixture so
+`cargo test` can check the same answers - scores and the number of leaves reached - without an
+interpreter; regenerate it with `python3 -m tests.connect4.test_native --write-fixture`.
+
 ## Layout
 
 ```
@@ -81,10 +110,12 @@ crates/c4-core/          no Python, no torch, no unsafe
   src/bitboard.rs        the carry that drops a disc, the shifts that find four in a row
   src/connect4.rs        two integers, make/unmake, win detection
   src/encode.rs          two planes of 6x7, seven shared actions
+  src/evaluation.rs      open threes, weighted by direction and by whether they can be played
   src/mcts.rs            the PUCT tree, as a state machine over the same three moments
   src/rng.rs             CPython's random.Random
+  src/search.rs          fixed-depth alpha-beta, the ladder's minimax:N opponents
   src/selfplay.rs        games in flight, batch out and batch in
-crates/zero-rs/          the PyO3 module: SelfPlay, and two hooks for the parity test
+crates/zero-rs/          the PyO3 module: SelfPlay, the alpha-beta hooks, and the parity hooks
 ```
 
 `c4-core` depends on `sha2` alone, and only to seed the Mersenne Twister the way
