@@ -17,6 +17,8 @@ use c4_core::evaluation::{value, weighted_eval, MAX_EVAL};
 use c4_core::search::{best_move, negamax_ab, root_scores, terminal_score, HIGH_BOUND, LOW_BOUND, MATE};
 use c4_core::Connect4;
 
+include!("fixtures/alphabeta_fixture.rs");
+
 /// A deterministic stand-in for a random number generator, so a fuzz test is reproducible.
 struct Lcg(u64);
 
@@ -98,6 +100,25 @@ fn reference_scores(board: &mut Connect4, depth: i32) -> (Vec<(u8, i32)>, u64) {
 fn scored(board: &mut Connect4, depth: i32) -> Vec<(u8, i32)> {
     let result = root_scores(board, depth);
     result.moves[..result.count].to_vec()
+}
+
+// ---- against the pinned fixture, without an interpreter -----------------------------------
+
+#[test]
+fn root_scores_match_the_pinned_python_answers() {
+    for &(columns, depth, expected, expected_leaves) in FIXTURE {
+        let mut board = Connect4::from_columns(columns);
+        let result = root_scores(&mut board, depth);
+        assert_eq!(
+            &result.moves[..result.count],
+            expected,
+            "{columns:?} at depth {depth}"
+        );
+        assert_eq!(
+            result.leaves, expected_leaves,
+            "{columns:?} at depth {depth} walked a different tree"
+        );
+    }
 }
 
 // ---- the pruning is sound ----------------------------------------------------------------

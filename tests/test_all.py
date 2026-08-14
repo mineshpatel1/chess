@@ -161,6 +161,11 @@ from tests.zero.test_fast import (
     TestChoosingAnEngine,
     TestSwappingEnginesChangesNothingButSpeed,
 )
+from tests.connect4.test_native import (
+    TestTheSearchIsTheSameSearch,
+    TestTheEvaluationIsTheSameEvaluation,
+    TestChoosingAnEngine as TestChoosingANativeEngine,
+)
 
 
 def main():

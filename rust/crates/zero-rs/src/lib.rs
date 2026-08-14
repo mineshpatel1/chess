@@ -14,10 +14,17 @@
 //!     sp.submit(softmax(logits.masked_fill(~legal, MASKED)), value)
 //! planes, policy, value = sp.examples()
 //! ```
+//!
+//! Alongside it, `best_move`/`root_scores`/`evaluate` are a second port with nothing to do with
+//! the network: a fixed-depth alpha-beta, for the ladder's Python opponents rather than the
+//! challenger. A position crosses as two bitboards and a turn, which is what a live board already
+//! holds - there is no reason to hand across a column list and replay it.
 
 use c4_core::constants::{COLS, ROWS};
 use c4_core::encode::{PLANE_BYTES, POLICY_SIZE};
+use c4_core::evaluation::value as evaluation_value;
 use c4_core::mcts::State as SearchState;
+use c4_core::search::{best_move as search_best_move, root_scores as search_root_scores, MATE};
 use c4_core::selfplay::{Config, SelfPlay as Driver};
 use c4_core::{Connect4, PyRandom, Search};
 use numpy::{
@@ -202,6 +209,48 @@ fn board_from(columns: &[u8]) -> PyResult<Connect4> {
     Ok(board)
 }
 
+// ---- alpha-beta: the ladder's opponent -------------------------------------------------------
+//
+// A position crosses the boundary as two integers rather than a column list, because the ladder
+// hands this a live Python board move by move and has no reason to replay it from the start.
+// `Connect4::from_discs` is where an impossible position is refused.
+
+fn board_from_discs(yellow: u64, red: u64, turn: bool) -> PyResult<Connect4> {
+    Connect4::from_discs(yellow, red, turn)
+        .ok_or_else(|| PyValueError::new_err("yellow and red do not describe a reachable position"))
+}
+
+/// The move a `depth`-ply alpha-beta search picks, given the position as two bitboards.
+///
+/// A fixed-depth port of `ai.search.alpha_beta` with `games.connect4.evaluation.weighted_eval` -
+/// same fail-hard window, same tie to the move generated first, no transposition table.
+#[pyfunction]
+fn best_move(py: Python<'_>, yellow: u64, red: u64, turn: bool, depth: i32) -> PyResult<u8> {
+    let mut board = board_from_discs(yellow, red, turn)?;
+    // The GIL buys nothing here and a slow rung should not hold up anything else in the process.
+    py.detach(|| search_best_move(&mut board, depth))
+        .ok_or_else(|| PyValueError::new_err("no legal moves"))
+}
+
+/// Every legal move and its full-window minimax score, in generation order - the test hook that
+/// lets `tests/connect4/test_native.py` compare element for element rather than on the move alone.
+#[pyfunction]
+fn root_scores(py: Python<'_>, yellow: u64, red: u64, turn: bool, depth: i32) -> PyResult<Vec<(u8, i32)>> {
+    let mut board = board_from_discs(yellow, red, turn)?;
+    let result = py.detach(|| search_root_scores(&mut board, depth));
+    Ok(result.moves[..result.count].to_vec())
+}
+
+/// The static evaluation alone, from Yellow's point of view - `games.connect4.evaluation.value`.
+///
+/// `value` itself does not care whose turn it is, but validating that `yellow` and `red` describe
+/// a reachable position does, so this still takes `turn` and passes it straight to `from_discs`.
+#[pyfunction]
+fn evaluate(yellow: u64, red: u64, turn: bool) -> PyResult<i32> {
+    let board = board_from_discs(yellow, red, turn)?;
+    Ok(evaluation_value(&board))
+}
+
 /// Runs one search with noise off, and reports its visit counts and the move it chose.
 #[pyfunction]
 fn search(
@@ -259,9 +308,15 @@ fn zero_rs(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<SelfPlay>()?;
     module.add_function(wrap_pyfunction!(search, module)?)?;
     module.add_function(wrap_pyfunction!(encode, module)?)?;
+    module.add_function(wrap_pyfunction!(best_move, module)?)?;
+    module.add_function(wrap_pyfunction!(root_scores, module)?)?;
+    module.add_function(wrap_pyfunction!(evaluate, module)?)?;
     // What the encoder here produces, so a caller can refuse rather than reshape blindly.
     module.add("PLANE_SHAPE", (2, ROWS, COLS))?;
     module.add("POLICY_SIZE", POLICY_SIZE)?;
     module.add("GAME", "Connect4")?;
+    // The scoring convention `best_move`/`root_scores` use, so a build with a different one -
+    // or without the alpha-beta at all - is refused rather than silently misread.
+    module.add("MATE", MATE)?;
     Ok(())
 }
