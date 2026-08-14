@@ -169,8 +169,16 @@ fn a_carry_finds_the_landing_square_in_every_column() {
         for row in 0..ROWS {
             assert_eq!(landing_square(board.occupied(), column), 1 << index(column, row));
             board.make_move(column as u8);
-            board.make_move(if column == 0 { 1 } else { 0 });
-            board.unmake_move();
+
+            // A move somewhere else, taken straight back: unmaking must leave this column's
+            // landing square where it was. There is nowhere spare once the board is nearly full,
+            // and the assertion above is the point of the loop either way.
+            let spare = (0..COLS)
+                .find(|&other| other != column && landing_square(board.occupied(), other) != 0);
+            if let Some(other) = spare {
+                board.make_move(other as u8);
+                board.unmake_move();
+            }
         }
         assert_eq!(landing_square(board.occupied(), column), 0, "full column still offered");
     }

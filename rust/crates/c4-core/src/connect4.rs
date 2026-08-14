@@ -4,7 +4,7 @@
 //! solver keys and the diagram parsing stay in Python.
 
 use crate::bitboard::{drops, is_win, landing_square};
-use crate::constants::{CENTRE_FIRST, COLS, COLUMN_MASKS, RED, YELLOW};
+use crate::constants::{CENTRE_FIRST, COLS, COLUMN_MASKS, FULL_BOARD, RED, STRIDE, YELLOW};
 
 /// How a finished game finished. `None` for a winner means a draw, as `games/base.py` has it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -46,6 +46,42 @@ impl Connect4 {
             board.make_move(column);
         }
         board
+    }
+
+    /// A position from the two disc boards, or `None` if they do not describe a reachable one.
+    ///
+    /// This is how a live Python board crosses the boundary: two integers rather than the column
+    /// list that produced them. The checks are the ones playing gives for free and a raw pair of
+    /// integers does not - disjoint, on the board, no disc floating above a gap, and the disc
+    /// counts agreeing with whose turn it is claimed to be.
+    ///
+    /// The move stack starts empty, so the position cannot be unmade past. A search only unmakes
+    /// what it made, which is the only caller there is.
+    pub fn from_discs(yellow: u64, red: u64, turn: bool) -> Option<Self> {
+        let occupied = yellow | red;
+        if yellow & red != 0 || occupied & !FULL_BOARD != 0 {
+            return None;
+        }
+        for (column, mask) in COLUMN_MASKS.iter().enumerate() {
+            let stack = (occupied & mask) >> (column as u32 * STRIDE);
+            if stack & (stack + 1) != 0 {
+                return None; // A gap under a disc: not a stack anything could have dropped into
+            }
+        }
+        // Yellow moves first, so the counts are level when it is Yellow's turn again.
+        let played = yellow.count_ones() as i32 - red.count_ones() as i32;
+        if played != if turn == YELLOW { 0 } else { 1 } {
+            return None;
+        }
+
+        let mut discs = [0u64; 2];
+        discs[YELLOW as usize] = yellow;
+        discs[RED as usize] = red;
+        Some(Connect4 {
+            discs,
+            turn,
+            move_stack: Vec::with_capacity((COLS * crate::constants::ROWS) as usize),
+        })
     }
 
     pub fn turn(&self) -> bool {
