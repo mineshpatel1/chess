@@ -9,5 +9,9 @@ pub mod bitboard;
 pub mod connect4;
 pub mod constants;
 pub mod encode;
+pub mod mcts;
+pub mod rng;
 
 pub use connect4::{Connect4, Outcome, DRAW};
+pub use mcts::{Search, SearchResult};
+pub use rng::PyRandom;

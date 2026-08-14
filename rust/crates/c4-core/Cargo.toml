@@ -5,3 +5,5 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# Only to seed a Mersenne Twister the way `random.Random(text)` does. See src/rng.rs.
+sha2 = '0.10'
