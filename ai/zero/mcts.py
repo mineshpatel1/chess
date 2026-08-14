@@ -210,11 +210,12 @@ class MCTS:
         """
         if not root.children:
             return
-        noise = [self.rng.gammavariate(DIRICHLET_ALPHA, 1.0) for _ in root.children]
+        noise = [self.rng.gammavariate(self.dirichlet_alpha, 1.0) for _ in root.children]
         total = sum(noise) or 1.0
 
+        epsilon = self.dirichlet_epsilon
         for child, sample in zip(root.children.values(), noise):
-            child.prior = (1 - DIRICHLET_EPSILON) * child.prior + DIRICHLET_EPSILON * sample / total
+            child.prior = (1 - epsilon) * child.prior + epsilon * sample / total
 
     def _simulate(self, state: GameState, node: Node) -> 'Iterator[GameState]':
         """
