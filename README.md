@@ -140,7 +140,7 @@ python3 zero.py train \
 ```
 
 Training is deterministic given `--seed`. The rest of the configuration lives in `ai/zero/train.py`
-and `ai/zero/selfplay.py`, and each value has its measurement recorded beside it:
+and `ai/zero/selfplay.py`; what each value was measured at is here:
 
 | Parameter | Default | Why |
 |---|---|---|

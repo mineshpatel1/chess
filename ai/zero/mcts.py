@@ -1,31 +1,17 @@
 """
 PUCT search: the tree half of AlphaZero.
 
-Three properties of this file are load-bearing, and each one is a mistake that a previous attempt
-in this project actually made.
+Three properties are load-bearing:
 
-**A node is a path, not a position.** Children live in a dict on their parent and are created when
-that parent is expanded, so a position reached by two different move orders is two nodes. The 2021
-version keyed one flat dict by position id, and since 97% of tic-tac-toe positions inside five
-plies are reachable more than one way, 28% of expansions overwrote a live node - resetting its
-statistics and re-pointing its parent. Measured against a perfect opponent, that search got
-*worse* as simulations increased. Nothing here can develop that fault, because there is nowhere
-for two paths to meet.
+**A node is a path, not a position.** Children live in a dict on their parent, so a position
+reached by two move orders is two nodes and there is nowhere for two paths to collide.
 
-**Backup carries no anchor.** `_simulate` returns a value from the point of view of the player to
-move at the node it was called on, and the caller negates it. There is no "which player is this
-relative to" variable to get wrong, which is what the 2021 code got wrong: it anchored to whoever
-happened to be on move at the expanded leaf, so the sign was right or inverted depending on the
-parity of the depth at which expansion occurred.
+**Backup carries no anchor.** `_simulate` returns the value to the player to move at the node it
+was called on and the caller negates it, so there is no "relative to whom" to get wrong.
 
-**There are no rollouts.** A leaf is evaluated by asking the evaluator, which in training is the
-network's value head. Replacing random playouts with a learned value is most of what separates
-AlphaZero from classical MCTS, and the 2021 code kept the rollouts - so its value head, bugs and
-all, was never consulted by the search at all.
-
-Nothing here imports PyTorch. The evaluator is injected, so the search can be tested against a
-perfect oracle with no network and no dependencies - which is exactly the test whose absence let
-the 2021 search stay broken for months.
+**There are no rollouts.** A leaf is evaluated by the injected evaluator, which in training is the
+network's value head. Nothing here imports PyTorch, so the search can be tested against a perfect
+oracle with no network at all.
 """
 
 import math
@@ -77,9 +63,8 @@ class Node:
         """
         Mean value, from the point of view of the player to move *at this node*.
 
-        Unvisited reads as 0 - neutral - rather than as anything cleverer. Optimism here makes the
-        search re-try losing moves and pessimism makes it ignore unexplored ones; the prior and
-        the exploration term are what are supposed to decide that.
+        Unvisited reads as neutral: the prior and the exploration term are what decide whether to
+        try an unvisited move, not an optimistic or pessimistic default here.
         """
         return self.value_sum / self.visits if self.visits else 0.0
 
@@ -97,9 +82,8 @@ def terminal_value(state: GameState) -> float:
     """
     The value of a finished position to the player whose turn it would be.
 
-    Losing is the worst thing that can happen to the side it happens to, which is the same
-    convention `ai.search.terminal_score` uses and the same one the training targets use. One
-    convention everywhere is the cheapest way to never get a sign wrong.
+    The same convention as `ai.search.terminal_score` and the training targets: one convention
+    everywhere is the cheapest way to never get a sign wrong.
     """
     result = state.result
     if result is None:
@@ -113,9 +97,8 @@ def drive(steps: Iterator[GameState], evaluator: Evaluator) -> Result:
     """
     Runs a suspended search to completion, answering it one position at a time.
 
-    The simple driver, and the one every existing caller gets. `ai.zero.selfplay` has the other:
-    many searches advanced together and answered in one batched pass. Both are drivers only -
-    neither knows anything about the tree - so the search cannot behave differently under them.
+    `ai.zero.selfplay` has the other driver: many searches advanced together and answered in one
+    batched pass. Neither contains tree logic, so the search cannot behave differently under them.
     """
     try:
         request = next(steps)
@@ -129,8 +112,8 @@ class MCTS:
     """
     A PUCT search over a game, driven by an injected evaluator.
 
-    The evaluator is the only thing the search knows about networks, which is deliberate: swap in
-    a perfect oracle and this must play perfectly, and that test needs no training and no torch.
+    The evaluator is the only thing the search knows about networks: swap in a perfect oracle and
+    this must play perfectly, which is a test needing no training and no torch.
     """
 
     def __init__(
@@ -155,14 +138,8 @@ class MCTS:
         """
         Runs the simulations and reports what they found.
 
-        `noise` adds Dirichlet noise to the root priors and belongs to self-play only. At
-        evaluation it would make the player worse for no reason: its whole purpose is to make
-        repeated self-play games differ, and a benchmark wants the player's actual opinion.
-
-        A thin driver over `steps`, feeding it the injected evaluator one position at a time.
-        There is only one search in this file - this is the convenient way to call it, and
-        `ai.zero.selfplay` has another that answers many searches with a single batched forward
-        pass. Neither can drift from the other, because neither contains any tree logic.
+        `noise` adds Dirichlet noise to the root priors and belongs to self-play only: its purpose
+        is to make repeated self-play games differ, and a benchmark wants the player's real opinion.
         """
         return drive(self.steps(state, noise), self.evaluator)
 
@@ -171,30 +148,20 @@ class MCTS:
         The search as a generator: it yields each position it needs evaluated and is sent back
         `(priors, value)`. Returns a `Result` when the simulations are done.
 
-        Why the search is inside out. Evaluating one position at a time costs 1101us on a Connect
-        4 network against 111us amortised in a batch of sixty-four, and MCTS asks once per
-        simulation, so batch-1 inference is very nearly the whole cost of training. What cannot be
-        batched is *one* tree's simulations, which are sequential by construction: each one goes
-        where the previous ones' statistics send it. Collecting several leaves from a single tree
-        needs virtual loss to stop them all choosing the same branch, and that changes what the
-        tree explores.
+        Suspendable so that many *separate* games can be advanced together and their pending
+        positions evaluated in one batched pass. One tree's own simulations cannot be batched -
+        each goes where the previous ones' statistics send it, and collecting several leaves at
+        once needs virtual loss, which changes what the tree explores. Batching between games
+        disturbs nothing, and each tree comes out identical to one searched alone.
 
-        Suspending instead sidesteps all of it. A caller runs sixty-four *separate* games, each an
-        ordinary sequential search, and evaluates their sixty-four pending positions together -
-        the batching happens between games, where there is no tree to disturb. Every tree comes
-        out bit-identical to one searched alone, which is what `tests/zero/test_mcts.py` asserts
-        by visit count rather than by chosen move.
-
-        The state yielded is the live one and the search mutates it on resumption, so a driver
-        must read everything it needs from every pending position *before* resuming any of them.
+        The state yielded is live and is mutated on resumption, so a driver must read everything it
+        needs from every pending position before resuming any of them.
         """
         root = Node(prior=1.0)
 
-        # Expanding counts as the root's first visit, exactly as it does for any other node
-        # inside `_simulate`. Without this the root's visit count is still zero when the first
-        # simulation selects, `sqrt(N_parent)` zeroes the exploration term for every child, and
-        # the search picks the first move generated while ignoring the priors entirely - so a
-        # one-simulation search is blind no matter how good the network is.
+        # Expanding counts as the root's first visit, as it does for any node inside `_simulate`.
+        # At zero visits `sqrt(N_parent)` zeroes the exploration term for every child and the
+        # first selection ignores the priors entirely.
         root.value_sum = yield from self._expand(state, root)
         root.visits = 1
 
@@ -219,10 +186,8 @@ class MCTS:
         Asks the evaluator about a position and hangs its legal moves off `node` as children.
 
         Returns the position's value to its own mover, which is what the caller backs up. Priors
-        are renormalised over the legal moves only: the evaluator is free to spend mass on moves
-        that do not exist here, and the search must not.
-
-        The one place the search needs the outside world, and so the one `yield` in the file.
+        are renormalised over the legal moves only: the evaluator may spend mass on moves that do
+        not exist here, and the search must not.
         """
         priors, value = yield state
 
@@ -242,8 +207,6 @@ class MCTS:
         Dirichlet noise over the root's children, so self-play does not play one game repeatedly.
 
         Sampled from gamma variates rather than numpy, which keeps this module dependency-free.
-        The mix is `(1 - eps) * prior + eps * noise`, the way round AlphaZero has it - the 2021
-        code had the two weights swapped, so what it called a prior was mostly noise.
         """
         if not root.children:
             return
@@ -257,12 +220,9 @@ class MCTS:
         """
         One simulation, returning the value of `state` to the player to move in it.
 
-        Recursive on purpose. The caller negates what it gets back, so the perspective flip lives
-        in exactly one place and no node needs to remember whose value it is holding.
-
-        `yield from` is what lets the recursion survive being suspendable: the evaluator request
-        travels up and out through every frame and the answer comes back down to where it was
-        asked for, so the order of operations is exactly what it was when the call was inline.
+        Recursive on purpose: the caller negates what it gets back, so the perspective flip lives
+        in one place and no node has to remember whose value it holds. `yield from` carries an
+        evaluator request out through every frame and the answer back to where it was asked for.
         """
         if state.is_game_over:
             value = terminal_value(state)
@@ -282,9 +242,8 @@ class MCTS:
         """
         The child maximising PUCT: `Q + c * P * sqrt(N_parent) / (1 + N_child)`.
 
-        `-child.value` because a child's value is held from *its* mover's point of view, and the
-        player choosing here is the other one. Getting this negation wrong gives a search that
-        walks confidently towards its own defeat.
+        `-child.value` because a child holds its value from *its* mover's point of view, and the
+        player choosing here is the other one.
         """
         best_score, best_move = -math.inf, None
         root_visits = math.sqrt(node.visits) if node.visits else 0.0
@@ -315,10 +274,8 @@ class MCTS:
         """
         The move tried most often, ties broken by generation order.
 
-        Visit count rather than mean value, which is the choice AlphaZero makes and the 2021 code
-        did not. A child visited twice with a lucky result has a wonderful mean and means nothing;
-        the visit count is what the search actually committed to, and it is the more robust
-        statistic precisely because PUCT only spends visits on moves that keep looking good.
+        Visit count rather than mean value: a child visited twice with a lucky result has a
+        wonderful mean, while PUCT only spends visits on moves that keep looking good.
         """
         best_move, best_count = None, -1
         for move, count in visits.items():

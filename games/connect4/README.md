@@ -322,6 +322,33 @@ of their iterations — with a sixth of the search budget at play time.
 Committed checkpoints: `models/connect4-latest.pt` and `models/connect4-g2000-latest.pt`, with
 their metrics in `runs/`.
 
+### The hyperparameters were not measurable at this budget
+
+`SELF_PLAY_EXPLORATION` is 5.0, tuned on tic-tac-toe, and there is an argument it should be lower
+here: PUCT is `Q + c · P · √N_parent / (1 + n)`, so 50 simulations over seven columns gives each
+child about seven visits and the exploration term swamps Q throughout. The visit distributions a
+30-generation run produced sat at 82% of the entropy of a uniform distribution — a search that has
+concluded almost nothing.
+
+A grid of twelve-generation runs, one seed each, was meant to settle it:
+
+| c_puct | sims | target entropy | agreement | value MSE | game plies |
+|---|---|---|---|---|---|
+| 1.5 | 50 | 64% of uniform | 69.0% | 0.759 | 18.6 |
+| 2.5 | 50 | 74% | 70.7% | 0.812 | 17.4 |
+| 5.0 | 50 | 87% | 69.9% | 0.704 | 17.1 |
+| 1.5 | 200 | 55% | 69.9% | 0.789 | 20.2 |
+| 2.5 | 200 | 63% | 69.1% | 0.864 | 20.3 |
+| 2.0 | 600 | 47% | 72.9% | 0.683 | 24.2 |
+
+**It settles nothing, and that is the finding.** Four runs of the *same* configuration differing
+only in seed spread 5.5 points of agreement (64.5–69.9%, sd 2.5) and 0.176 of value MSE — wider
+than every cell-to-cell difference above. Twelve-generation single-seed runs cannot see effects of
+the size hyperparameters plausibly have; detecting two points would need five or six seeds a cell.
+
+What does clear that floor: thirty generations reached 74.6% where twelve averaged 68.1%. More data
+is the only lever with evidence behind it, which is what the next section is about.
+
 ### Two lessons from that run
 
 **Generation size matters more than generation count.** The run plateaued after generation 20 —

@@ -1,38 +1,28 @@
 """
 What a training run leaves behind, so it can be read afterwards rather than watched.
 
-A Connect 4 run is measured in hours. Watching a log scroll past is fine for tic-tac-toe, where a
-generation is a second and a bad idea costs nothing to re-try; it is no way to run something that
-will not finish before you want an answer about it. So every generation appends one JSON object to
-a file, and `plot.py` turns the file into a page.
+Every generation appends one JSON object to a file and `plot.py` turns the file into a page.
+Appended and flushed per generation, because the run whose history is most worth having is the one
+that died at hour three; one object per line rather than one document, because a killed file's
+partial last line is one a reader can skip.
 
-**Appended and flushed per generation, never held and written at the end.** A run that dies at hour
-three - killed, out of memory, a bug in the last thing changed - is exactly the run whose history
-is most worth having, and it is the one a write-at-the-end design loses.
-
-**One object per line rather than one JSON document.** A partial line at the end of a killed file
-is a line the reader can skip; a truncated JSON document is unreadable in its entirety.
-
-The fields are chosen so that a flat curve can be diagnosed rather than merely observed, which is
-the difference between "it is not learning" and knowing which part to fix. Each distinguishes a
-failure the others cannot:
+The fields are chosen so a flat curve can be diagnosed rather than merely observed. Each
+distinguishes a failure the others cannot:
 
     optimal_rate        the headline: does the raw policy pick a best move
-    first_rate,         the same split by seat. A player strong as one and hopeless as the
-    second_rate         other is what the 2021 attempt in this repo actually was
+    first_rate,         the same split by seat, catching a player strong as one and hopeless
+    second_rate         as the other
     value_mse           a value head confidently wrong while the policy looks healthy
     policy_loss,        which head has stalled; a total hides it
     value_loss
-    target_entropy      how sharp the search's targets are. Tic-tac-toe's c_puct fault showed up
-                        as policy loss flattening *at* the entropy of its own targets - the
-                        network fitting confidently wrong targets perfectly, which looks
-                        identical to a network that cannot learn
-    distinct_positions  self-play is on-policy and narrows as it improves; tic-tac-toe once
-                        collapsed to 366 of the game's 4,520 decision positions
+    target_entropy      how sharp the search's targets are. A policy loss flattening *at* this
+                        is a network fitting bad targets perfectly, which looks identical to
+                        one that cannot learn
+    distinct_positions  self-play is on-policy and narrows as it improves
     draw_rate,          sanity on the games themselves, and nearly free to collect
     game_length
-    seconds, and the    where the time actually goes, so a projection of the full run is measured
-    split by phase      rather than guessed
+    seconds, and the    where the time actually goes, so a projection of the full run is
+    split by phase      measured rather than guessed
 """
 
 import json
@@ -80,9 +70,8 @@ def read(path: str) -> List[Dict[str, Any]]:
     """
     Every generation recorded in a file.
 
-    A trailing partial line is skipped rather than raised on. A killed run leaves one about as
-    often as not, and refusing to read the other four hundred generations because the last write
-    was interrupted would defeat the reason the file is flushed per line.
+    A trailing partial line is skipped rather than raised on, which a killed run leaves about as
+    often as not.
     """
     records = []
     with open(path) as handle:
@@ -101,20 +90,13 @@ def truncate_after(path: str, generation: int) -> int:
     """
     Drops recorded generations past `generation`, returning how many went.
 
-    What a resume needs so the file agrees with the checkpoint it is resuming from. A generation
-    is recorded before its checkpoint is written - it has to be, since the record is what says the
-    generation happened - so there is always a window in which the file is one generation ahead of
-    the weights on disk. A run killed inside that window and then resumed would otherwise record
-    the same generation number twice, and the file would describe a history that never happened.
+    A generation is recorded before its checkpoint is written, so a run killed in that window
+    leaves the file one generation ahead of the weights and a resume would record the same
+    generation twice.
 
-    Rewritten rather than seeked and truncated in place, because the last line may itself be half
-    written; `read` already knows how to stop at one, and this is only a few hundred lines.
-
-    **The decision to rewrite is by content, not by whether anything was dropped.** A file killed
-    mid-write ends in a partial line that `read` skips and no generation is past the checkpoint, so
-    a count of dropped records is zero and the damage stays - and the resumed run then appends onto
-    the half-written line, gluing two records together. Comparing what the file says against what
-    it should say catches the repair and the truncation with one condition.
+    Rewritten rather than truncated in place, and the decision to rewrite is by content rather
+    than by whether anything was dropped: a file ending in a half-written line has nothing past
+    the checkpoint to drop, but appending to it would glue two records together.
     """
     if not os.path.exists(path):
         return 0
