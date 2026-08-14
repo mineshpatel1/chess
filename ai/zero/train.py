@@ -349,7 +349,8 @@ def train(
         climbed = ladder_every > 0 and (generation % ladder_every == 0
                                         or generation == generations)
         ladder_started = time.perf_counter()
-        standing = (_climb(net, encoder, game, ladder_rungs, ladder_games, seed, ladder_simulations)
+        standing = (_climb(net, encoder, game, ladder_rungs, ladder_games, seed, ladder_simulations,
+                          engine=engine)
                     if climbed else None)
         ladder_seconds = time.perf_counter() - ladder_started
         if standing is not None:
@@ -623,7 +624,7 @@ def grading_sets(game):
     return sets
 
 
-def _climb(net, encoder, game, rungs, games, seed, simulations=0):
+def _climb(net, encoder, game, rungs, games, seed, simulations=0, engine='auto'):
     """
     The network against each rung, which is the metric the run is steered by.
 
@@ -634,6 +635,10 @@ def _climb(net, encoder, game, rungs, games, seed, simulations=0):
     Played on the CPU whatever the run trains on. This is the one path with no batch in it - a
     ladder rung is two hundred thousand single positions - and a batch of one costs half as much
     again on a card as it does here. Copying the weights across is a couple of megabytes once.
+
+    `engine` is the one this run's self-play already resolved, passed straight through: the
+    `minimax:` rungs are most of a Connect 4 ladder's cost, and there is no reason for a run
+    started with `--engine rust` to search its opponents in Python.
     """
     from ai import ladder as ladders  # Local: keeps `ai.zero` importable without the match harness
     from ai.zero.mcts import MCTS
@@ -658,7 +663,7 @@ def _climb(net, encoder, game, rungs, games, seed, simulations=0):
         rungs=tuple(rungs) if rungs else default.rungs,
         opening_plies=default.opening_plies)
     return ladders.climb(game, challenger, ladder=rung_ladder, games=games, seed=seed,
-                         print_progress=False)
+                         print_progress=False, engine=engine)
 
 
 def _grade(net, encoder, sets):

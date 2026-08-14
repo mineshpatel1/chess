@@ -44,9 +44,9 @@ def _game(name: str) -> Type[GameState]:
                      f'{", ".join(g.__name__ for g in GAMES)}')
 
 
-def _player(spec: str):
+def _player(spec: str, engine: str = 'auto'):
     try:
-        return player(spec)
+        return player(spec, engine=engine)
     except UnknownPlayer as error:
         raise SystemExit(str(error))
 
@@ -272,7 +272,7 @@ def climb_ladder(args) -> None:
     different question and often a differently-answered one.
     """
     game = _game(args.game)
-    chooser = _player(args.player)
+    chooser = _player(args.player, engine=args.engine)
 
     rungs = ladder.for_game(game)
     rungs = ladder.make(
@@ -283,7 +283,8 @@ def climb_ladder(args) -> None:
 
     log.info(f'Climbing the {game.__name__} ladder with {describe(args.player)}...')
     random.seed(args.seed)  # For a challenger that samples; see grade()
-    standing = ladder.climb(game, chooser, rungs, games=args.games, seed=args.seed)
+    standing = ladder.climb(game, chooser, rungs, games=args.games, seed=args.seed,
+                            engine=args.engine)
 
     log.newline()
     log.info(str(standing))
@@ -292,7 +293,7 @@ def climb_ladder(args) -> None:
 def match(args) -> None:
     """Plays two players off against each other over many paired games."""
     game = _game(args.game)
-    first, second = _player(args.a), _player(args.b)
+    first, second = _player(args.a, engine=args.engine), _player(args.b, engine=args.engine)
 
     log.info(f'{describe(args.a)}  vs  {describe(args.b)}   ({args.games} games)')
     result = play_match(game, first, second, games=args.games, seed=args.seed)
@@ -383,6 +384,9 @@ def main(argv: Optional[list] = None) -> None:
     climber.add_argument('--unbalanced', action='store_true',
                          help='start from any opening, not only ones drawn with perfect play')
     climber.add_argument('--seed', type=int, default=0)
+    climber.add_argument('--engine', choices=('auto', 'python', 'rust'), default='auto',
+                         help="which alpha-beta the 'minimax:' rungs (and player, if it is one) "
+                              "search with; see 'train --engine'")
     climber.set_defaults(run=climb_ladder)
 
     matcher = commands.add_parser('match', help='play two players off against each other')
@@ -390,6 +394,9 @@ def main(argv: Optional[list] = None) -> None:
     matcher.add_argument('--b', required=True)
     matcher.add_argument('--games', type=int, default=100)
     matcher.add_argument('--seed', type=int, default=0)
+    matcher.add_argument('--engine', choices=('auto', 'python', 'rust'), default='auto',
+                         help="which alpha-beta a 'minimax:' player searches with; see "
+                              "'train --engine'")
     matcher.set_defaults(run=match)
 
     args = parser.parse_args(argv)

@@ -218,6 +218,7 @@ def climb(
     games: int = GAMES,
     seed: int = 0,
     print_progress: bool = True,
+    engine: str = 'auto',
 ) -> Standing:
     """
     Plays `challenger` against every rung and reports where it sits.
@@ -225,6 +226,10 @@ def climb(
     The same openings are used for every rung, which is deliberate: it is a paired comparison down
     the whole ladder, so a rung looking harder than the one below it cannot be an artefact of the
     positions it happened to be given.
+
+    `engine` picks which alpha-beta the `minimax:` rungs search with - `'auto'` (the default)
+    takes the Rust one where it is built, which is most of what a Connect 4 ladder costs. It has
+    nothing to say about the challenger, which is whatever `challenger` already is.
     """
     ladder = ladder or for_game(game)
     openings = openings_at(game, ladder.opening_plies)
@@ -251,7 +256,7 @@ def climb(
         if print_progress:
             log.info(f'  vs {describe(spec)}...')
         result = play_match(
-            game, challenger, player(spec),
+            game, challenger, player(spec, engine=engine),
             games=games, seed=seed, print_summary=False, openings=chosen,
         )
         rungs.append(Rung(spec, result))
