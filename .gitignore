@@ -15,12 +15,7 @@ models/connect4*.pt
 
 # Except a long run's resume point, which is committed as it goes precisely so that losing the
 # machine costs a few generations rather than the run. See `zero.py train --commit-every`.
-!models/connect4-latest.pt
-
-# And the resume point of the 2,000-games-per-generation experiment, for the same reason: it runs
-# unattended for hours on a machine that has been reclaimed four times in a day. Delete this line
-# and the file once the experiment has answered its question.
-!models/connect4-g2000-latest.pt
+!models/connect4-best.pt
 
 # The replay buffer beside each of those resume points, written every generation so that an
 # interrupted run restarts with its games as well as its weights. Local by construction: it is
