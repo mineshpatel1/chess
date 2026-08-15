@@ -192,7 +192,18 @@ class TestBalancedOpenings(unittest.TestCase):
 
 
 class TestCalibration(unittest.TestCase):
-    """Players whose relative strength is not in doubt, so a surprise here is the harness."""
+    """
+    Players whose relative strength is not in doubt, so a surprise here is the harness.
+
+    Two climbs for the whole class - the weakest player and a strong one - since playing the
+    ladder is the cost and the shape of a standing is the same whoever climbed it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        random.seed(0)
+        cls.weak = climb(Connect4, player('random'), CHEAP, games=FEW, print_progress=False)
+        cls.strong = climb(Connect4, player('minimax:4'), CHEAP, games=FEW, print_progress=False)
 
     def test_random_loses_to_a_real_search(self):
         """
@@ -200,29 +211,24 @@ class TestCalibration(unittest.TestCase):
         which is level in expectation and genuinely noisy over twenty games - asserting that a
         random player beats nothing would be asserting that a coin never comes up heads twice.
         """
-        random.seed(0)
-        standing = climb(Connect4, player('random'), CHEAP, games=FEW, print_progress=False)
-        by_spec = {rung.spec: rung for rung in standing.rungs}
+        by_spec = {rung.spec: rung for rung in self.weak.rungs}
 
-        self.assertTrue(by_spec['minimax:1'].lost, str(standing))
-        self.assertTrue(by_spec['minimax:2'].lost, str(standing))
+        self.assertTrue(by_spec['minimax:1'].lost, str(self.weak))
+        self.assertTrue(by_spec['minimax:2'].lost, str(self.weak))
 
     def test_a_search_beats_random_and_a_shallower_search(self):
-        standing = climb(Connect4, player('minimax:4'), CHEAP, games=FEW, print_progress=False)
-        by_spec = {rung.spec: rung for rung in standing.rungs}
+        by_spec = {rung.spec: rung for rung in self.strong.rungs}
 
-        self.assertTrue(by_spec['random'].beaten, str(standing))
-        self.assertTrue(by_spec['minimax:1'].beaten, str(standing))
+        self.assertTrue(by_spec['random'].beaten, str(self.strong))
+        self.assertTrue(by_spec['minimax:1'].beaten, str(self.strong))
 
     def test_every_rung_is_played_even_after_a_hopeless_loss(self):
         """Fixed cost and comparable runs; the ladder does not stop where the player falls off."""
-        standing = climb(Connect4, player('random'), CHEAP, games=FEW, print_progress=False)
-        self.assertEqual(len(CHEAP.rungs), len(standing.rungs))
-        self.assertEqual(list(CHEAP.rungs), [rung.spec for rung in standing.rungs])
+        self.assertEqual(len(CHEAP.rungs), len(self.weak.rungs))
+        self.assertEqual(list(CHEAP.rungs), [rung.spec for rung in self.weak.rungs])
 
     def test_every_game_is_accounted_for_on_every_rung(self):
-        standing = climb(Connect4, player('minimax:1'), CHEAP, games=FEW, print_progress=False)
-        for rung in standing.rungs:
+        for rung in self.weak.rungs:
             self.assertEqual(FEW, rung.result.games, rung.spec)
 
 

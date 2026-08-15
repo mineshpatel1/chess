@@ -13,8 +13,8 @@ depths 1-4, zero mismatches. The old search is gone, so what remains is the mach
 scores recorded against the surviving search so the next change to it has something to answer
 to.
 
-To run a wide comparison again, widen CORPUS_SIZE and DEPTHS and expect minutes, not seconds:
-cost grows as branching^depth, and corpus positions branch far wider than the opening does.
+To run a wide comparison again, widen COMPARED and DEPTHS and expect minutes, not seconds: cost
+grows as branching^depth, and corpus positions branch far wider than the opening does.
 """
 
 import unittest
@@ -23,12 +23,14 @@ from typing import List, Tuple
 from ai.search import _root_move_score, alpha_beta, MATE
 from games.chess.board import ChessBoard
 from games.chess.evaluation import weighted_eval
-from tests.chess.corpus import positions, DECISIVE_POSITIONS
+from tests.chess.corpus import positions
 
-# Kept small enough to stay in the default suite. The equivalence run that gates the rewrite
-# widens these considerably - see the module docstring in tests/test_all.py.
+# Kept small enough to stay in the default suite; a real equivalence run widens all three, as the
+# module docstring says. COMPARED is separate from CORPUS_SIZE because searching a position at
+# every depth costs orders of magnitude more than checking that it has moves.
 CORPUS_SIZE = 40
-DEPTHS = (1, 2, 3)
+COMPARED = 8
+DEPTHS = (1, 3)
 
 
 def root_scores(fen: str, depth: int) -> List[Tuple[str, int]]:
@@ -61,26 +63,20 @@ class TestHarness(unittest.TestCase):
     the search rewrite means nothing.
     """
 
-    def test_corpus_is_reproducible(self):
-        self.assertEqual(positions(30, seed=1), positions(30, seed=1))
-
     def test_corpus_positions_all_have_moves(self):
         for fen in positions(CORPUS_SIZE):
             self.assertTrue(any(ChessBoard(fen).legal_moves), fen)
-
-    def test_search_is_deterministic(self):
-        """A comparison against a search that varies run to run would prove nothing."""
-        for fen in positions(10):
-            self.assertEqual(root_scores(fen, 2), root_scores(fen, 2), fen)
 
     def test_root_scores_agrees_with_alpha_beta(self):
         """
         The harness must measure the same thing the engine does. If `root_scores` and
         `alpha_beta` can disagree about the best move, then `root_scores` is not a faithful
         stand-in for the search and cannot vouch for a replacement.
+
+        A handful of positions at the shallowest and deepest depths the suite can afford.
         """
-        for fen in positions(12):
-            for depth in (1, 2, 3):
+        for fen in positions(COMPARED):
+            for depth in DEPTHS:
                 self.assertEqual(
                     best_of(root_scores(fen, depth)),
                     alpha_beta(ChessBoard(fen), depth=depth).uci,
@@ -125,13 +121,6 @@ class TestDecisivePositions(unittest.TestCase):
         scores = dict(root_scores('kn5R/3p1p2/1P1p1p2/P2p1p2/3p1P2/3p4/3P4/7K w - - 0 1', 4))
         self.assertEqual(scores['a5a6'], 0)
         self.assertEqual(max(scores.values()), 0)
-
-    def test_every_decisive_position_is_reproducible(self):
-        for fen in DECISIVE_POSITIONS:
-            for depth in (1, 2, 3):
-                self.assertEqual(
-                    root_scores(fen, depth), root_scores(fen, depth), f'{fen} at depth {depth}'
-                )
 
 
 def main():

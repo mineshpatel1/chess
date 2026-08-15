@@ -107,7 +107,31 @@ class TestTheOracle(unittest.TestCase):
 
 
 class TestPerfectPlay(unittest.TestCase):
+    """
+    The engine against the oracle, over every position rather than a sample of them.
+
+    Both questions below are asked on one walk of the game: the move the engine returns and the
+    score it returns are read from the same position before moving on to the next.
+    """
+
     DEPTH = TicTacToe.SOLVED_DEPTH
+
+    @classmethod
+    def setUpClass(cls):
+        cls.played = []
+        for state in reachable_positions():
+            if state.is_game_over:
+                continue
+
+            cls.played.append((
+                str(state),
+                alpha_beta(state, depth=cls.DEPTH),
+                optimal_moves(state),
+                _negamax_ab(state, cls.DEPTH, LOW_BOUND, HIGH_BOUND, state.DEFAULT_EVAL),
+                # The search speaks for the player to move; the oracle speaks for Crosses.
+                solve(state.marks[CROSS], state.marks[NOUGHT], state.turn)
+                * (1 if state.turn else -1),
+            ))
 
     def test_the_search_plays_an_optimal_move_everywhere(self):
         """
@@ -117,12 +141,8 @@ class TestPerfectPlay(unittest.TestCase):
         Not a check that it returns *the* best move - several are usually equally best, and which
         one comes back is a matter of move ordering rather than of correctness.
         """
-        for state in reachable_positions():
-            if state.is_game_over:
-                continue
-
-            move = alpha_beta(state, depth=self.DEPTH)
-            self.assertIn(move, optimal_moves(state), f'{state}\nchose {move}')
+        for board, move, optimal, _, _ in self.played:
+            self.assertIn(move, optimal, f'{board}\nchose {move}')
 
     def test_alpha_beta_agrees_with_unpruned_minimax(self):
         """
@@ -136,21 +156,8 @@ class TestPerfectPlay(unittest.TestCase):
         Connect 4 gives this its own test_search_equivalence.py over a sampled corpus. Here it
         runs over every position there is.
         """
-        for state in reachable_positions():
-            if state.is_game_over:
-                continue
-
-            searched = _negamax_ab(
-                state, self.DEPTH, LOW_BOUND, HIGH_BOUND, state.DEFAULT_EVAL,
-            )
-            # The search speaks for the player to move; the oracle speaks for Crosses.
-            expected = solve(state.marks[CROSS], state.marks[NOUGHT], state.turn)
-            if not state.turn:
-                expected = -expected
-
-            self.assertEqual(
-                expected, _sign(searched), f'{state}\nsearch said {searched}',
-            )
+        for board, _, _, searched, expected in self.played:
+            self.assertEqual(expected, _sign(searched), f'{board}\nsearch said {searched}')
 
     def test_the_engine_cannot_be_beaten_as_either_player(self):
         """

@@ -66,19 +66,28 @@ class TestSearchWithPerfectKnowledge(unittest.TestCase):
     """
     Given the answer, the search must not lose it. Any failure here is the search mishandling
     knowledge it was handed - a sign error, a bad backup, a broken selection rule.
+
+    Grading all 4,520 decisions is the expensive part, so it is done once per simulation count
+    for the whole class and both questions are asked of the same reports.
     """
 
-    def test_it_plays_perfectly_at_every_simulation_count(self):
-        for simulations in (1, 2, 10, 50):
-            search = MCTS(perfect_evaluator, TicTacToeEncoder, simulations=simulations)
-            report = benchmark(lambda s: search.search(s).move, enumerate_positions(TicTacToe))
+    SIMULATIONS = (1, 2, 10, 50)
 
+    @classmethod
+    def setUpClass(cls):
+        cls.reports = {}
+        for simulations in cls.SIMULATIONS:
+            search = MCTS(perfect_evaluator, TicTacToeEncoder, simulations=simulations)
+            cls.reports[simulations] = benchmark(
+                lambda s: search.search(s).move, enumerate_positions(TicTacToe))
+
+    def test_it_plays_perfectly_at_every_simulation_count(self):
+        for simulations, report in self.reports.items():
             self.assertEqual(1.0, report.overall.rate, f'{simulations} simulations')
 
     def test_it_plays_perfectly_from_both_seats(self):
         """The split the 2021 player failed. An average over seats would have hidden it."""
-        search = MCTS(perfect_evaluator, TicTacToeEncoder, simulations=25)
-        report = benchmark(lambda s: search.search(s).move, enumerate_positions(TicTacToe))
+        report = self.reports[max(self.SIMULATIONS)]
 
         self.assertEqual(1.0, report.by_seat[True].rate)
         self.assertEqual(1.0, report.by_seat[False].rate)

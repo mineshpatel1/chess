@@ -1,172 +1,43 @@
 """
 The whole suite.
 
-Tests live beside the game whose positions they use: `tests/chess/` for everything driven by a
-chess board, including the tests of `ai/` that use chess as their vehicle. Only what is shared
-between games stays here - `tests/conformance.py`, the contract every game must satisfy.
+    python3 -m unittest tests.test_all
 
-Adding a game means adding a `tests/<name>/` package and one import block below.
+Every `tests/**/test_*.py` is found rather than listed, so a new test file, or a new game's
+`tests/<name>/` package, joins the suite by existing. Tests live beside the game whose positions
+they use: `tests/chess/` for everything driven by a chess board, including the tests of `ai/` that
+use chess as their vehicle. Only what is shared between games stays here - `tests/conformance.py`,
+the contract every game must satisfy.
+
+A test that needs PyTorch or the Rust extension skips itself when it is not there, so this runs
+on whatever the machine has.
 """
 
+import os
 import unittest
 
-from tests.chess.test_board import TestBitboard
-from tests.chess.test_moves import TestMoves
-from tests.chess.test_undo import TestUndo
-from tests.chess.test_permutations import TestPermutations
-from tests.chess.test_search import TestSearch, TestTerminalValue, TestUciSearchOutput
-from tests.chess.test_search_equivalence import TestHarness, TestDecisivePositions
-from tests.chess.test_simulate import TestResult, TestSimulateGame
-from tests.chess.test_conformance import TestChessConformance
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-from tests.connect4.test_bitboard import TestConstants, TestIndexing, TestDrops, TestConnectLength
-from tests.connect4.test_board import (
-    TestInvariants,
-    TestMoveGeneration,
-    TestCopy,
-    TestSignature,
-    TestDiagrams,
-    TestRendering,
-)
-from tests.connect4.test_wins import (
-    TestRuns,
-    TestExhaustiveWins,
-    TestCompletions,
-    TestSentinelBoundaries,
-    TestOutcome,
-)
-from tests.connect4.test_permutations import TestPermutations as TestConnect4Permutations
-from tests.connect4.test_play import TestPlayLoop, TestParseMove
-from tests.connect4.test_search_equivalence import (
-    TestEquivalence,
-    TestPruningPays,
-    TestTerminalScores,
-)
-from tests.connect4.test_evaluation import (
-    TestSymmetry,
-    TestBounds,
-    TestThreatCells,
-    TestThreatValue,
-)
-from tests.connect4.test_match import TestMatchResult, TestPlayMatch
-from tests.connect4.test_ladder import (
-    TestADeterministicPlayerAgainstItself,
-    TestBalancedOpenings,
-    TestOpeningsAreNeverReused,
-    TestCalibration,
-    TestReproducibility,
-    TestTheSummary,
-    TestLadderConfiguration,
-)
-from tests.connect4.test_solver import (
-    TestPinnedCorpus,
-    TestMirrorInvariance,
-    TestSolverKey,
-    TestPublishedSolution,
-)
-from tests.connect4.test_conformance import TestConnect4Conformance
-from tests.connect4.test_encoding import (
-    TestShape as TestConnect4Shape,
-    TestPlanesAreRelativeToTheMover,
-    TestActions as TestConnect4Actions,
-)
-from tests.connect4.test_corpus import (
-    TestGameTreeConsistency,
-    # Aliased: tests/connect4/test_solver.py exports a class of the same name, and an unaliased
-    # import would shadow it here - silently, since the suite would still pass with three fewer
-    # tests in it. Same reason TestPermutations is aliased above.
-    TestPublishedSolution as TestPublishedSolutionInTheCorpus,
-    TestTheFileIsWellFormed,
-    TestTheLoader,
-)
+_discovering = False
 
-from tests.tictactoe.test_board import (
-    TestGeometry,
-    TestIsWin,
-    TestMoveGeneration as TestTicTacToeMoveGeneration,
-    TestPlayingAndUndoing,
-    TestCopy as TestTicTacToeCopy,
-    TestSignature as TestTicTacToeSignature,
-    TestDiagrams as TestTicTacToeDiagrams,
-    TestRendering as TestTicTacToeRendering,
-)
-from tests.tictactoe.test_permutations import (
-    TestPerft,
-    TestTheCensus,
-    TestOutcomes,
-)
-from tests.tictactoe.test_evaluation import (
-    TestBitCount,
-    TestOpenTwos,
-    TestValue,
-    TestWeightedEval,
-)
-from tests.tictactoe.test_perfect_play import TestTheOracle, TestPerfectPlay
-from tests.tictactoe.test_play import (
-    TestDefaultDepth,
-    TestPlayLoop as TestTicTacToePlayLoop,
-    TestParseMove as TestTicTacToeParseMove,
-)
-from tests.tictactoe.test_conformance import TestTicTacToeConformance
-from tests.tictactoe.test_encoding import (
-    TestShape,
-    TestPlanes,
-    TestActions,
-    TestSymmetries,
-)
 
-# The learned player. Only tests/zero/test_net.py needs PyTorch, and it skips without it - the
-# tree and the training targets, which are the parts most likely to be wrong, are checked with
-# nothing installed at all. tests/zero/test_fast.py skips the same way when the Rust engine is
-# not built.
-from tests.test_oracle import (
-    TestSolver,
-    TestEnumeration,
-    TestOpeningsAtAPly,
-    TestBenchmarkCalibration,
-    TestPlayEveryLine,
-    TestGrade,
-)
-from tests.zero.test_mcts import (
-    TestTerminalValue as TestZeroTerminalValue,
-    TestSearchWithPerfectKnowledge,
-    TestSearchWithNoKnowledge,
-    TestTheTreeIsPaths,
-    TestPolicyOutput,
-)
-from tests.zero.test_metrics import TestRecording, TestTruncating, TestThePlotter
-from tests.zero.test_selfplay import (
-    TestBatchingDoesNotChangeTheGames,
-    TestProgressReporting,
-    TestValueTargets,
-    TestPlayGame,
-    TestRandomOpenings,
-    TestAugmentation,
-)
-from tests.zero.test_net import (
-    TestNetwork,
-    TestMasking,
-    TestFlushingDenormals,
-    TestTheLadderMetric,
-    TestGradingEveryTier,
-    TestCheckpoints,
-    TestPlayer,
-    TestResuming,
-    TestTrainingLearns,
-)
-from tests.zero.test_cli import TestResumeFrom, TestCommitter
-from tests.zero.test_fast import (
-    TestTheTreeIsTheSameTree,
-    TestTheGamesAreTheSameGames,
-    TestChoosingAnEngine,
-    TestSwappingEnginesChangesNothingButSpeed,
-)
-from tests.connect4.test_native import (
-    TestTheSearchIsTheSameSearch,
-    TestTheEvaluationIsTheSameEvaluation,
-    TestChoosingAnEngine as TestChoosingANativeEngine,
-)
-from tests.zero.test_ladder_fast import TestTheChallengerIsTheSameChallenger
+def load_tests(loader, tests, pattern):
+    """
+    Discovery, guarded against recursing through this file.
+
+    This module matches the pattern it asks discovery for, so `discover` imports it and calls
+    this function again. The second call returns nothing rather than starting a third.
+    """
+    global _discovering
+
+    if _discovering:
+        return unittest.TestSuite()
+
+    _discovering = True
+    try:
+        return loader.discover(os.path.join(ROOT, 'tests'), top_level_dir=ROOT)
+    finally:
+        _discovering = False
 
 
 def main():

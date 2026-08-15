@@ -138,36 +138,36 @@ class TestTheGamesAreTheSameGames(unittest.TestCase):
     This is the test that covers the parts a fixed evaluator cannot: the Dirichlet noise drawn at
     every root and the move sampled from the visit counts. Both come out of a Mersenne Twister
     seeded per game, and the Rust engine reproduces CPython's rather than choosing its own.
+
+    The generation is played once for the whole class, playing it being the expensive part and
+    each test below a different question about the same pair of answers.
     """
 
     GAMES = 6
     SIMULATIONS = 60
     EXPLORATION = 2.0
 
-    def setUp(self):
-        from ai.zero.net import ZeroNet
+    @classmethod
+    def setUpClass(cls):
+        from ai.zero.fast import play_games as fast_play_games
+        from ai.zero.net import ZeroNet, evaluate_batch
+        from ai.zero.selfplay import play_games
         from ai.zero.train import architecture
 
         torch.manual_seed(0)
-        self.encoder = Connect4Encoder()
-        self.net = ZeroNet(
-            self.encoder.PLANE_SHAPE, self.encoder.POLICY_SIZE, **architecture('Connect4'))
-        self.net.eval()
+        cls.encoder = Connect4Encoder()
+        cls.net = ZeroNet(
+            cls.encoder.PLANE_SHAPE, cls.encoder.POLICY_SIZE, **architecture('Connect4'))
+        cls.net.eval()
 
-    def setUpGames(self):
-        from ai.zero.fast import play_games as fast_play_games
-        from ai.zero.net import evaluate_batch
-        from ai.zero.selfplay import play_games
-
-        self.played = play_games(
-            lambda states: evaluate_batch(self.net, states, self.encoder),
-            self.encoder, Connect4, self.GAMES, self.SIMULATIONS,
-            batch_size=self.GAMES, seed=1, exploration=self.EXPLORATION)
-        self.generation = fast_play_games(
-            self.net, self.GAMES, self.SIMULATIONS, exploration=self.EXPLORATION, seed=1)
+        cls.played = play_games(
+            lambda states: evaluate_batch(cls.net, states, cls.encoder),
+            cls.encoder, Connect4, cls.GAMES, cls.SIMULATIONS,
+            batch_size=cls.GAMES, seed=1, exploration=cls.EXPLORATION)
+        cls.generation = fast_play_games(
+            cls.net, cls.GAMES, cls.SIMULATIONS, exploration=cls.EXPLORATION, seed=1)
 
     def test_the_examples_are_identical(self):
-        self.setUpGames()
         expected = [example for examples, _ in self.played for example in examples]
         planes, policy, value = self.generation.examples
 
@@ -181,12 +181,10 @@ class TestTheGamesAreTheSameGames(unittest.TestCase):
                 self.assertEqual(numpy.float32(example.value), value[index])
 
     def test_the_games_run_the_same_length(self):
-        self.setUpGames()
         self.assertEqual(
             [len(examples) for examples, _ in self.played], self.generation.lengths)
 
     def test_the_same_games_were_drawn(self):
-        self.setUpGames()
         drawn = sum(1 for _, finished in self.played if finished.result.winner is None)
         self.assertEqual(drawn, self.generation.drawn)
 
@@ -235,8 +233,9 @@ class TestSwappingEnginesChangesNothingButSpeed(unittest.TestCase):
     """
     The integration point, from the caller `train` actually uses.
 
-    `TestTheGamesAreTheSameGames` compares the two drivers; this compares what a generation hands
-    the replay buffer, which is what a training run is actually made of.
+    `TestTheGamesAreTheSameGames` compares the two drivers at length; this only has to cover the
+    layer above them - the seed string, the opening plies and what reaches the replay buffer - so
+    it plays a couple of short games rather than a generation.
     """
 
     def test_a_generation_comes_out_the_same_either_way(self):
@@ -249,9 +248,9 @@ class TestSwappingEnginesChangesNothingButSpeed(unittest.TestCase):
 
         def generation(engine):
             return _self_play(
-                net, encoder, Connect4, count=6, simulations=40, opening_plies=0,
+                net, encoder, Connect4, count=2, simulations=12, opening_plies=0,
                 temperature_moves=30, final_temperature=0.0, exploration=2.0,
-                dirichlet_epsilon=0.25, batch_size=6, seed='5:1', report_every=0, engine=engine)
+                dirichlet_epsilon=0.25, batch_size=2, seed='5:1', report_every=0, engine=engine)
 
         expected, drawn, lengths = generation('python')
         examples, fast_drawn, fast_lengths = generation('rust')

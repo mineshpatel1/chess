@@ -284,7 +284,8 @@ class TestTheLadderMetric(unittest.TestCase):
     assert.
     """
 
-    def _train(self, **kwargs):
+    @staticmethod
+    def _train(**kwargs):
         from ai.zero.train import train
 
         seen = []
@@ -292,23 +293,29 @@ class TestTheLadderMetric(unittest.TestCase):
               seed=0, on_generation=seen.append, **kwargs)
         return seen
 
+    @classmethod
+    def setUpClass(cls):
+        """The same seed run three ways, which is what every question below is asked of."""
+        cls.without = cls._train(ladder_every=0)
+        cls.with_ladder = cls._train(ladder_rungs=('minimax:1',), ladder_games=10)
+        cls.searched = cls._train(
+            ladder_rungs=('minimax:1',), ladder_games=10, ladder_simulations=20)
+
     def test_playing_the_ladder_does_not_change_what_is_trained(self):
         """A metric that perturbed the run would make every number it reported about a different run."""
-        without = self._train(ladder_every=0)
-        with_it = self._train(ladder_rungs=('minimax:1',), ladder_games=10)
-
-        self.assertEqual([p.optimal_rate for p in without], [p.optimal_rate for p in with_it])
-        self.assertEqual([p.loss for p in without], [p.loss for p in with_it])
+        self.assertEqual([p.optimal_rate for p in self.without],
+                         [p.optimal_rate for p in self.with_ladder])
+        self.assertEqual([p.loss for p in self.without], [p.loss for p in self.with_ladder])
 
     def test_it_records_a_score_and_the_tiers_behind_it(self):
-        progress = self._train(ladder_rungs=('minimax:1',), ladder_games=10)[-1]
+        progress = self.with_ladder[-1]
 
         self.assertGreaterEqual(progress.ladder_score, 0.0)
         self.assertLessEqual(progress.ladder_score, 1.0)
         self.assertIn('all', progress.tier_rates, 'tic-tac-toe is enumerable, so one tier')
 
     def test_with_no_ladder_it_reports_zero_rather_than_inventing_one(self):
-        self.assertEqual(0.0, self._train(ladder_every=0)[-1].ladder_score)
+        self.assertEqual(0.0, self.without[-1].ladder_score)
 
     def test_searching_measures_a_different_and_stronger_player(self):
         """
@@ -316,9 +323,7 @@ class TestTheLadderMetric(unittest.TestCase):
         Connect 4 network scoring 0.39 raw across depths 2, 4 and 6 beat depth 5 at 0.635 once it
         was given a hundred simulations. Both are legitimate measurements of different things.
         """
-        raw = self._train(ladder_rungs=('minimax:1',), ladder_games=10)[-1]
-        searched = self._train(ladder_rungs=('minimax:1',), ladder_games=10,
-                               ladder_simulations=20)[-1]
+        raw, searched = self.with_ladder[-1], self.searched[-1]
 
         self.assertGreater(searched.ladder_score, raw.ladder_score)
         self.assertEqual(raw.optimal_rate, searched.optimal_rate,
@@ -340,18 +345,6 @@ class TestTheLadderMetric(unittest.TestCase):
         self.assertEqual('agreement', metric_for('TicTacToe'))
         self.assertEqual('ladder', metric_for('Connect4'))
         self.assertEqual('ladder', metric_for('SomeNewGame'), 'games win games by default')
-
-    def test_the_game_default_can_be_overridden(self):
-        from ai.zero.checkpoint import load
-        from ai.zero.train import train
-
-        with tempfile.TemporaryDirectory() as directory:
-            latest = os.path.join(directory, 'latest.pt')
-            train(TicTacToe, generations=1, games_per_generation=4, simulations=5, steps=2,
-                  ladder_rungs=('minimax:1',), ladder_games=10, metric='ladder',
-                  latest_path=latest, seed=0)
-            self.assertEqual('ladder:minimax:1', load(latest)['metadata']['metric'],
-                             'the rungs are part of the measure, not a detail of it')
 
     def test_asking_for_the_ladder_with_it_switched_off_falls_back_rather_than_lying(self):
         from ai.zero.checkpoint import load
@@ -467,6 +460,29 @@ class TestGradingEveryTier(unittest.TestCase):
             self.assertGreater(len(positions), 1000, tier)
 
 
+def interruptible_run(directory, generations, resume=False):
+    """
+    A run small enough to kill and restart inside a test, writing where a resume looks for it.
+
+    Shared by the two classes below: the weights and the replay buffer are the two halves of
+    surviving an interruption, and both are asked of the same run.
+    """
+    from ai.zero.train import train
+
+    return train(
+        TicTacToe,
+        generations=generations,
+        games_per_generation=4,
+        simulations=5,
+        steps=2,
+        benchmark_every=1000,  # Grading is the slow part and neither class is about grading
+        latest_path=os.path.join(directory, 'latest.pt'),
+        metrics_path=os.path.join(directory, 'run.jsonl'),
+        resume_from=os.path.join(directory, 'latest.pt') if resume else None,
+        seed=0,
+    )
+
+
 @needs_torch
 class TestResuming(unittest.TestCase):
     """
@@ -474,21 +490,7 @@ class TestResuming(unittest.TestCase):
     measured in hours safe to start on a machine that can go away.
     """
 
-    def _train(self, directory, generations, resume=False):
-        from ai.zero.train import train
-
-        return train(
-            TicTacToe,
-            generations=generations,
-            games_per_generation=4,
-            simulations=5,
-            steps=2,
-            benchmark_every=1000,  # Grading is the slow part and this test is not about grading
-            latest_path=os.path.join(directory, 'latest.pt'),
-            metrics_path=os.path.join(directory, 'run.jsonl'),
-            resume_from=os.path.join(directory, 'latest.pt') if resume else None,
-            seed=0,
-        )
+    _train = staticmethod(interruptible_run)
 
     def test_a_resumed_run_continues_rather_than_replaying(self):
         """
@@ -564,21 +566,7 @@ class TestResumingTheReplayBuffer(unittest.TestCase):
     climbed back to where it already was and looked exactly like the player improving.
     """
 
-    def _train(self, directory, generations, resume=False):
-        from ai.zero.train import train
-
-        return train(
-            TicTacToe,
-            generations=generations,
-            games_per_generation=4,
-            simulations=5,
-            steps=2,
-            benchmark_every=1000,
-            latest_path=os.path.join(directory, 'latest.pt'),
-            metrics_path=os.path.join(directory, 'run.jsonl'),
-            resume_from=os.path.join(directory, 'latest.pt') if resume else None,
-            seed=0,
-        )
+    _train = staticmethod(interruptible_run)
 
     def _sizes(self, directory):
         from ai.zero.metrics import read

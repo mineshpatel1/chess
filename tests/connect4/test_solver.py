@@ -30,7 +30,7 @@ timings; this file only decides whether the answers are right.
 """
 
 import unittest
-from typing import List
+from typing import Dict, List, NamedTuple
 
 from ai.oracle import Table, move_values, optimal_moves, solve
 from games.connect4.bitboard import mirror
@@ -52,6 +52,35 @@ def reflect(moves: List[int]) -> List[int]:
     return [COLS - 1 - column for column in moves]
 
 
+class Answer(NamedTuple):
+    """A corpus position, what it was pinned at, and what the solver says about it now."""
+
+    ply: int
+    moves: List[int]
+    pinned_value: int
+    pinned_optimal: List[int]
+    value: int
+    optimal: List[int]
+    values: Dict[int, int]
+
+
+def solved(moves: List[int], ply: int, value: int, optimal: List[int]) -> Answer:
+    """
+    A position through all three entry points, sharing one table.
+
+    The second and third calls read the children the first already searched, so a position is
+    solved once rather than three times. A table per position is how `ai.oracle` is used anyway,
+    and `TestPublishedSolution.test_the_table_does_not_change_the_answer` is what says that
+    sharing one cannot change an answer.
+    """
+    table = Table()
+    state = Connect4(moves)
+    return Answer(
+        ply, moves, value, list(optimal),
+        solve(state, table), sorted(optimal_moves(state, table)), move_values(state, table),
+    )
+
+
 class TestPinnedCorpus(unittest.TestCase):
     """
     Every answer the solver used to give, given again.
@@ -59,12 +88,20 @@ class TestPinnedCorpus(unittest.TestCase):
     The corpus was generated once by the unoptimised solver and committed. Nothing regenerates it:
     a fixture that regenerates moves when the code under it moves, which is the one thing a
     fixture exists to stop.
+
+    Solving 280 positions is the expensive part, so it is done once for the class and the three
+    questions below are asked of the answers.
     """
 
+    @classmethod
+    def setUpClass(cls):
+        cls.answers = [solved(moves, ply, value, optimal)
+                       for ply, moves, value, optimal in SOLVED]
+
     def test_every_value_is_reproduced(self):
-        for ply, moves, value, _ in SOLVED:
-            state = Connect4(moves)
-            self.assertEqual(value, solve(state), f'ply {ply}, moves {moves}\n{state}')
+        for answer in self.answers:
+            self.assertEqual(answer.pinned_value, answer.value,
+                             f'ply {answer.ply}, moves {answer.moves}')
 
     def test_every_optimal_move_set_is_reproduced(self):
         """
@@ -74,9 +111,9 @@ class TestPinnedCorpus(unittest.TestCase):
         a bad move-ordering hint that survives into the returned move, say. The move set is what
         the benchmark grades a player against, so it is the part that matters most.
         """
-        for ply, moves, _, optimal in SOLVED:
-            state = Connect4(moves)
-            self.assertEqual(optimal, sorted(optimal_moves(state)), f'ply {ply}, moves {moves}')
+        for answer in self.answers:
+            self.assertEqual(answer.pinned_optimal, answer.optimal,
+                             f'ply {answer.ply}, moves {answer.moves}')
 
     def test_move_values_and_solve_agree(self):
         """
@@ -85,9 +122,8 @@ class TestPinnedCorpus(unittest.TestCase):
         `solve` searches the position; `move_values` searches each child on a full window and
         negates. They take different paths through the pruning and must not be able to disagree.
         """
-        for _, moves, value, _ in SOLVED:
-            state = Connect4(moves)
-            self.assertEqual(value, max(move_values(state).values()), moves)
+        for answer in self.answers:
+            self.assertEqual(answer.value, max(answer.values.values()), answer.moves)
 
     def test_the_corpus_covers_the_middle_game_as_well_as_the_end(self):
         """
@@ -109,9 +145,15 @@ class TestMirrorInvariance(unittest.TestCase):
     show up as a *value* being wrong rather than a crash.
     """
 
+    @classmethod
+    def setUpClass(cls):
+        """Each corpus position reflected and solved once, against what the original was pinned at."""
+        cls.reflections = [solved(reflect(moves), ply, value, optimal)
+                           for ply, moves, value, optimal in SOLVED]
+
     def test_a_position_and_its_reflection_solve_alike(self):
-        for _, moves, value, _ in SOLVED:
-            self.assertEqual(value, solve(Connect4(reflect(moves))), moves)
+        for answer in self.reflections:
+            self.assertEqual(answer.pinned_value, answer.value, answer.moves)
 
     def test_the_optimal_moves_of_a_reflection_are_the_reflected_optimal_moves(self):
         """
@@ -121,9 +163,8 @@ class TestMirrorInvariance(unittest.TestCase):
         reflected position is the reflected move. `ai.oracle` keeps move hints in a separate
         dictionary keyed by `solver_key` for exactly this reason, and this is what says so.
         """
-        for _, moves, _, optimal in SOLVED:
-            reflected = sorted(optimal_moves(Connect4(reflect(moves))))
-            self.assertEqual(sorted(reflect(optimal)), reflected, moves)
+        for answer in self.reflections:
+            self.assertEqual(sorted(reflect(answer.pinned_optimal)), answer.optimal, answer.moves)
 
     def test_it_holds_for_positions_outside_the_corpus_too(self):
         """
