@@ -207,6 +207,8 @@ class ChessBoard(GameState):
             blockers = (possible & self.occupied) & ~ignore
 
             if blockers:
+                # Rays along a direction are nested, so this union collapses to the ray from the
+                # nearest blocker, whichever end of the bitboard it happens to sit at.
                 blocked_paths = BB_RAYS[direction][lsb(blockers)] | BB_RAYS[direction][msb(blockers)]
             else:
                 blocked_paths = BB_EMPTY
