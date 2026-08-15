@@ -44,9 +44,9 @@ def _game(name: str) -> Type[GameState]:
                      f'{", ".join(g.__name__ for g in GAMES)}')
 
 
-def _player(spec: str):
+def _player(spec: str, engine: str = 'auto'):
     try:
-        return player(spec)
+        return player(spec, engine=engine)
     except UnknownPlayer as error:
         raise SystemExit(str(error))
 
@@ -76,6 +76,10 @@ def train(args) -> None:
         extra['ladder_simulations'] = args.ladder_simulations
     if args.metric:
         extra['metric'] = args.metric
+    if args.device:
+        extra['device'] = args.device
+    if args.engine:
+        extra['engine'] = args.engine
 
     run(
         game,
@@ -268,7 +272,7 @@ def climb_ladder(args) -> None:
     different question and often a differently-answered one.
     """
     game = _game(args.game)
-    chooser = _player(args.player)
+    chooser = _player(args.player, engine=args.engine)
 
     rungs = ladder.for_game(game)
     rungs = ladder.make(
@@ -279,7 +283,8 @@ def climb_ladder(args) -> None:
 
     log.info(f'Climbing the {game.__name__} ladder with {describe(args.player)}...')
     random.seed(args.seed)  # For a challenger that samples; see grade()
-    standing = ladder.climb(game, chooser, rungs, games=args.games, seed=args.seed)
+    standing = ladder.climb(game, chooser, rungs, games=args.games, seed=args.seed,
+                            engine=args.engine)
 
     log.newline()
     log.info(str(standing))
@@ -288,7 +293,7 @@ def climb_ladder(args) -> None:
 def match(args) -> None:
     """Plays two players off against each other over many paired games."""
     game = _game(args.game)
-    first, second = _player(args.a), _player(args.b)
+    first, second = _player(args.a, engine=args.engine), _player(args.b, engine=args.engine)
 
     log.info(f'{describe(args.a)}  vs  {describe(args.b)}   ({args.games} games)')
     result = play_match(game, first, second, games=args.games, seed=args.seed)
@@ -320,7 +325,8 @@ def main(argv: Optional[list] = None) -> None:
                          help='where every generation is written, whether or not it improved; '
                               'this is the file --resume reads')
     trainer.add_argument('--resume', action='store_true',
-                         help='continue from --latest if it exists, rather than starting over')
+                         help='continue from --latest, and the replay buffer beside it, if they '
+                              'exist rather than starting over')
     trainer.add_argument('--commit-every', type=int, default=0,
                          help='commit and push --latest and --metrics every N generations, so '
                               'losing the machine costs generations rather than the run')
@@ -345,6 +351,15 @@ def main(argv: Optional[list] = None) -> None:
                               'tic-tac-toe saturates the ladder and Connect 4 saturates agreement')
     trainer.add_argument('--games-in-flight', type=int, default=None,
                          help='self-play games advanced together (throughput only)')
+    trainer.add_argument('--engine', choices=('auto', 'python', 'rust'), default=None,
+                         help="which self-play implementation plays the games: 'auto' (default) "
+                              "takes the Rust one when it is built, 'rust' insists on it rather "
+                              "than quietly taking hours instead. They play the same games; see "
+                              'rust/README.md')
+    trainer.add_argument('--device', default=None,
+                         help="where the network runs: 'auto' (default) takes a CUDA card if "
+                              "there is one, or name one torch understands. The ladder stays on "
+                              'the CPU either way, being the one path with no batch in it')
     trainer.add_argument('--seed', type=int, default=1)
     trainer.set_defaults(run=train)
 
@@ -369,6 +384,10 @@ def main(argv: Optional[list] = None) -> None:
     climber.add_argument('--unbalanced', action='store_true',
                          help='start from any opening, not only ones drawn with perfect play')
     climber.add_argument('--seed', type=int, default=0)
+    climber.add_argument('--engine', choices=('auto', 'python', 'rust'), default='auto',
+                         help="which alpha-beta the 'minimax:' rungs (and player, if it is one) "
+                              "search with, and whether a 'model:' player's own MCTS is batched "
+                              "across every game a rung needs at once; see 'train --engine'")
     climber.set_defaults(run=climb_ladder)
 
     matcher = commands.add_parser('match', help='play two players off against each other')
@@ -376,6 +395,9 @@ def main(argv: Optional[list] = None) -> None:
     matcher.add_argument('--b', required=True)
     matcher.add_argument('--games', type=int, default=100)
     matcher.add_argument('--seed', type=int, default=0)
+    matcher.add_argument('--engine', choices=('auto', 'python', 'rust'), default='auto',
+                         help="which alpha-beta a 'minimax:' player searches with; see "
+                              "'train --engine'")
     matcher.set_defaults(run=match)
 
     args = parser.parse_args(argv)

@@ -7,17 +7,12 @@ that mover. The network is then trained to predict, in one position, what the se
 after looking ahead from it. That is the whole trick: search is slow and better than the network,
 so the network chases it, and the better network makes the next search better still.
 
-The value target is where the previous attempt in this project went wrong, twice over, so it is
-worth being explicit about what is correct here:
+Two things about the value target are easy to get wrong and silent when wrong:
 
-* **From the mover's own point of view.** A position where the player to move went on to win is
-  `+1` *for that position*, whichever player it was. The 2021 code compared each position's mover
-  against `turn` after the final move - which, since the turn flips on the winning move too, is
-  the *loser* - and labelled every position backwards.
-* **A draw is 0, not a sign.** Tic-tac-toe is a draw under any decent play, so most self-play
-  games end level and most examples should say so. The 2021 code had no zero case at all and
-  labelled drawn games `+1`/`-1` alternately, teaching the network that a drawn position is won
-  for whoever happens to be on move.
+* **It is from the mover's own point of view.** A position whose player to move went on to win is
+  `+1` for that position, whichever player it was.
+* **A draw is 0, not a sign.** Most tic-tac-toe self-play games end level and most examples should
+  say so.
 """
 
 import random
@@ -42,39 +37,21 @@ from ai.zero.mcts import (
     drive,
 )
 
-# Plies played by sampling from the visit counts rather than taking the best move. Without this
-# every self-play game from a deterministic network is the same game, and the buffer fills with
-# one line repeated.
-#
-# AlphaZero's number, which for a game of 200 moves is an opening and for tic-tac-toe is all nine
-# plies. Sampling the whole of a short game is what it should mean: measured here, cutting it to
-# three plies cost 10 points of agreement with perfect play (83.8% against 93.7%), because a
-# nine-ply game played greedily from ply four is very nearly one game repeated.
+# Plies played by sampling from the visit counts rather than taking the best move, without which
+# every self-play game from a deterministic network is the same game. AlphaZero's number, which
+# for tic-tac-toe covers the whole game: cutting it to three plies cost 10 points of agreement.
 TEMPERATURE_MOVES = 30
 TEMPERATURE = 1.0
 
-# What the temperature drops *to* once `TEMPERATURE_MOVES` are played.
-#
-# Zero is greedy: take the most visited move. That is what tic-tac-toe wants at the end of a
-# nine-ply game, and it is what this project has always done - but it is more aggressive than
-# AlphaZero, which drops to a small non-zero value and keeps sampling. Kept at zero by default so
-# nothing changes silently; a game whose self-play needs late diversity can raise it.
+# What the temperature drops to afterwards. Zero is greedy - more aggressive than AlphaZero, which
+# keeps sampling at a low temperature. A game whose self-play needs late diversity can raise it.
 FINAL_TEMPERATURE = 0.0
 
 # Random plies played before a game starts being recorded, drawn uniformly from 0 to this.
 #
-# **Off by default, and the history of that is worth keeping.** Self-play is on-policy, so a
-# network that has learned to play well stops visiting anything else - measured here, it reached
-# 366 of the game's 4,520 decision positions. Forcing a share of games to start somewhere random
-# fixed that, and looked like the single largest improvement in the implementation: 80.3% -> 96.8%.
-#
-# It was not. It was covering for `EXPLORATION` being set too low. Raising c_puct from 1.5 to 5.0
-# reached 97.5% with this at zero - the same result, no crutch, and a better value head with it.
-# A correct AlphaZero explores through PUCT and root noise; needing random starts on top is a sign
-# that one of those is mistuned, not a technique to reach for.
-#
-# Kept because it is genuinely useful when a *benchmark* wants coverage of positions real play
-# never reaches, which is a different goal from training a player.
+# Off, because exploration belongs in PUCT and root noise: random starts here reached the same
+# agreement as raising c_puct to 5.0 did, and needing them is a sign that one of those is mistuned.
+# Kept for benchmarks, which want coverage of positions real play never reaches.
 OPENING_PLIES = 0
 
 
@@ -103,18 +80,12 @@ def game_steps(
     A whole game as a generator: it yields every position it needs evaluated and returns
     `(examples, finished state)`.
 
-    Suspendable for the same reason the search is - so that many games can be advanced together
-    and their pending positions evaluated in one batched pass instead of one at a time. All this
-    needs to say about that is `yield from`: the search's requests travel out through this frame
-    untouched, and the answers come back to where they were asked for.
+    Suspendable for the same reason the search is, and `yield from` is all it takes to stay so.
 
-    The finished state comes back so a caller can report on the games as well as learn from them -
-    how many were drawn is the single most informative number in tic-tac-toe self-play, since a
-    healthy run converges on drawing almost everything.
+    The finished state comes back so a caller can report on the games as well as learn from them.
 
-    `opening_plies` puts the game somewhere random before any of it is recorded. Nothing played
-    during those plies becomes an example, so every training target still comes from a real
-    search - the randomness moves where the games happen, not what is learned from them.
+    `opening_plies` puts the game somewhere random before any of it is recorded, so the randomness
+    moves where games happen without changing what is learned from them.
     """
     rng = rng or random.Random()
     mcts = MCTS(
@@ -145,10 +116,8 @@ def _refuses(state: GameState):
     """
     The evaluator an `MCTS` built for `game_steps` will never call.
 
-    `MCTS.search` drives its own injected evaluator; `MCTS.steps` hands every request to whoever
-    is driving it, and here that is the batched caller. Passing something that raises rather than
-    something plausible means a stray call to `search()` fails loudly instead of quietly using a
-    different evaluator from the rest of the run.
+    `MCTS.steps` hands every request to whoever drives it, which here is the batched caller. This
+    raises so that a stray `search()` fails loudly rather than quietly using a different evaluator.
     """
     raise RuntimeError('this search is driven by its caller and has no evaluator of its own')
 
@@ -179,24 +148,19 @@ def play_games(
     Plays `count` games, keeping up to `batch_size` of them in flight and evaluating the positions
     they are waiting on together.
 
-    This is where the training time goes and where it is won back. A Connect 4 forward pass costs
-    1101us on its own and 111us amortised in a batch of sixty-four, and the search asks once per
-    simulation, so answering one position at a time spends nearly all of a run's wall clock in
-    calls too small to use the machine.
+    This is where most of a run's time goes and where it is won back: the search asks for one
+    position per simulation, and a batch of sixty-four is ten times the throughput of a batch of
+    one.
 
-    **Each game keeps its own random stream**, seeded from `seed` and the game's index. Without
-    that the results would depend on the interleaving - games sharing one stream draw from it in
-    whatever order they happen to reach it - and `batch_size` would silently change what was
-    played. With it, a batch of sixty-four plays exactly the games a batch of one plays, which is
-    what `tests/zero/test_selfplay.py` asserts.
+    **Each game keeps its own random stream**, seeded from `seed` and the game's index, so
+    `batch_size` cannot change what is played. Games sharing a stream would draw from it in
+    whatever order they happened to reach it.
 
     The evaluator is handed every pending position at once and must read what it needs from all of
     them before returning: the states are live and resuming a game mutates its own.
 
-    `on_finished(completed, count)` is called as each game ends. A Connect 4 generation at 600
-    simulations takes twenty minutes and until this existed it printed nothing at all for the whole
-    of it - which is fine until a run slows down, at which point there is no way to tell a slow
-    generation from a hung one without reading `/proc`.
+    `on_finished(completed, count)` is called as each game ends, which is the only sign of life a
+    twenty-minute Connect 4 generation gives.
     """
     started, done = 0, {}
     active: List[Tuple[int, Iterator[GameState], GameState]] = []
@@ -217,9 +181,7 @@ def play_games(
         for (index, steps, _), answer in zip(waiting, answers):
             _advance(index, steps, answer, active, done, on_finished, count)
 
-    # By game index rather than by whoever finished first. Games run concurrently and end out of
-    # order, so completion order is a function of `batch_size` - and a caller that saw it would
-    # find its buffer, and therefore its training, quietly depending on the batch size.
+    # By game index rather than completion order, which is a function of `batch_size`.
     return [done[index] for index in range(count)]
 
 
@@ -237,9 +199,8 @@ def _opening(game: Callable[[], GameState], plies: int, rng: random.Random) -> G
     """
     A position a random number of random plies in, and still running.
 
-    The count is drawn per game rather than fixed, so the openings land at every depth instead of
-    piling up at one. A game that finishes inside its own opening is discarded and redrawn -
-    there is nothing to learn from a position with no moves in it.
+    The count is drawn per game so openings land at every depth rather than piling up at one. A
+    game that finishes inside its own opening is redrawn.
     """
     if plies <= 0:
         return game()
@@ -267,10 +228,7 @@ def augment(examples: Sequence[Example], encoder: Encoder) -> List[Example]:
     """
     Every example under every symmetry the game admits.
 
-    Eight-fold for tic-tac-toe, which is eight times the data for the cost of a list shuffle, and
-    it also stops the network learning that one corner differs from another merely because
-    self-play visited it more often. The value is carried through untouched: rotating a board
-    does not change who is winning.
+    The value is carried through untouched: rotating a board does not change who is winning.
     """
     grown: List[Example] = []
     for example in examples:

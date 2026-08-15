@@ -1,24 +1,18 @@
 """
 Saving a network so that something else can load it without being told what it is.
 
-A bare `state_dict` is not enough: rebuilding the module needs the plane shape, the action count
-and the layer widths, and a file that carries weights but not its own shape is one refactor away
-from being unloadable. So a checkpoint carries its configuration, and `load` rebuilds from that
-rather than from whatever the caller happened to assume.
+A bare `state_dict` is not enough - rebuilding the module needs the plane shape, the action count
+and the layer widths - so a checkpoint carries its own configuration and `load` rebuilds from that.
 
-The game name travels too. It is not needed to rebuild the network, but it is needed to refuse:
-a tic-tac-toe network loaded against Connect 4 would produce nine plausible-looking logits for a
-seven-column board, and the failure would show up as bad play rather than as an error.
+The game name travels in order to refuse: a tic-tac-toe network loaded against Connect 4 would
+produce nine plausible logits for a seven-column board and fail as bad play rather than as an error.
 
-**The optimiser's state travels as well, so a run can be resumed rather than restarted.** Adam
-keeps a running mean and variance per parameter; dropping them restarts the moment estimates from
-zero and the first steps after a resume are effectively unmomented. On a run measured in hours,
-where the reason for resuming is that the machine went away, that is worth the file being three
-times the size.
+The optimiser's state travels so a run can be resumed rather than restarted. Adam keeps a running
+mean and variance per parameter, and dropping them leaves the first steps after a resume
+unmomented, which is worth the file being three times the size.
 
-What deliberately does *not* travel is the replay buffer. It is a couple of hundred megabytes for
-a Connect 4 run and refills within a few generations, so carrying it would make every checkpoint
-unwieldy to store or push in order to save a few minutes of self-play.
+The replay buffer does not travel *inside* a checkpoint, since this is the file that gets committed
+and pushed every generation. It goes in a git-ignored file beside it - see `ai/zero/replay.py`.
 """
 
 import os
@@ -42,10 +36,8 @@ def save(
     """
     Writes `net` and everything needed to rebuild, identify and continue it.
 
-    Written to a temporary file and moved into place, because the thing most likely to interrupt a
-    long run is also most likely to interrupt the write that was meant to survive it. A rename
-    within a directory is atomic, so a reader either sees the previous checkpoint or the new one
-    and never a half-written file.
+    Written to a temporary file and renamed into place, which is atomic within a directory: a
+    reader sees either the previous checkpoint or the new one, never a half-written file.
     """
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
@@ -69,9 +61,8 @@ def load(path: str, game: Optional[str] = None) -> Dict[str, Any]:
     """
     Rebuilds a network from a checkpoint, refusing one that was trained on another game.
 
-    `weights_only=False` because the payload is a config dict as well as tensors. That is only
-    safe for files you produced yourself, which is the case here - a checkpoint is not a document
-    format and should not be loaded from anywhere untrusted.
+    `weights_only=False` because the payload is a config dict as well as tensors, which is only
+    safe for files you produced yourself. A checkpoint is not a document format.
     """
     if not os.path.exists(path):
         raise FileNotFoundError(f'no checkpoint at {path}')

@@ -1,15 +1,13 @@
 """
 A trained checkpoint as a player, with or without search.
 
-Both halves matter and they answer different questions. `simulations=0` asks the network alone:
-one forward pass, take the most likely legal move, no lookahead whatsoever - the intuition, with
-nothing to hide behind. Anything above that puts PUCT on top and lets the same network think.
+`simulations=0` asks the network alone - one forward pass, the most likely legal move, no
+lookahead. Above that, PUCT goes on top and the same network gets to think.
 
-Comparing the two is the most informative thing you can do with a trained model. A network whose
-raw policy is already near-perfect has genuinely learned the game; one that only plays well with
-500 simulations has learned to be a useful prior for a search that is doing the real work. Both
-are legitimate results, and telling them apart requires being able to run the network with the
-search switched off - which is why this is a parameter rather than two implementations.
+Comparing the two is the most informative thing you can do with a trained model: a near-perfect
+raw policy has learned the game, while a network that only plays well with 500 simulations has
+learned to be a useful prior for a search doing the real work. Hence a parameter rather than two
+implementations.
 """
 
 from typing import Any, Callable
@@ -25,9 +23,8 @@ def model_player(path: str, simulations: int = 0) -> Callable[[GameState], Any]:
     The move chooser a checkpoint plus a simulation count names.
 
     The network is loaded once and closed over, so a benchmark walking five thousand positions
-    pays for the file exactly once. Deterministic by construction: no Dirichlet noise, and the
-    move is the most-visited rather than a sample, because a player being measured should give
-    its actual opinion rather than a draw from it.
+    pays for the file once. Deterministic by construction - no noise, and the most-visited move
+    rather than a sample - because a player being measured should give its actual opinion.
     """
     blob = load(path)
     net = blob['net']
@@ -53,11 +50,9 @@ def _check_shape(blob, encoder, path: str) -> None:
     """
     Refuses a checkpoint whose network does not fit the encoder now in the source.
 
-    An encoding is part of a trained network, not a detail around it: change the planes and every
-    weight in the first layer means something else. Without this the mismatch surfaces as
-    `mat1 and mat2 shapes cannot be multiplied (1x9 and 18x64)` from inside torch, which says
-    nothing about what to do - and if the shapes happened to still line up it would not surface
-    at all, it would just play badly.
+    An encoding is part of a trained network: change the planes and every weight in the first layer
+    means something else. Unchecked, this surfaces as a shape error from inside torch - or, if the
+    shapes happen to line up, as bad play.
     """
     config = blob.get('config', {})
     stored = tuple(config.get('plane_shape', ()))
@@ -103,9 +98,8 @@ def model_value(path: str) -> Callable[[GameState], float]:
     """
     A checkpoint's value head on its own, for grading calibration against the true value.
 
-    Separate from the move chooser because it answers a separate question. A network can pick
-    good moves from a badly calibrated value, and it can evaluate positions well while its policy
-    fumbles; `ai.oracle.benchmark` takes this as `value_fn` so the two are scored apart.
+    Separate from the move chooser because a network can pick good moves from a badly calibrated
+    value and vice versa. `ai.oracle.benchmark` takes this as `value_fn` so the two score apart.
     """
     blob = load(path)
     net = blob['net']

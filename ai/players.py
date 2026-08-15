@@ -21,11 +21,13 @@ benchmark, the same match harness and the same game loop as the classical player
 
 Kept free of third-party imports. `model:` reaches into `ai.zero`, which needs PyTorch, but it
 does so only when a model is actually asked for, so the engine and its tests stay installable
-with nothing but the standard library.
+with nothing but the standard library. `minimax:` can reach into `ai.native` the same way, for
+the Rust alpha-beta - needs no third-party package, only the extension built.
 """
 
 from typing import Any, Callable, List, Optional, Type
 
+import log
 from games.base import GameState
 
 # The depth a computer opponent searches when the game does not declare a better answer.
@@ -67,12 +69,20 @@ def _int(text: str, what: str) -> int:
         raise UnknownPlayer(f'{text!r} is not a number of {what}') from None
 
 
-def player(spec: str, human: Optional[Callable] = None) -> Callable[[GameState], Any]:
+def player(
+    spec: str, human: Optional[Callable] = None, engine: str = 'auto',
+) -> Callable[[GameState], Any]:
     """
     The move chooser a spec names.
 
     `human` is passed in rather than imported because reading from a terminal belongs to the
     terminal front end, not here - a match harness has no business owning a prompt.
+
+    `engine` chooses which alpha-beta a `minimax:` player searches with, and only that clause
+    reads it - it has nothing to say about a random, human or model player. `'auto'` (the
+    default) takes the Rust search where it is built and speaks for the game being played,
+    `'python'` never looks for it, and `'rust'` insists on it rather than quietly taking the
+    slow path. Same three-valued contract as `ai.zero.train.choose_engine`.
     """
     from ai.search import alpha_beta, random_move  # Local, to keep import order obvious
 
@@ -88,7 +98,7 @@ def player(spec: str, human: Optional[Callable] = None) -> Callable[[GameState],
         chooser = random_move
     elif kind == 'minimax':
         depth = _int(head[1], 'plies') if len(head) > 1 else None
-        chooser = _minimax(alpha_beta, depth)
+        chooser = _minimax(alpha_beta, depth, engine)
     elif kind == 'model':
         if len(head) < 2 or not head[1]:
             raise UnknownPlayer('a model player needs a checkpoint: model:<path>')
@@ -101,11 +111,57 @@ def player(spec: str, human: Optional[Callable] = None) -> Callable[[GameState],
     return chooser
 
 
-def _minimax(alpha_beta: Callable, depth: Optional[int]) -> Callable:
-    """Alpha-beta, resolving its depth per position so one spec suits every game."""
+def _minimax(alpha_beta: Callable, depth: Optional[int], engine: str) -> Callable:
+    """
+    Alpha-beta, resolving its depth per position and its implementation once per player.
+
+    The implementation is decided on the first move rather than here, because the game is not
+    known until a position turns up to search - and decided once, rather than on every move,
+    so `'auto'` logs its fallback reason once per player instead of once per ply.
+    """
+    search = alpha_beta if engine == 'python' else None
+
     def chooser(state: GameState):
-        return alpha_beta(state, depth=depth if depth is not None else default_depth(type(state)))
+        nonlocal search
+        if search is None:
+            search = _choose_search(engine, type(state))
+        ply_depth = depth if depth is not None else default_depth(type(state))
+        return search(state, depth=ply_depth)
+
     return chooser
+
+
+def parse_minimax_depth(spec: str, game: Type[GameState]) -> Optional[int]:
+    """
+    The depth a `minimax:` spec means, or `None` if `spec` names something else.
+
+    Resolves a bare `minimax` the same way `_minimax`'s chooser does, via `default_depth(game)`,
+    so a caller deciding whether a rung can be batched sees the depth it will actually search at
+    rather than having to know the default itself.
+    """
+    head = _parse(spec)[0]
+    if head[0].lower() != 'minimax':
+        return None
+    return _int(head[1], 'plies') if len(head) > 1 else default_depth(game)
+
+
+def _choose_search(requested: str, game: Type[GameState]) -> Callable:
+    """
+    Which alpha-beta a `minimax:` player searches with, and a line in the log saying why.
+
+    Only reached when `_minimax`'s chooser was left to decide for itself - the `python` case is
+    resolved without this, and never touches `ai.native` at all.
+    """
+    from ai import native
+    from ai.search import alpha_beta as python_alpha_beta
+
+    if native.available(game):
+        return native.alpha_beta
+    if requested == 'rust':
+        raise ValueError(native.why_unavailable(game))
+
+    log.info(f'{game.__name__} minimax on the Python search: {native.why_unavailable(game)}')
+    return python_alpha_beta
 
 
 def _model(path: str, tail: List[List[str]]) -> Callable:

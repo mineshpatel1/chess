@@ -1,0 +1,14 @@
+[workspace]
+members = ['crates/c4-core', 'crates/zero-rs']
+resolver = '2'
+
+[workspace.package]
+version = '0.1.0'
+edition = '2021'
+rust-version = '1.74'
+
+# No `panic = 'abort'`: zero-rs is loaded into a Python process, and a panic has to unwind to
+# become an exception rather than taking the interpreter with it.
+[profile.release]
+lto = true
+codegen-units = 1

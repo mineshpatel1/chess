@@ -1,33 +1,21 @@
 """
 The network: a position in, a policy and a value out.
 
-Two trunks, and which one a game gets is a property of its board rather than a default copied from
-a paper. `ARCHITECTURES` says which, and the encoder, the search and the training loop are all
+Two trunks, chosen per game by `ARCHITECTURES`; the encoder, the search and the training loop are
 unaware of the difference.
 
-**Tic-tac-toe gets dense layers.** The planes are flattened into two hidden layers of 64 and fork
-into a policy head of POLICY_SIZE logits and a value head of one tanh unit - about six thousand
-parameters. A convolution would be reasoning by analogy: it buys translation invariance and
-locality, but on a 3x3 board a 3x3 kernel already sees everything, so the tower degenerates into a
-dense layer wearing weight-sharing constraints. Worse, tic-tac-toe is not translation invariant at
-all - the centre sits on four winning lines, a corner on three, an edge on two - so the prior a
-convolution encodes is actively the wrong one. Measured, it cost 2.5x the latency per call for no
-benefit. Capacity was never the constraint either: 5,478 positions, about 765 once symmetries fold
-together, and a deterministic function - this is memorising a solved game, not fitting a sample.
+**Tic-tac-toe gets dense layers.** On a 3x3 board a 3x3 kernel already sees everything, so a tower
+degenerates into a dense layer wearing weight-sharing constraints - and the board is not
+translation invariant anyway, the centre sitting on four winning lines to a corner's three.
 
-**Connect 4 gets a residual tower**, 64 filters and five blocks. Here the case for convolution is
-real: a threat is a local shape - three of mine with a gap - and it means the same thing wherever
-it sits, which is exactly what a shared filter encodes and exactly what
-`games/connect4/evaluation.py` computes by hand today. The board is large enough that a dense layer
-over it would have to learn each column's version of the same tactic separately.
+**Connect 4 gets a residual tower.** A threat is a local shape - three of mine with a gap - that
+means the same thing wherever it sits, which is what a shared filter encodes.
 
-Latency is the binding constraint on both, because MCTS calls this once per simulation and a
-training run makes millions of forward passes. That is why `evaluate_batch` exists and why the
-search was made suspendable to be able to use it: a Connect 4 pass costs 1101us alone and 111us
-amortised in a batch of sixty-four.
+Latency is the binding constraint on both: MCTS calls this once per simulation and a training run
+makes millions of forward passes, which is why `evaluate_batch` exists.
 """
 
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import torch
 import torch.nn as nn
@@ -38,19 +26,13 @@ from games.base import Encoder
 # Wide enough to represent a solved 3x3 game several times over, small enough to stay fast.
 HIDDEN_LAYERS = (64, 64)
 
-# Channels each head narrows the tower down to before flattening. AlphaZero uses 2 for policy and
-# 1 for value on a 19x19 board; on a 6x7 board that throws away too much, and 32 is what the
-# Connect 4 implementations that work in public settle on.
+# Channels each head narrows the tower down to before flattening. AlphaZero's 2 and 1 are for a
+# 19x19 board; on a 6x7 one that throws away too much.
 HEAD_FILTERS = 32
 
-# The trunk each game gets, keyed by game name, in the idiom `ai.corpus.CORPORA` and
-# `ai.ladder.LADDERS` already use. Absent means the dense trunk, which is the right answer for a
-# board too small for convolution to mean anything.
-#
-# Connect 4's numbers are the AlphaZero.jl reference for this game scaled to a machine without a
-# GPU: 64 filters and 5 blocks against its 128 and 5. Latency is the binding constraint, not
-# capacity - measured on this CPU, 128x5 costs 1665us a call against 1101us for 64x5, and the
-# search makes one call per simulation.
+# The trunk each game gets. Absent means the dense trunk. Connect 4's 64 filters over 5 blocks is
+# the AlphaZero.jl reference scaled for a CPU, where latency binds rather than capacity: 128x5
+# costs 1665us a call against 1101us for 64x5, and the search makes one call per simulation.
 ARCHITECTURES = {
     'Connect4': {'filters': 64, 'blocks': 5},
 }
@@ -66,13 +48,47 @@ def for_game(game_name: str) -> dict:
     return dict(ARCHITECTURES.get(game_name, {}))
 
 
+def choose_device(requested: Optional[str] = None) -> str:
+    """
+    Where a training run should put the network. `None` or `'auto'` takes a CUDA card if there is
+    one; anything else is passed through to torch, so an untested backend can still be asked for.
+
+    A GPU is worth having only where the batch is. A batch of one costs 1875us on a 3080 against
+    1221us on this CPU - the call is launch overhead either way, and the card loses - so the
+    unbatched paths stay where they are and it is self-play, grading and gradient steps that move.
+    That is a recent change: the batch used to be capped at `--games-in-flight`, and at 32 or 64
+    positions there was nothing here for a card to do.
+    """
+    if requested not in (None, 'auto'):
+        return requested
+    return 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
+def make_deterministic(device: str) -> None:
+    """
+    Keeps `--seed` meaning what it says on a GPU.
+
+    cuDNN picks convolution algorithms by benchmarking unless told not to, and different
+    algorithms give different last bits. Pinning them costs nothing measurable for a network this
+    small. Runs on different devices still differ from each other; only the promise that a seed
+    reproduces a run on *one* machine is being kept.
+    """
+    if torch.device(device).type == 'cuda':
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+
+def device_of(net: nn.Module) -> torch.device:
+    """Where a network's weights live, which is where its inputs have to be built."""
+    return next(net.parameters()).device
+
+
 class Residual(nn.Module):
     """
     Two 3x3 convolutions and a skip connection, AlphaZero's block.
 
-    The skip is what makes depth usable: without it the useful signal has to survive being
-    multiplied by every layer's weights on the way through, and five blocks is enough for that to
-    hurt. With it, a block starts as approximately the identity and has to earn its contribution.
+    The skip is what makes depth usable: a block starts as approximately the identity and has to
+    earn its contribution, rather than the signal having to survive every layer's weights.
     """
 
     def __init__(self, filters: int) -> None:
@@ -92,16 +108,9 @@ class ZeroNet(nn.Module):
     """
     Input -> trunk -> (policy, value), the trunk being either dense layers or a residual tower.
 
-    The two heads share the trunk, which is the point of the architecture rather than a saving:
-    what makes a position winnable and what makes a move good are mostly the same features, and
-    learning them once from both signals is why AlphaZero's two heads help each other.
-
-    **Which trunk is a property of the board, not a default to copy.** Tic-tac-toe gets the dense
-    one for the reasons in the module docstring - a 3x3 kernel on a 3x3 board is a dense layer
-    wearing weight-sharing constraints, and the board is not translation invariant anyway. Connect
-    4 gets the tower, because its threats genuinely are local shapes that mean the same thing
-    wherever they sit: three of mine with a gap is the same tactic in every column, which is what
-    a shared filter encodes and what `games/connect4/evaluation.py` computes by hand today.
+    The heads share the trunk by design rather than to save parameters: what makes a position
+    winnable and what makes a move good are mostly the same features, so each head regularises the
+    other. Which trunk a game gets is the module docstring's subject.
     """
 
     def __init__(
@@ -132,9 +141,8 @@ class ZeroNet(nn.Module):
             )
             self.tower = nn.Sequential(*[Residual(filters) for _ in range(blocks)])
 
-            # One 1x1 convolution per head, which is the cheap way to collapse `filters` channels
-            # down to a handful before flattening: the alternative is a dense layer over the whole
-            # tower output, which for 64 filters on a 6x7 board is 2,688 inputs a head.
+            # One 1x1 convolution per head collapses `filters` channels to a handful before
+            # flattening. A dense layer over the whole tower output would be 2,688 inputs a head.
             self.policy_conv = nn.Sequential(
                 nn.Conv2d(filters, head_filters, 1, bias=False),
                 nn.BatchNorm2d(head_filters),
@@ -162,9 +170,8 @@ class ZeroNet(nn.Module):
         """
         Policy *logits* and a value in [-1, 1], both from the point of view of the player to move.
 
-        Logits rather than probabilities because the legal moves are not known here and masking
-        has to happen before the softmax, not after: renormalising a distribution that already
-        spent mass on illegal moves is not the same distribution.
+        Logits rather than probabilities: the legal moves are not known here, and masking has to
+        happen before the softmax - renormalising afterwards gives a different distribution.
         """
         if not self.convolutional:
             trunk = self.trunk(planes.flatten(1))
@@ -188,8 +195,8 @@ class ZeroNet(nn.Module):
         }
 
 
-def to_tensor(planes_batch: Sequence, device: str = 'cpu') -> torch.Tensor:
-    """Nested lists of ints from an encoder into a float batch."""
+def to_tensor(planes_batch: Sequence, device='cpu') -> torch.Tensor:
+    """Nested lists of ints from an encoder into a float batch, where the weights are."""
     return torch.tensor(planes_batch, dtype=torch.float32, device=device)
 
 
@@ -197,8 +204,7 @@ def masked_policy(logits: torch.Tensor, legal: Sequence[int], policy_size: int) 
     """
     A probability distribution over the legal actions only.
 
-    Masking before the softmax rather than zeroing after it. The difference matters: a softmax
-    over everything gives illegal moves probability mass, and taking it away afterwards leaves a
+    Masking before the softmax rather than zeroing after it: taking mass away afterwards leaves a
     distribution whose shape was set by moves that were never available.
     """
     mask = torch.full((policy_size,), MASKED, device=logits.device)
@@ -212,29 +218,23 @@ def evaluate_batch(
     """
     Many positions in one forward pass, in the order they were given.
 
-    The whole reason the search and self-play were made suspendable. A Connect 4 forward pass
-    costs 1101us alone and 111us amortised in a batch of sixty-four: same arithmetic, ten times
-    the throughput, because a batch of one leaves a four-core machine almost entirely idle while
-    Python and the framework do the work of setting the call up.
+    The reason the search and self-play were made suspendable: a Connect 4 forward pass costs
+    1101us alone and 111us amortised in a batch of sixty-four.
 
-    Positions are encoded before the pass and read for legality after it, both while every state
-    is untouched - which matters, since self-play hands over live states it is about to mutate.
+    Positions are encoded before the pass and read for legality after it, both while every state is
+    untouched - self-play hands over live states it is about to mutate.
     """
     if not states:
         return []
 
     net.eval()
+    device = device_of(net)
     with torch.no_grad():
-        logits, values = net(to_tensor([encoder.planes(state) for state in states]))
+        logits, values = net(to_tensor([encoder.planes(state) for state in states], device))
 
-        # Masked and softmaxed for the whole batch at once, and the mask is built as plain Python
-        # lists before becoming a tensor exactly once.
-        #
-        # Both halves of that matter and the second one was learned the hard way. Writing the mask
-        # element by element into a tensor - `mask[row][column] = 0.0` - looks like the same thing
-        # and is roughly a hundred times slower per write, because each one is a dispatched tensor
-        # operation rather than a list store. Done that way it made a batch of thirty-two *slower*
-        # than a batch of one, which is the opposite of the entire point of this function.
+        # The mask is built as plain Python lists and becomes a tensor exactly once. Writing it
+        # element by element into a tensor is a dispatched operation per write, around a hundred
+        # times slower, and enough to make a batch of thirty-two slower than a batch of one.
         rows = []
         for state in states:
             row = [MASKED] * encoder.POLICY_SIZE
@@ -242,7 +242,8 @@ def evaluate_batch(
                 row[encoder.action_index(move)] = 0.0
             rows.append(row)
 
-        policies = F.softmax(logits + torch.tensor(rows, dtype=torch.float32), dim=1)
+        policies = F.softmax(
+            logits + torch.tensor(rows, dtype=torch.float32, device=device), dim=1)
 
     return list(zip(policies.tolist(), values.tolist()))
 
@@ -256,33 +257,20 @@ def flush_denormals(net: ZeroNet) -> int:
     """
     Zeroes weights that have decayed into the subnormal range, returning how many there were.
 
-    **This is worth six times the speed of the whole training loop, and it cost a day to find.**
+    Worth up to six times the speed of the whole training loop. Weight decay pulls unused weights
+    toward zero and they stall around 1e-40, which float32 can only hold as a denormal, and x86
+    handles denormal arithmetic in microcode rather than the vector units. A Connect 4 network 11%
+    denormal ran 6x slower than the same architecture freshly initialised.
 
-    Weight decay pulls unused weights toward zero and they do not arrive: they stall around 1e-40,
-    which float32 can only represent as a denormal. x86 handles denormal arithmetic in microcode
-    rather than in the vector units, so every multiply touching one costs orders of magnitude more
-    than a normal multiply. By generation 8 of a Connect 4 run, 11% of the network's 471,000
-    weights were denormal and it had become 6x slower than the same architecture freshly
-    initialised - 0.95s against 0.16s for twenty batches of thirty-two.
+    Numerically a no-op: 1e-40 contributes nothing any float32 sum of ~1e-2 weights can represent.
 
-    The slowdown compounds generation by generation and applies to *everything* that multiplies by
-    these weights, so self-play, the gradient steps and the benchmark all slow by the same factor
-    while the work they do is unchanged. That signature - fixed work getting uniformly slower - is
-    what to recognise, and it is nothing to do with the machine, which is where a day went.
-
-    Numerically this changes nothing. A weight of 1e-40 in a network whose meaningful weights are
-    around 1e-2 contributes nothing any float32 sum can represent; `tests/zero/test_net.py` asserts
-    the outputs are unchanged.
-
-    `torch.set_flush_denormal(True)` is **not** an alternative. It sets the CPU's flush-to-zero
-    flag on the calling thread only, and torch runs its intra-op pool on several others - measured
-    here, it made no difference at all (0.93s against 0.97s) while this made it 0.16s.
+    `torch.set_flush_denormal(True)` is not an alternative - it sets the flush-to-zero flag on the
+    calling thread only, and torch runs its intra-op pool on several others.
     """
     total = 0
     with torch.no_grad():
         for parameter in net.parameters():
-            # Non-zero matters: without it this counts every legitimately zero weight and reports
-            # a five-figure denormal count for a network that has none.
+            # Legitimately zero weights are not denormal, and there are many of them.
             tiny = (parameter != 0.0) & (parameter.abs() < SMALLEST_NORMAL)
             count = int(tiny.sum())
             if count:
@@ -295,13 +283,12 @@ def evaluate(net: ZeroNet, state, encoder: Encoder) -> Tuple[List[float], float]
     """
     One position through the network: priors over its legal moves, and its value.
 
-    The value is from the point of view of the player to move, matching the planes and matching
-    `ai.search.terminal_score`. Every sign in the search and in the training targets is anchored
-    to that one convention, which is the cheapest way to never get a sign wrong.
+    The value is from the point of view of the player to move, matching the planes and
+    `ai.search.terminal_score` - the one convention every sign in the project is anchored to.
     """
     net.eval()
     with torch.no_grad():
-        logits, value = net(to_tensor([encoder.planes(state)]))
+        logits, value = net(to_tensor([encoder.planes(state)], device_of(net)))
 
     legal = [encoder.action_index(move) for move in state.legal_moves]
     return masked_policy(logits[0], legal, encoder.POLICY_SIZE), float(value[0])

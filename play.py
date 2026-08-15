@@ -24,7 +24,7 @@ import log
 # DEFAULT_DEPTH and default_depth are re-exported: they used to live here, and both the
 # prompt below and tests/tictactoe/test_play.py still reach for them by this name.
 from ai.players import DEFAULT_DEPTH, UnknownPlayer, default_depth, player
-from ai.search import alpha_beta, random_move
+from ai.search import random_move
 from games import GAMES
 from games.base import GameState, Outcome
 
@@ -66,10 +66,16 @@ def human_player(state: GameState):
 
 
 def computer_player(depth: int) -> Callable:
-    """A move chooser that searches `depth` plies, or plays at random at depth 0."""
+    """
+    A move chooser that searches `depth` plies, or plays at random at depth 0.
+
+    Routed through `ai.players.player` rather than closing over a search directly, so this is the
+    one place that decides between the Python and Rust alpha-beta - `minimax:N` takes the Rust
+    search where it is built, exactly as a `minimax:N` typed at `zero.py` would.
+    """
     if depth == 0:
         return random_move
-    return lambda state: alpha_beta(state, depth=depth)
+    return player(f'minimax:{depth}')
 
 
 def checkpoints(game: Type[GameState]) -> List[str]:
