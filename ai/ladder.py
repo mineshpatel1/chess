@@ -65,7 +65,11 @@ class Ladder(NamedTuple):
 # The default sequence per game. Deterministic and fixed: a ladder that changed between runs would
 # make its own numbers incomparable, which is the one thing it must not do.
 #
-# Connect 4 stops at depth 6 because that is the last cheap rung - a full self-play game costs
+# Connect 4 measures against even depths only. An odd-depth search stops after its own move,
+# before the reply that refutes it, so each odd rung is a weaker opponent than the even one below
+# it - a sequence that goes back down is not a ladder.
+#
+# It stops at depth 6 because that is the last cheap rung - a full self-play game costs
 # 0.69s at depth 6 against 4.27s at depth 7, six times the price for one more ply. Its games start
 # four plies in, where 1,120 distinct openings exist; two plies would allow only 49 and so cap an
 # honest ladder at 98 games. Starting four discs down costs nothing that matters here, because the
@@ -76,8 +80,7 @@ class Ladder(NamedTuple):
 # game is nine and two plies leave only 24 drawn openings - one short of the 50 a full ladder needs.
 LADDERS = {
     'Connect4': Ladder(
-        rungs=('random', 'minimax:1', 'minimax:2', 'minimax:3', 'minimax:4', 'minimax:5',
-               'minimax:6'),
+        rungs=('random', 'minimax:2', 'minimax:4', 'minimax:6'),
         opening_plies=4,
     ),
     'TicTacToe': Ladder(

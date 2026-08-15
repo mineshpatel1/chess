@@ -331,6 +331,11 @@ def train(
         play_seconds = time.perf_counter() - play_started
         buffer.extend(augment(fresh, encoder) if symmetries else fresh)
 
+        climbed = ladder_every > 0 and (generation % ladder_every == 0
+                                        or generation == generations)
+        if climbed:
+            log.info(f'  climbing the ladder, {ladder_games} games a rung...')
+
         learn_started = time.perf_counter()
         loss, policy_loss, value_loss = _learn(net, optimiser, buffer, steps, batch_size, rng)
 
@@ -346,8 +351,6 @@ def train(
         last_reports = reports
         report = reports[headline]
 
-        climbed = ladder_every > 0 and (generation % ladder_every == 0
-                                        or generation == generations)
         ladder_started = time.perf_counter()
         standing = (_climb(net, encoder, game, ladder_rungs, ladder_games, seed, ladder_simulations,
                           engine=engine)
