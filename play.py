@@ -61,8 +61,8 @@ def human_player(state: GameState):
     while True:
         try:
             return state.parse_move(_ask('Your move: '))
-        except ValueError as error:
-            log.warning(str(error))
+        except Exception as error:
+            log.warning(f"Invalid move, try again, moves in the form e2d2")
 
 
 def computer_player(depth: int) -> Callable:
